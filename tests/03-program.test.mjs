@@ -538,6 +538,202 @@ export default async function run() {
     }
   }
 
+
+  /* ---------------------------------------------------------------------
+     THE EVEN RULE REACHES EVERY BUILDER, not just prescribe() (v481)
+
+     Reported again after v351: "side plank ... is still only 3 sets". The
+     MAIN PROGRAMME was clean -- 378 athlete configurations, 552 per-side
+     appearances, every one 2 or 4 -- so the block above passed and the
+     athlete was still right. Three OTHER paths hand out a flat count:
+
+       the weights circuit    Balance Trainer Side Plank    3 sets
+       the custom builder     any of its 11 per-side moves  3 sets
+       the FORCE prep block   ex.unit==='reps' ? 3 : 2      (none today)
+
+     Written against the CLASS: every path that builds items, swept, rather
+     than the two that happened to bite. Each ROUTE is DRIVEN -- calling the
+     helper is not driving the route, and my own first probe hand-rolled
+     `sets:3` and reported the fix as broken.                            */
+  {
+    const ev = await page.evaluate(() => {
+      const o = { weights: [], weightsPlain: [], custom: [], force: [], quick: [], seen: {} };
+      const isPS = k => !!(EX[k] && EX[k].side === 'perSet');
+      const save = JSON.stringify({ p: STATE.profile, n: STATE.nutrition });
+
+      /* THE WEIGHTS CIRCUIT. It needs kit and it picks at random, so own
+         everything and run enough circuits that the balance-trainer side
+         plank actually turns up -- the guard below pins that it did. */
+      STATE.profile.gear = GEAR_KEYS.slice();
+      let plainSets = null;
+      for (let i = 0; i < 400; i++) {
+        const w = buildWeightsSession() || [];
+        for (const m of w) {
+          if (isPS(m.exId)) { o.weights.push(m.sets); o.seen[m.exId] = (o.seen[m.exId] || 0) + 1; }
+          else { o.weightsPlain.push(m.sets); if (plainSets === null) plainSets = m.sets; }
+        }
+      }
+      o.weightsPlainSets = plainSets;
+
+      /* THE CUSTOM BUILDER, driven through startCustom() rather than by
+         rebuilding its item literal here. */
+      _custom = ['sideplank', 'bulgarian', 'pushup'];
+      startCustom();
+      o.custom = (PLAYER && PLAYER.items || []).map(m => ({ ex: m.exId, sets: m.sets }));
+      playerQuit();
+
+      /* THE FORCE PREP BLOCK. No per-side movement reaches it today, so this
+         is the floor: its counts must be exactly what they always were. */
+      STATE.profile.gear = [...GEAR_KEYS];
+      STATE.profile.parq = []; STATE.profile.parqDone = true;
+      try { startForceTrain(); o.force = (PLAYER && PLAYER.items || []).map(m => ({ ex: m.exId, sets: m.sets })); playerQuit(); }
+      catch (e) { o.force = 'ERR ' + e.message; }
+
+      /* QUICK WORKOUTS, through the app's own reader. */
+      o.quick = QUICKIES.flatMap(q => (q.items || []).map(it => ({
+        w: q.id, ex: it.exId, declared: it.sets, read: quickSets(it), ps: isPS(quickExId(it.exId))
+      })));
+
+      /* THE HELPER'S OWN CONTRACT, exercised directly -- two of its callers
+         (the finisher and the FORCE block) cannot reach a per-side movement
+         on today's library, so a rendered assertion cannot speak for them. */
+      o.contract = {
+        plainKeepsThree: itemSets('pushup', 3),
+        plainKeepsOne: itemSets('pushup', 1),
+        perSideThreeUp: itemSets('sideplank', 3),
+        perSideOneUp: itemSets('sideplank', 1),
+        perSideTwoHeld: itemSets('sideplank', 2),
+        unknownIdKept: itemSets('notAnExercise', 3)
+      };
+      /* THE QUICK-WORKOUT READER'S OWN CONTRACT, exercised directly. Every
+         shipped QUICKIE already declares an even count for its per-side
+         movements, so reverting quickSets() is invisible on today's data --
+         only a value the shipped set does not contain can tell them apart.
+         Same technique as the hardness-band and anchor-unit guards. */
+      o.qs = {
+        perSideOdd: quickSets({ exId: 'sideplank', sets: 3 }),
+        perSideOne: quickSets({ exId: 'sideplank', sets: 1 }),
+        plainOdd: quickSets({ exId: 'plank', sets: 3 }),
+        plainOne: quickSets({ exId: 'plank', sets: 1 })
+      };
+
+      /* THE VALIDATOR RULE. A clean validator proves nothing about a
+         validator rule, so break the data in front of it and require the
+         specific complaint. validateData() LOGS, and the harness counts a
+         console error as a page failure. */
+      const realErr = console.error; console.error = () => {};
+      o.validatorClean = validateData().filter(x => /per-side/.test(x));
+      const q = QUICKIES.find(x => (x.items || []).some(it => isPS(it.exId)));
+      const it = q.items.find(i => isPS(i.exId)); const was = it.sets;
+      it.sets = 3;
+      o.validatorCatchesOdd = validateData().some(x => /QUICKIES.*per-side.*3 sets/.test(x));
+      it.sets = 1;
+      o.validatorCatchesOne = validateData().some(x => /QUICKIES.*per-side.*1 sets/.test(x));
+      it.sets = was;
+      o.validatorRestored = validateData().filter(x => /per-side/.test(x));
+      console.error = realErr;
+
+      const back = JSON.parse(save); STATE.profile = back.p; STATE.nutrition = back.n;
+      return o;
+    });
+
+    /* GUARDS FIRST. Every assertion below is satisfied by a sweep that met
+       nothing, which is exactly how the first version of this probe reported
+       a clean answer on an empty list. */
+    t.ok('guard: the weights sweep met a per-side movement at all',
+      ev.weights.length > 0 && Object.keys(ev.seen).length > 0, JSON.stringify(ev.seen));
+    t.ok('guard: and it met plenty of two-sided ones beside it',
+      ev.weightsPlain.length > 20, JSON.stringify({ plain: ev.weightsPlain.length }));
+    t.ok('guard: the custom builder really built the three moves asked for',
+      ev.custom.length === 3, JSON.stringify(ev.custom));
+    t.ok('guard: the quick sweep met per-side movements',
+      ev.quick.filter(x => x.ps).length >= 4, JSON.stringify(ev.quick.filter(x => x.ps)));
+
+    t.eq('the weights circuit never leaves a per-side movement odd',
+      ev.weights.filter(n => n % 2 !== 0 || n < 2).length, 0, JSON.stringify(ev.weights.slice(0, 20)));
+    t.eq('FLOOR: and a two-sided movement in the same circuit is untouched at three',
+      [...new Set(ev.weightsPlain)], [ev.weightsPlainSets], JSON.stringify([...new Set(ev.weightsPlain)]));
+    t.eq('guard: that untouched count really is the circuit’s own three',
+      ev.weightsPlainSets, 3, JSON.stringify(ev));
+
+    t.eq('the custom builder gives Side Plank an even count',
+      ev.custom.find(x => x.ex === 'sideplank').sets, 4, JSON.stringify(ev.custom));
+    t.eq('and the Bulgarian Split Squat too', ev.custom.find(x => x.ex === 'bulgarian').sets, 4,
+      JSON.stringify(ev.custom));
+    t.eq('FLOOR: a two-sided movement the athlete picked keeps its three',
+      ev.custom.find(x => x.ex === 'pushup').sets, 3, JSON.stringify(ev.custom));
+
+    t.ok('FLOOR: the FORCE prep block is unchanged — no per-side movement reaches it',
+      Array.isArray(ev.force) && ev.force.length > 0 && ev.force.every(m => m.sets === 3 || m.sets === 2),
+      JSON.stringify(ev.force));
+
+    t.eq('no quick workout reads a per-side movement as odd',
+      ev.quick.filter(x => x.ps && (x.read % 2 !== 0 || x.read < 2)).length, 0,
+      JSON.stringify(ev.quick.filter(x => x.ps)));
+    t.eq('FLOOR: and a two-sided quick-workout movement reads exactly what it declares',
+      ev.quick.filter(x => !x.ps && x.read !== Math.min(10, x.declared)).length, 0,
+      JSON.stringify(ev.quick.filter(x => !x.ps).slice(0, 8)));
+
+    /* THE HELPER'S CONTRACT. Its two unreachable callers depend on it. */
+    t.eq('itemSets leaves a two-sided movement exactly as asked', ev.contract.plainKeepsThree, 3);
+    t.eq('and does not push a single two-sided set up to two', ev.contract.plainKeepsOne, 1);
+    t.eq('it rounds a per-side three up to four', ev.contract.perSideThreeUp, 4);
+    t.eq('it lifts a single per-side round to two — one round is one side',
+      ev.contract.perSideOneUp, 2);
+    t.eq('and an even per-side count is left alone', ev.contract.perSideTwoHeld, 2);
+    t.eq('an id that is not an exercise is not treated as per-side',
+      ev.contract.unknownIdKept, 3);
+
+    t.eq('a quick workout declaring an odd count for a per-side movement reads as even',
+      ev.qs.perSideOdd, 4, JSON.stringify(ev.qs));
+    t.eq('and a single declared set for one reads as two', ev.qs.perSideOne, 2, JSON.stringify(ev.qs));
+    t.eq('FLOOR: a two-sided quick-workout movement keeps its odd count', ev.qs.plainOdd, 3,
+      JSON.stringify(ev.qs));
+    t.eq('FLOOR: and a genuine single set stays one', ev.qs.plainOne, 1, JSON.stringify(ev.qs));
+
+    t.eq('the validator has no per-side complaint about the shipped quick workouts',
+      ev.validatorClean, []);
+    t.ok('but it catches a per-side movement given an odd count', ev.validatorCatchesOdd, JSON.stringify(ev));
+    t.ok('and one given a single set', ev.validatorCatchesOne, JSON.stringify(ev));
+    t.eq('and it goes quiet again once the data is restored', ev.validatorRestored, []);
+
+    /* THE RULE HAS TO BE ASKED FOR, NOT MERELY DECLARED. Two callers cannot
+       reach a per-side movement today, so reverting either is byte-identical
+       on every screen -- only the source can see it. Same escape v322 and
+       v368 both recorded. */
+    const asks = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const noComments = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      const body = name => {
+        const i = noComments.indexOf('function ' + name + '(');
+        if (i < 0) return '';
+        let d = 0, started = false;
+        for (let j = i; j < noComments.length; j++) {
+          const c = noComments[j];
+          if (c === '{') { d++; started = true; }
+          else if (c === '}') { d--; if (started && d === 0) return noComments.slice(i, j + 1); }
+        }
+        return noComments.slice(i);
+      };
+      const names = ['prescribe', 'focusBonus', 'correctiveBonus', 'buildSession',
+        'buildWeightsSession', 'startCustom', 'startForceTrain', 'quickSets'];
+      const out = { readTheApp: noComments.length > 200000, missing: [], declared: 0 };
+      out.declared = (noComments.match(/function itemSets\(/g) || []).length;
+      for (const n of names) { const b = body(n); if (!b) out.missing.push(n + ':NOT-FOUND'); else if (b.indexOf('itemSets(') < 0) out.missing.push(n); }
+      /* The old hand-written easing test must be gone from prescribe(), or two
+         copies of one rule are back. */
+      out.prescribeRestates = /evenSets\(sets,\s*easing\)/.test(body('prescribe'));
+      return out;
+    });
+    t.ok('guard: the scan really read the app’s own script', asks.readTheApp, JSON.stringify(asks));
+    t.eq('the even rule is declared exactly once', asks.declared, 1, JSON.stringify(asks));
+    t.eq('and every builder asks it rather than restating a flat count',
+      asks.missing, [], JSON.stringify(asks));
+    t.ok('prescribe() no longer keeps its own copy of the easing test',
+      !asks.prescribeRestates, JSON.stringify(asks));
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

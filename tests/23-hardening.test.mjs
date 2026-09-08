@@ -5075,17 +5075,36 @@ export default async function () {
   {
     const r = await page.evaluate(async () => {
       const R = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      /* THE SCREEN NAMES THE WORD ONLY ONCE THE MICROPHONE HAS ACTUALLY
+         STARTED (v482) -- a promise over a recogniser that never came up is
+         the defect that round fixed. This browser has no microphone and no
+         speech service, so the REAL recogniser never fires onstart and the
+         line correctly reads "Starting the microphone...". The subject here is
+         the healthy phone, so model one: a fake that signals its own start,
+         the way the real API guarantees. */
+      class OkRec {
+        constructor(){ this._on = false; }
+        start(){ this._on = true; if (this.onstart) this.onstart(); }
+        stop(){ if (this._on) { this._on = false; if (this.onend) this.onend(); } }
+        abort(){ this.stop(); }
+      }
+      const realRec = window.SpeechRecognition;
+      window.SpeechRecognition = OkRec;
       STATE.onboarded = true; STATE.progressPtr = 8; save();
       STATE.settings.voiceCmd = true; save();
       openPlayer(); await wait(200);
       PLAYER.i = 0; PLAYER.s = 0; plClear(); plEnterRest(60, 'set');
+      R.everLive = _vrEverLive;
       R.on = document.getElementById('plBody').textContent;
       STATE.settings.voiceCmd = false; save();
       plClear(); plEnterRest(60, 'set');
       R.off = document.getElementById('plBody').textContent;
       playerTeardown(); await wait(200);
+      voiceCmdStop(); _vrEverLive = false;
+      if (realRec) window.SpeechRecognition = realRec; else delete window.SpeechRecognition;
       return R;
     });
+    t.ok('guard: the microphone really came up on this rest', r.everLive, JSON.stringify(r).slice(0, 200));
     t.ok('the rest screen says which word starts the next set', /continue/i.test(r.on), r.on.slice(0, 160));
     t.ok('floor: and says nothing about it when the setting is off', !/say .continue/i.test(r.off), r.off.slice(0, 160));
   }
@@ -12796,13 +12815,22 @@ export default async function () {
 
       /* FLOOR: a one-set movement still ticks after its one set, its label
          carries no set counter, and Play must not UNtick a movement that was
-         already checked off. */
-      q.items[3].target = 1; q.items[3].rest = 1; q.items[3].sets = 1;
-      quickState.done[3] = true;
-      quickPlay(3);
+         already checked off.
+
+         THE FIXTURE MOVED AND THE RULE DID NOT. This drove item 3 -- Side
+         Plank -- forced to one set, and v481 made that a shape the app cannot
+         produce: quickSets() rounds a PER-SIDE movement to an even count, so
+         the label correctly read "Side Plank \u00b7 set 1 of 2". Complete the
+         record; do not weaken the rule. Item 1 is two-sided, and the guard
+         below pins that it stays two-sided rather than drifting back. */
+      o.singleIsPerSide = sidePerSet(quickExId(q.items[1].exId));
+      o.perSideForcedToOne = quickSets({ exId: q.items[3].exId, sets: 1 });
+      q.items[1].target = 1; q.items[1].rest = 1; q.items[1].sets = 1;
+      quickState.done[1] = true;
+      quickPlay(1);
       o.labelSingle = (document.querySelector('#sheet .tt') || {}).textContent;
       await new Promise(r => setTimeout(r, 9000));
-      o.singleStillDone = !!quickState.done[3];
+      o.singleStillDone = !!quickState.done[1];
 
       q.items.forEach((it, i) => { it.target = keep[i].t; it.rest = keep[i].r; it.sets = keep[i].s; });
       closeSheet();
@@ -12830,6 +12858,9 @@ export default async function () {
     t.eq('its second set is named as such', run.repLabel2, run.names[2] + ' · set 2 of 2', run);
     t.ok('and the last one ticks it', run.repDoneAfterSet2, run);
 
+    t.ok('guard: the one-set floor drives a TWO-SIDED movement', !run.singleIsPerSide, run);
+    t.eq('and a per-side movement cannot be forced to a single set',
+      run.perSideForcedToOne, 2, run);
     t.ok('FLOOR: a one-set movement carries no set counter',
       !/set \d+ of/.test(run.labelSingle || ''), run);
     t.ok('FLOOR: Play never unticks a movement it just finished', run.singleStillDone, run);

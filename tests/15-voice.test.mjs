@@ -902,7 +902,7 @@ export default async function run() {
         constructor(){ window.__vr.made++; this._on=false; window.__recs=(window.__recs||[]); window.__recs.push(this); }
         start(){ window.__vr.starts++;
           if(this._on||window.__throwOnRestart){ const e=new Error('busy'); e.name='InvalidStateError'; throw e; }
-          this._on=true; }
+          this._on=true; if(this.onstart) this.onstart(); }
         stop(){ this._end(); } abort(){ this._end(); }
         /* Chrome ends FIRST and fires onend on an instance that is already idle. */
         _end(){ if(!this._on) return; this._on=false; if(this.onend) this.onend(); }
@@ -1062,7 +1062,7 @@ export default async function run() {
     await page.evaluate(() => { try { delete navigator.onLine; } catch (e) {} });
     const install = () => page.evaluate(() => {
       window.__vr2 = { starts: 0 };
-      class F { constructor(){ this._on=false; } start(){ window.__vr2.starts++; this._on=true; }
+      class F { constructor(){ this._on=false; } start(){ window.__vr2.starts++; this._on=true; if(this.onstart) this.onstart(); }
         stop(){ this._on=false; if(this.onend) this.onend(); } abort(){ this.stop(); } }
       window.SpeechRecognition = F;
       STATE.settings.voiceCmd = true; save();
@@ -1169,7 +1169,7 @@ export default async function run() {
       window.__recs2 = [];
       class Rec {
         constructor(){ this._on = false; window.__recs2.push(this); }
-        start(){ this._on = true; }
+        start(){ this._on = true; if (this.onstart) this.onstart(); }
         stop(){ this._end(); }
         _end(){ if (!this._on) return; this._on = false; if (this.onend) this.onend(); }
         failWith(c){ if (this.onerror) this.onerror({ error: c }); this._end(); }
@@ -1211,7 +1211,7 @@ export default async function run() {
       window.__recs3 = [];
       class Rec {
         constructor(){ this._on = false; window.__recs3.push(this); }
-        start(){ this._on = true; }
+        start(){ this._on = true; if (this.onstart) this.onstart(); }
         stop(){ this._end(); }
         _end(){ if (!this._on) return; this._on = false; if (this.onend) this.onend(); }
         failWith(c){ if (this.onerror) this.onerror({ error: c }); this._end(); }
@@ -1266,7 +1266,7 @@ export default async function run() {
       class FakeRec {
         constructor() { this._on = false; }
         start() { if (this._on) throw new Error('InvalidStateError');
-                  this._on = true; window.__mic.starts++; window.__mic.live++; }
+                  this._on = true; window.__mic.starts++; window.__mic.live++; if (this.onstart) this.onstart(); }
         stop() { if (!this._on) return; this._on = false; window.__mic.stops++; window.__mic.live--; }
       }
       const real = window.SpeechRecognition;
@@ -1326,7 +1326,7 @@ export default async function run() {
       window.__mic2 = { live: 0 };
       class FakeRec2 {
         constructor() { this._on = false; }
-        start() { this._on = true; window.__mic2.live++; }
+        start() { this._on = true; window.__mic2.live++; if (this.onstart) this.onstart(); }
         stop() { if (this._on) { this._on = false; window.__mic2.live--; } }
       }
       const real = window.SpeechRecognition;
@@ -1379,7 +1379,7 @@ export default async function run() {
       class FakeRec3 {
         constructor() { this._on = false; window.__mic3.ours = true; }
         start() { if (this._on) throw new Error('InvalidStateError');
-                  this._on = true; window.__mic3.live++; window.__mic3.starts++; }
+                  this._on = true; window.__mic3.live++; window.__mic3.starts++; if (this.onstart) this.onstart(); }
         stop() { if (!this._on) return; this._on = false; window.__mic3.live--; window.__mic3.stops++; }
       }
       const real = window.SpeechRecognition;
@@ -1462,6 +1462,181 @@ export default async function run() {
     t.eq('FLOOR: resuming re-opens it on the tap', pz.micOnResumeTap, 1);
     t.ok('FLOOR: and puts the promise back', /Say/.test(pz.hintOnResumeTap), pz);
     t.ok('FLOOR: and the word acts again', pz.wordActsAfterResume, pz);
+  }
+
+  /* ---------------------------------------------------------------------
+     THE REST SCREEN PROMISED THE WORD OVER A CLOSED MICROPHONE (v481)
+
+     Reported: "me just saying continue ... that is not happening."
+     plEnterRest() renders voiceCmdHintHTML() -- "Say continue to start the
+     next set" -- and never armed anything. The 2 s heartbeat was the only
+     opener, so the promise was on the glass over a closed microphone at the
+     start of every rest, and again after each silence. Measured before:
+
+       microphone open when the rest screen appears     0
+       closed after each Chrome silence-end             884, 1134, 882 ms
+
+     And r.start()'s answer was never observed -- there was no onstart -- so a
+     recogniser that never came up left _vrec non-null, voiceCmdSync() saw an
+     armed microphone and never retried, and the line kept promising.
+
+     EVERY CASE DRIVES A REAL REST through playerSetDone(). The block above
+     hand-sets PLAYER.phase, which is the state the defect could not be seen
+     in: a hand-set phase never runs plEnterRest() at all.                 */
+  {
+    const rq = await page.evaluate(async () => {
+      const o = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      o.guardRealApi = typeof window.webkitSpeechRecognition === 'function';
+      window.__recs = []; window.__beats = 0;
+      class FakeRec {
+        constructor(){ this._on = false; window.__recs.push(this); this._lastEnd = 0; }
+        /* Chrome refuses a restart that comes too soon after its own end. */
+        start(){ if (this._on) { const e = new Error('busy'); e.name = 'InvalidStateError'; throw e; }
+          if (Date.now() - this._lastEnd < 250) { const e = new Error('soon'); e.name = 'InvalidStateError'; throw e; }
+          this._on = true; if (this.onstart) this.onstart(); }
+        stop(){ this._end(); } abort(){ this._end(); }
+        _end(){ if (!this._on) return; this._on = false; this._lastEnd = Date.now(); if (this.onend) this.onend(); }
+        failWith(c){ if (this.onerror) this.onerror({ error: c }); this._end(); }
+        say(t){ if (!this._on) return false; if (this.onresult) this.onresult({ resultIndex: 0, results: [[{ transcript: t }]] }); return true; }
+      }
+      window.SpeechRecognition = FakeRec;
+      const listening = () => window.__recs.filter(x => x._on).length;
+      const last = () => window.__recs[window.__recs.length - 1];
+      /* A recogniser that opens and never signals it started -- what a
+         permission prompt left hanging, or a hardware conflict, looks like. */
+      class DeadRec extends FakeRec { start(){ this._on = true; } }
+      const toRest = async () => {
+        openPlayer();
+        for (let i = 0; i < 40 && PLAYER.phase !== 'work'; i++) { plTickReady(); await wait(3); }
+        playerSetDone(); await wait(40);
+      };
+
+      STATE.settings.voiceCmd = true; save();
+      _vrDown = ''; _vrNetFails = 0; _vrEverLive = false;
+
+      /* 1. ARMED ON THE PHASE CHANGE, with NO heartbeat anywhere near it. */
+      await toRest();
+      o.phase = PLAYER.phase;
+      o.micOnRestOpen = listening();
+      o.beatsSoFar = window.__beats;
+      o.hintOnRestOpen = (document.getElementById('plVoiceHint') || {}).innerHTML || '';
+      o.everLiveNow = _vrEverLive;
+
+      if (!window.__recs.length) {          // guard before the first dereference
+        STATE.settings.voiceCmd = false; save(); voiceCmdStop(); playerQuit();
+        delete window.SpeechRecognition; o.bailed = true; return o;
+      }
+
+      /* 2. A SILENCE COMES BACK ON ITS OWN, WITH THE HEARTBEAT STOPPED. The
+            first version of this counted a window.__beats nothing ever
+            incremented while the app's own 2 s guard interval ran underneath
+            it -- a self-comparing guard, and the mutant that removed the
+            prompt retry walked straight through because plGuardTick() brought
+            it back inside the wait. Kill the guard, and only the restart path
+            itself can answer. */
+      const guardWas = _plGuard; try { clearInterval(_plGuard); } catch (e) {}
+      _plGuard = null;
+      o.guardStopped = !_plGuard;
+      const t0 = Date.now();
+      last()._end();
+      o.closedRightAfterEnd = listening();
+      for (let i = 0; i < 120; i++) { if (listening() > 0) break; await wait(10); }
+      o.backWithoutBeat = listening();
+      o.backInMs = Date.now() - t0;
+      _plGuard = guardWas;
+
+      const before = PLAYER.phase; last().say('continue'); await wait(50);
+      o.wordWorked = PLAYER.phase !== before;
+
+      /* 3. A MICROPHONE THAT NEVER STARTS MUST NOT BE PROMISED. */
+      playerQuit(); voiceCmdStop(); _vrDown = ''; _vrNetFails = 0; _vrEverLive = false;
+      window.SpeechRecognition = DeadRec;
+      await toRest();
+      o.hintBeforeAnyStart = voiceCmdHintInner();
+
+      /* 3b. A NEW SESSION DOES NOT INHERIT THE LAST ONE'S SUCCESS. everLive is
+            cleared when nothing is open, so a phone whose microphone has since
+            broken is not promised the word on the strength of a rest that
+            worked an hour ago. */
+      window.SpeechRecognition = FakeRec;
+      playerQuit(); voiceCmdStop(); _vrDown = ''; _vrNetFails = 0;
+      await toRest();                       // a healthy rest sets everLive
+      o.everLiveAfterGoodRest = _vrEverLive;
+      playerQuit(); voiceCmdStop(); voiceCmdSync();   // nothing open -> cleared
+      o.everLiveAfterSession = _vrEverLive;
+      window.SpeechRecognition = DeadRec;
+      await toRest();
+      o.hintOnNextSession = voiceCmdHintInner();
+      window.SpeechRecognition = FakeRec;
+
+      /* 4. audio-capture: no branch at all before, so onend restarted it for
+            ever with nothing on screen. */
+      window.SpeechRecognition = FakeRec;
+      playerQuit(); voiceCmdStop(); _vrDown = ''; _vrNetFails = 0; _vrEverLive = false;
+      await toRest();
+      let opened = 0;
+      for (let i = 0; i < 12; i++) {
+        if (!last() || !last()._on) voiceCmdSync();
+        if (last() && last()._on) { opened++; last().failWith('audio-capture'); }
+        await wait(20);
+      }
+      o.micOpensBeforeStandDown = opened;
+      o.micDown = _vrDown;
+      o.micNote = voiceCmdNote();
+      o.micHint = voiceCmdHintInner();
+      o.switchStillOn = voiceCmdOn();
+
+      /* 5. FLOOR: a refused microphone still turns the switch OFF. */
+      _vrDown = ''; _vrNetFails = 0;
+      playerQuit(); voiceCmdStop(); STATE.settings.voiceCmd = true; save();
+      await toRest();
+      if (last() && last()._on) last().failWith('not-allowed');
+      await wait(20);
+      o.switchOffAfterRefusal = voiceCmdOn();
+
+      STATE.settings.voiceCmd = false; save(); voiceCmdStop(); playerQuit();
+      _vrDown = ''; _vrNetFails = 0; _vrEverLive = false;
+      delete window.SpeechRecognition;
+      return o;
+    });
+
+    t.ok('guard: this browser really has a speech API, so the app is building ours',
+      rq.guardRealApi, JSON.stringify(rq));
+    t.ok('guard: the block reached a real rest', rq.phase === 'rest' && !rq.bailed, JSON.stringify(rq));
+
+    t.eq('the rest screen opens the microphone as it appears', rq.micOnRestOpen, 1, JSON.stringify(rq));
+    t.eq('guard: and no heartbeat had run — the rest itself is what armed it',
+      rq.beatsSoFar, 0, JSON.stringify(rq));
+    t.ok('so the promise on that screen has a listening microphone behind it',
+      /Say/.test(rq.hintOnRestOpen), JSON.stringify(rq));
+
+    t.ok('guard: the guard tick really was stopped for this case', rq.guardStopped, JSON.stringify(rq));
+    t.eq('guard: a Chrome silence really does close it', rq.closedRightAfterEnd, 0, JSON.stringify(rq));
+    t.eq('and it comes back on its own, with no heartbeat to do it',
+      rq.backWithoutBeat, 1, JSON.stringify(rq));
+    t.ok('the word still acts on a real rest', rq.wordWorked, JSON.stringify(rq));
+
+    t.ok('a microphone that never started is NOT promised',
+      !/Say .continue./.test(rq.hintBeforeAnyStart || ''), JSON.stringify(rq));
+    t.ok('and the line says what it is doing instead',
+      /Starting the microphone/.test(rq.hintBeforeAnyStart || ''), JSON.stringify(rq));
+
+    t.ok('guard: a healthy rest really does record that it started',
+      rq.everLiveAfterGoodRest, JSON.stringify(rq));
+    t.ok('and the session ending clears it', !rq.everLiveAfterSession, JSON.stringify(rq));
+    t.ok('so the next session does not promise the word on the last one\u2019s success',
+      !/Say .continue./.test(rq.hintOnNextSession || ''), JSON.stringify(rq));
+
+    t.ok('a microphone that cannot be opened stops retrying',
+      rq.micOpensBeforeStandDown > 0 && rq.micOpensBeforeStandDown <= 4, JSON.stringify(rq));
+    t.eq('and says so', rq.micDown, 'mic', JSON.stringify(rq));
+    t.ok('naming the one thing the athlete can do about it',
+      /another app may be using it/i.test(rq.micNote || ''), JSON.stringify(rq));
+    t.ok('and the rest screen carries that instead of the promise',
+      !/Say .continue./.test(rq.micHint || '') && /microphone/i.test(rq.micHint || ''), JSON.stringify(rq));
+    t.ok('FLOOR: a microphone that is merely busy does not turn the switch off',
+      rq.switchStillOn, JSON.stringify(rq));
+    t.ok('FLOOR: but a REFUSED one still does', !rq.switchOffAfterRefusal, JSON.stringify(rq));
   }
 
   srv.close();

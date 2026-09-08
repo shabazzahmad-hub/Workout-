@@ -19188,6 +19188,174 @@ Five mutants, all caught by name, including the two over-eager twins: a memo
 that is always freshly opened (so an inner call steals the outer paint) and one
 that stores nothing at all.
 
+## The rule reached prescribe() and three builders never asked (v481)
+
+Reported a second time, four months after v351 fixed it: *"side plank in
+today's workout is still only 3 sets ... I did mention this before."*
+
+**The MAIN PROGRAMME was clean, and measuring that first is what made the rest
+findable.** Swept across **378 athlete configurations** — three levels x seven
+goals x six limitation sets x three gear sets — over every session:
+
+| | |
+|---|---|
+| per-side appearances | **552** |
+| odd, or below two | **0** |
+| a plain Side Plank, every level | **4 sets** |
+
+So v351's own check was right and the athlete was right too. `evenSets()` was
+applied inside `prescribe()`, and **three other paths build items without ever
+calling it**:
+
+| path | what it handed out |
+|---|---|
+| the weights circuit | Balance Trainer Side Plank at **3 sets** |
+| the custom builder and saved favourites | any of its **11** per-side moves at **3** |
+| the FORCE prep block | `ex.unit==='reps'?3:2` (no per-side movement today) |
+
+The athlete owns a balance trainer, and both live paths are reachable from
+Today. That is `safeSwap()` being forgotten by five sibling paths, one rule
+over — **a path that builds an item has to ask every question the old ones
+ask** — so the rule now lives in `itemSets(exId,n,pos)` and eight call sites
+ask it rather than a ninth being written by hand.
+
+**A two-sided movement keeps exactly what its builder asked for**, which is
+what makes the change safe to ship: the programme is byte-identical (the same
+96 twos and 456 fours), a push-up in a custom session is still 3, and the
+weights circuit's own three is untouched.
+
+**The finisher asks it and the answer does not move.** `finisher.sets=1` is
+"one all-out burnout round" — and one round of a per-side movement is one
+side, which is the imbalance the whole rule exists to stop. No per-side
+movement reaches that slot on today's library (v457 measured it, and this
+round re-measured it), so the call is a no-op; it is there so the day one does,
+it gets two rounds rather than an unbalanced one.
+
+### The fixture moved and the rule did not
+
+Suite 23 went red on `FLOOR: a one-set movement carries no set counter`, and
+the failure was the FIXTURE. It forced **Side Plank** to one set — a shape the
+app can no longer produce — so the label correctly read *"Side Plank · set 1 of
+2"*. The floor's real subject is the LABEL, and it now drives a **two-sided**
+movement, with a guard pinning that it stays two-sided and a companion
+assertion that a per-side movement cannot be forced to a single set.
+
+**Complete the record; do not weaken the rule** — the fourth time this file has
+recorded it, after v321's prior needing `subs:{}`, v420's fixtures missing
+`rest` and v425's hand-set stopwatch `secs`. The tell is the same every time:
+only a test fixture produces the shape, never the app's own writer.
+
+### Four of eleven mutants are caught by the source scan alone
+
+`quickSets()`, the finisher, the FORCE block and the focus bonus cannot reach a
+per-side movement on today's data, so reverting any of them is byte-identical
+on every screen. Only a source assertion — every named builder must contain
+`itemSets(`, and `prescribe()` must no longer carry its own copy of the easing
+test — can see them. That is v322's `WEIGHTS_PATTERNS` lesson and v368's two
+cardio consumers, a third time.
+
+**One of the four could be exercised directly, and was.** Every shipped
+`QUICKIES` entry already declares an even count, so the reader's change is
+invisible on the shipped data — but `quickSets({exId:'sideplank',sets:3})` is a
+value the shipped set does not contain, and pinning it turns a source-only
+catch into three named failures. The same technique the hardness-band and
+anchor-unit guards use. The other three have no such handle and stay
+source-only.
+
+**And the validator gained the data half.** `QUICKIES` is hand-written, so
+nothing but a rule stops the next one giving a per-side movement an odd count —
+two guards, two checks. A clean validator proves nothing about a validator
+rule, so the check breaks the data in front of it two ways (odd, and a single
+set), requires each specific complaint, and restores, with `console.error`
+muted because `validateData()` logs and the harness counts a console error as a
+page failure.
+
+### My own probe hand-rolled the thing it was measuring
+
+The first custom-builder reading rebuilt `{exId:k, sets:3}` in the probe rather
+than calling `startCustom()`, and reported the fix as having done nothing.
+**Calling the helper is not driving the route** — the eleventh time this file
+has recorded it, and this time in a probe measuring my own fix, three minutes
+after the fix landed. Driven properly, `startCustom()` gives Side Plank 4 and
+Bulgarian Split Squat 4.
+
+Eleven mutants, all caught, including the four over-eager twins: every movement
+forced even (fails the two-sided floors), every per-side movement pinned at 2
+(fails the reported side plank at 4), the easing ignored so it always rounds
+DOWN, and the validator rule disabled.
+
+
+## The rest screen promised the word over a closed microphone (v482)
+
+Reported: *"me just saying continue ... that is not happening."*
+
+`plEnterRest()` renders `voiceCmdHintHTML()` — **"Say 'continue' to start the
+next set"** — and armed nothing. v423 moved the microphone off the whole
+session and onto the phases where the word can act, and left the **2 s
+heartbeat as its only opener**. Measured on a real rest, driven through
+`playerSetDone()`:
+
+| | before | after |
+|---|---|---|
+| microphone open when the rest screen appears | **0** | **1** |
+| closed after each Chrome silence-end | **884 / 1134 / 882 ms** | **314 / 315 / 234** |
+
+So the promise was on the glass over a closed microphone at the start of every
+rest, and again after each silence — through the one phase the word exists
+for. `plEnterRest()` calls `voiceCmdSync()` now, the same call `playerToggle()`
+already makes for the same stated reason: **on the tap, not up to a heartbeat
+later.**
+
+### r.start() was called and its answer was never observed
+
+**There was no `onstart` handler.** A recogniser that never came up left
+`_vrec` non-null, `voiceCmdSync()` saw an armed microphone and never retried,
+and the line kept promising — the corpse v422 fixed on the RESTART, at the
+first start instead.
+
+`_vrEverLive` is what the hint reads, **not** `_vrLive`: Chrome ends
+recognition on every silence, so a line rendered off the live flag would
+flicker through the whole rest, which is worse than the defect. It is cleared
+when nothing is open, so a phone whose microphone has since broken is not
+promised the word on the strength of a rest that worked an hour ago — and the
+mutant that lets it survive the session is caught by exactly that case.
+
+### audio-capture had no branch at all
+
+`onerror` handled `not-allowed` and `network`. **`audio-capture` — another app
+holding the microphone, or a device with none — fell through to `onend`, which
+restarted it for ever with nothing on screen.** That is v422's silent loop, one
+error code over. It stands down after the same strikes and says which of the
+two it is; it does **not** turn the switch off, because it is transient and the
+switch is the athlete's choice. The over-eager mutant that treats it like
+`not-allowed` is caught by that floor.
+
+### The fixture was incomplete, for the fifth time
+
+Seven checks went red, and **every one was a fake recogniser whose `start()`
+never fired `onstart`** — a shape no real browser produces. Adding the one line
+the real API guarantees turned them green. **Complete the record; do not weaken
+the rule**, after v321's `subs:{}`, v420's missing `rest`, v425's hand-set
+`secs` and v481's one-set Side Plank.
+
+### The guard counted a variable nothing increments
+
+The silence check asserted *"it comes back with no heartbeat"* against a
+`window.__beats` counter **nothing ever incremented**, while the app's own 2 s
+guard interval ran underneath it. So the mutant that removed the prompt restart
+walked straight through: `plGuardTick()` brought the microphone back inside the
+wait. A self-comparing guard, of the kind v344 records — the case now **stops
+`_plGuard`**, so only the restart path itself can answer.
+
+**And the existing block could not have found any of this**, because it
+hand-sets `PLAYER.phase='rest'`. A hand-set phase never runs `plEnterRest()` at
+all, which is where the promise is rendered and where the arming was missing.
+Every case here drives a real rest.
+
+Eight mutants, all caught, including the two over-eager twins: a busy
+microphone turning the switch off, and a hint that never promises the word.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

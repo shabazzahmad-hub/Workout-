@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='480';
+const APP_VERSION='482';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3099,13 +3099,7 @@ function prescribe(exId,pos){
   }
   /* LAST, after every modifier — a rule applied earlier is one a later clamp
      can quietly make odd again. */
-  if(typeof sidePerSet==='function'&&sidePerSet(exId)){
-    const easing=(typeof safeMode==='function'&&safeMode())
-      ||(typeof deloadOn==='function'&&deloadOn(pos))
-      ||(typeof readinessMult==='function'&&readinessMult()<0.85)
-      ||(typeof comebackEaseActive==='function'&&comebackEaseActive());
-    sets=evenSets(sets,easing);
-  }
+  sets=itemSets(exId,sets,pos);
   return {sets,target,unit:ex.unit,rest,tempo};
 }
 
@@ -3337,7 +3331,7 @@ function focusBonus(pos,used){
       /* focusKey records WHICH focus area chose this bonus. Nothing in the app
          reads it, but it is the only handle that proves the trouble-zone answers
          actually steer the selection — a regression suite asserts on it. */
-      return {exId,...rx,sets:Math.min(rx.sets,2),slot:'focus',focus:true,focusKey:key};
+      return {exId,...rx,sets:itemSets(exId,Math.min(rx.sets,2),pos),slot:'focus',focus:true,focusKey:key};
     }
   }catch(e){}
   return null;
@@ -3361,7 +3355,7 @@ function correctiveBonus(pos,used){
       if(!cands.length)continue;
       const exId=cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
       const rx=prescribe(exId,pos);
-      return {exId,...rx,sets:Math.min(rx.sets,2),slot:'corrective',corrective:true,correctiveJoint:joint};
+      return {exId,...rx,sets:itemSets(exId,Math.min(rx.sets,2),pos),slot:'corrective',corrective:true,correctiveJoint:joint};
     }
   }catch(e){}
   return null;
@@ -3689,7 +3683,12 @@ function buildSession(ptr){
   {const sharp=sharpenFinisher(pos,used,finEx);if(sharp)finEx=sharp;}
   used.add(finEx);
   const finisher={exId:finEx,...prescribe(finEx,pos),slot:finLadName};
-  finisher.sets=1;   // a finisher is always one all-out burnout round
+  /* One all-out burnout round -- except that ONE round of a per-side movement
+     is one side, which is the imbalance this whole rule exists to stop. No
+     per-side movement reaches this slot today (measured across all 378
+     sessions), so itemSets() is a no-op here; it is asked so the day one does,
+     it gets two rounds rather than an unbalanced one. */
+  finisher.sets=itemSets(finEx,1,pos);
   // targeted bonus: one extra move for the athlete's priority area (from the quiz)
   /* If the day already has three or more direct-core slots, skip the bonus —
      an extra ab exercise on Core Crusher is not the missing stimulus. */
@@ -6610,7 +6609,7 @@ function startForceTrain(){
   const ids=avail.map(e=>e.ex);
   const items=ids.map(k=>{const ex=EX[k];
     return {exId:k,unit:ex.unit,target:ex.unit==='time'?(ex.base||30):(ex.base||12),
-            rest:ex.rest||60,sets:ex.unit==='reps'?3:2};});
+            rest:ex.rest||60,sets:itemSets(k,ex.unit==='reps'?3:2)};});
   closeSheet();
   if(miss.length)toast('Training '+avail.length+' of '+FORCE_EVENTS.length+' — no sandbag yet');
   openPlayer({items,free:true,title:'FORCE prep',
@@ -7971,7 +7970,7 @@ function buildWeightsSession(){
     const safe=spaceSwap(safeSwap(k));
     if(!safe||!EX[safe]||!hasGearFor(safe)||used.has(safe))return;
     used.add(safe);const ex=EX[safe];
-    items.push({exId:safe,unit:ex.unit,target:weightsTargetFor(safe),rest:ex.rest||55,sets});};
+    items.push({exId:safe,unit:ex.unit,target:weightsTargetFor(safe),rest:ex.rest||55,sets:itemSets(safe,sets)});};
   const items=[],used=new Set();
   // balanced full-body military circuit
   WEIGHTS_PATTERNS.forEach(pat=>addItem(pick(pat),items,used));
@@ -8291,6 +8290,12 @@ function plEnterRest(dur,type){
     </div>
     ${voiceCmdHintHTML()}`;
   plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','REST');plRingSet(1);
+  /* ARM ON THE PHASE CHANGE. This screen PROMISES the word, and the microphone
+     was opened by the 2 s heartbeat alone -- so the promise was on the glass
+     over a closed microphone for up to a beat at the start of every rest, and
+     the same again after each silence. Same call playerToggle() already makes:
+     on the tap, not up to a heartbeat later. */
+  try{voiceCmdSync();}catch(e){}
   if(PLAYER.running)PLAYER.tid=setInterval(plTickRest,1000);else plS('#plToggle','Resume');
 }
 function plTickRest(){
@@ -8735,6 +8740,20 @@ const VOICE_ECHO_MAX_MS=8000;
    One blip is not a diagnosis; a run of them is. */
 const VOICE_NET_STRIKES=3;
 let _vrec=null,_vrWant=false,_vrSpokeAt=0,_vrSpeakSince=0,_vrNetFails=0,_vrDown='';
+/* WHETHER THE MICROPHONE ACTUALLY OPENED. r.start() was called and its answer
+   was never observed: no onstart handler existed, so a recogniser that never
+   came up left _vrec non-null, voiceCmdSync() saw an armed microphone and never
+   retried, and the rest screen went on promising the word. That is the corpse
+   v422 fixed on the RESTART, at the first start instead.
+   Chrome ends recognition on every silence, so `live` drops constantly and is
+   the wrong thing to render off; `everLive` is what says the microphone has
+   really worked at least once this session, and it does not flicker. */
+let _vrLive=false,_vrEverLive=false;
+/* A restart Chrome refuses comes back in its own beat, not on the guard's.
+   Measured on a silent rest with the 2 s heartbeat as the only retry: the
+   microphone was CLOSED for 884, 1134 and 882 ms after each silence -- through
+   the one phase the word exists for. */
+const VOICE_RESTART_MS=300;
 function voiceCmdSupported(){try{return !!(window.SpeechRecognition||window.webkitSpeechRecognition);}catch(e){return false;}}
 /* Absent means the athlete has not chosen. A default here would make the
    "has the athlete turned this on?" test true for everybody forever, which is
@@ -8813,6 +8832,7 @@ function voiceCmdNote(){
   if(!voiceCmdOn())return '';
   if(d==='offline')return 'Speech recognition runs on Google\u2019s servers, so it needs a connection. This phone is offline, so the word cannot be heard right now \u2014 every other part of the session works.';
   if(d==='net')return 'The speech service could not be reached, so the word is not being listened for. It tries again next session.';
+  if(d==='mic')return 'The microphone could not be opened \u2014 another app may be using it. Close it and turn this off and on again.';
   return '';
 }
 /* One reader, so the rest screen and Settings cannot promise different things. */
@@ -8826,7 +8846,14 @@ function voiceCmdHintInner(){
      the button beside this line already says Resume. */
   if(!voiceCmdActionable())return '';
   const n=voiceCmdNote();
-  return '\u{1F399}\uFE0F '+(n?_ve(n):'Say \u201Ccontinue\u201D to start the next set');
+  if(n)return '\u{1F399}\uFE0F '+_ve(n);
+  /* A PROMISE IN UI TEXT IS A SPECIFICATION, and this one had no code behind
+     it: the line read the same whether the recogniser had opened or had never
+     started at all. everLive rather than live, because Chrome ends on every
+     silence and a line that flickered through the rest would be worse than the
+     defect. */
+  return '\u{1F399}\uFE0F '+(_vrEverLive?'Say \u201Ccontinue\u201D to start the next set'
+    :'Starting the microphone\u2026');
 }
 /* The container is ALWAYS rendered, empty or not, so a stand-down mid-rest has
    something to write into. An empty div with no margin has no height. */
@@ -8868,6 +8895,7 @@ function voiceCmdStart(){
     const C=window.SpeechRecognition||window.webkitSpeechRecognition;
     const r=new C();
     r.continuous=true;r.interimResults=true;r.lang='en-US';
+    r.onstart=()=>{_vrLive=true;if(!_vrEverLive){_vrEverLive=true;}voiceCmdRepaint();};
     r.onresult=(e)=>{try{_vrNetFails=0;for(let i=e.resultIndex;i<e.results.length;i++)voiceCmdHeard(e.results[i][0].transcript);}catch(_e){}};
     r.onerror=(e)=>{
       const err=e&&e.error;
@@ -8891,10 +8919,23 @@ function voiceCmdStart(){
         _vrWant=false;_vrec=null;
         if(_vrDown!=='net'){_vrDown='net';toast('Voice command could not reach the speech service',4000);}
         voiceCmdRepaint();
+        return;
+      }
+      /* NO MICROPHONE TO CAPTURE FROM -- another app holds it, or the device
+         has none. It had NO branch at all, so onend restarted it for ever with
+         nothing on screen: the same silent loop v422 measured one error code
+         over. Not turned off, because it is transient and the athlete's own
+         choice; the retrying stops and the app says which of the two it is. */
+      if(err==='audio-capture'){
+        if(++_vrNetFails<VOICE_NET_STRIKES)return;
+        _vrWant=false;_vrec=null;
+        if(_vrDown!=='mic'){_vrDown='mic';toast('Voice command could not open the microphone',4000);}
+        voiceCmdRepaint();
       }
     };
     // Chrome ends recognition after a silence; keep it up while a session is open
     r.onend=()=>{
+      _vrLive=false;
       if(!_vrWant||!_vrec){_vrec=null;return;}
       /* A RESTART THAT THROWS MUST NOT LEAVE A CORPSE. voiceCmdSync() re-arms
          only while _vrec is null, so swallowing the throw and keeping the dead
@@ -8902,7 +8943,14 @@ function voiceCmdStart(){
          nothing on screen — measured: zero recognisers listening and no further
          start attempts, whatever the heartbeat did. Drop it and let the next
          beat build a fresh one. */
-      try{_vrec.start();}catch(e){_vrec=null;}
+      try{_vrec.start();}
+      catch(e){
+        /* Chrome refuses a restart that comes too soon after its own end, and
+           leaving it to the 2 s heartbeat is a measured ~1 s hole every
+           silence. Drop the corpse and come back in a beat of its own. */
+        _vrec=null;
+        setTimeout(()=>{try{voiceCmdSync();}catch(_e){}},VOICE_RESTART_MS);
+      }
     };
     _vrec=r;_vrWant=true;
     r.start();
@@ -8925,7 +8973,7 @@ function voiceCmdSync(){
      clear here rather than needing an 'online' listener: the next session tries
      again from scratch, which is what an athlete who has walked back into
      signal expects. */
-  if(!open){_vrNetFails=0;_vrDown='';}
+  if(!open){_vrNetFails=0;_vrDown='';_vrEverLive=false;}
   /* THE MICROPHONE OPENS WHERE THE WORD CAN ACT, NOT FOR THE WHOLE SESSION.
      Arming on "a session is open" left it streaming audio to a cloud service
      through every working set — measured open in ready, work AND rest — while
@@ -13163,6 +13211,34 @@ function evenSets(n,easing){
   if(v%2===0)return Math.max(2,v);
   return Math.max(2,easing?v-1:v+1);
 }
+/* THE EVEN RULE HAS TO REACH EVERY BUILDER, not just prescribe().
+   Reported again after v351: "side plank ... is still only 3 sets". Measured,
+   the MAIN PROGRAMME is clean -- 378 athlete configurations, 552 per-side
+   appearances, every one 2 or 4, and a plain Side Plank is 4 at every level.
+   Three OTHER paths hand out a flat count that never asked:
+
+     the weights circuit    Balance Trainer Side Plank    3 sets
+     the custom builder     any of its 11 per-side moves  3 sets
+     the FORCE prep block   ex.unit==='reps' ? 3 : 2      (no per-side today)
+
+   So the rule lives in one place and every item builder asks it. A path that
+   picks an exercise has to ask every question the old ones ask. */
+function easingOn(pos){
+  try{
+    return !!((typeof safeMode==='function'&&safeMode())
+      ||(typeof deloadOn==='function'&&deloadOn(pos))
+      ||(typeof readinessMult==='function'&&readinessMult()<0.85)
+      ||(typeof comebackEaseActive==='function'&&comebackEaseActive()));
+  }catch(e){return false;}
+}
+/* One set count for one item. A two-sided movement keeps exactly what the
+   builder asked for -- so an ordinary session, a quick workout and the weights
+   circuit are byte-identical -- and a per-side one is rounded to even, never
+   below two. */
+function itemSets(exId,n,pos){
+  const v=Math.max(1,n|0);
+  return sidePerSet(exId)?evenSets(v,easingOn(pos)):v;
+}
 const SIDE_LINE='Switch sides now.';
 function plSay(text){
   if(!text)return;
@@ -15143,7 +15219,7 @@ function startCustom(){
      exists reached `ex.unit` and threw. Two guards mean two checks. */
   _custom=_custom.filter(exKnown);
   if(!_custom.length){toast('Add some moves first');return;}
-  const items=_custom.map(k=>{const ex=EX[k];const t=ex.unit==='time'?(ex.base||30):(ex.base||12);return {exId:k,unit:ex.unit,target:t,rest:ex.rest||45,sets:3};});
+  const items=_custom.map(k=>{const ex=EX[k];const t=ex.unit==='time'?(ex.base||30):(ex.base||12);return {exId:k,unit:ex.unit,target:t,rest:ex.rest||45,sets:itemSets(k,3)};});
   closeSheet();openPlayer({items,free:true,title:'Custom Workout',focus:'Your session'});
 }
 /* A favourite is one hand-typed prompt at a time, so the cap is not about the
@@ -22449,7 +22525,10 @@ let QUICK_ID=null, quickState={done:{}};
    the work, the athlete's own rep cadence, and the rest between sets. Same
    class as v449's warm-up: a duration written by hand beside the list that
    decides it. */
-function quickSets(it){const n=+((it||{}).sets);return (isFinite(n)&&n>0)?Math.min(10,Math.round(n)):1;}
+/* Read against the movement PERFORMED, not the one declared: quickExId() runs
+   safeSwap(), so a substitute can be per-side where the original was not. */
+function quickSets(it){const n=+((it||{}).sets);const v=(isFinite(n)&&n>0)?Math.min(10,Math.round(n)):1;
+  return itemSets(quickExId((it||{}).exId),v);}
 function quickItemSecs(it,per){
   const ex=EX[quickExId(it.exId)]||EX[it.exId];if(!ex)return 0;
   const sets=quickSets(it),target=quickTarget(it,ex),rest=it.rest||ex.rest||25;
@@ -24968,6 +25047,14 @@ function validateData(){
 
     if(e.side!==undefined&&SIDE_MODES.indexOf(e.side)<0)errs.push('EX.'+k+' has an unknown side value "'+e.side+'"');
   });
+  /* QUICKIES are hand-written, so nothing but a rule stops the next one giving
+     a per-side movement an odd count. quickSets() repairs the READ; this is
+     what stops the data being wrong in the first place. */
+  QUICKIES.forEach(q=>{(q.items||[]).forEach(it=>{
+    if(!it||!sidePerSet(it.exId))return;
+    const n=+it.sets;
+    if(!(n>=2)||n%2!==0)errs.push('QUICKIES.'+q.id+' gives per-side '+it.exId+' '+it.sets+' sets — a per-side movement needs an even count of at least two');
+  });});
   const testUnit={};TESTS.forEach(t=>testUnit[t.id]=t.unit);
   // TEST_DEFAULTS must cover exactly the same ids as TESTS — a test added
   // without a default leaves maxes[id] undefined for anyone who skips it,
