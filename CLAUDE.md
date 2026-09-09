@@ -19647,6 +19647,135 @@ anchor on the surrounding lines rather than to loosen the assert.
 
 Ten mutants, all caught by name.
 
+## The label defaulted to "male" on a phone whose names say nothing (v486)
+
+Reported: *"even after selecting male, the default voice is still the female."*
+
+**The PICK was never the problem, and measuring that first is what made the
+rest findable.** Driven through the real control with a stubbed voice list,
+`coachVoiceFor()` returns exactly the voice chosen, for every coach, and a
+per-coach pick still outranks the global one. What lied was the **label** v484
+had just added.
+
+**There is no sex field in the Web Speech API.** A voice exposes `name`,
+`lang`, `localService`, `default` and `voiceURI` — nothing else. So the name is
+all there is to read, and `voiceSexLabel()` answered `male` for every name it
+did not recognise. **Most Android voice names carry nothing to recognise.**
+Measured over ten realistic Android names:
+
+| the name | it said | it is |
+|---|---|---|
+| `Google US English` | **male** | female |
+| `English (United States)` | **male** | female |
+| `en-us-x-tpf-local` | **male** | female |
+| `Samsung TTS English (US)` | **male** | female |
+| `Google UK English Female` | female | female |
+| `Google UK English Male` | male | male |
+
+**Seven of ten wrong, and every one of the seven was a FEMALE voice labelled
+male** — which is the report, exactly. The athlete opened a list where most
+options read `male`, picked one, and heard a woman.
+
+**So it answers three ways and never guesses**: female when the name says so,
+male when the name says so, and **nothing at all** when the name says nothing.
+`_MALE_RE` sits beside `_FEMALE_RE` for that third answer, and `voiceSexSuffix()`
+is written once so neither picker can render a bare `·` where the answer would
+have gone.
+
+**`assignCoachVoices()` keeps its two-way split ON PURPOSE**, and the two are
+not a drifted pair. It has to put every voice in *some* bucket to spread the
+cast across them, so an unknown voice has to go somewhere. The label answers a
+different question — what the app can honestly TELL the athlete — and **a label
+is read as fact while a bucket is only a spread.**
+
+**The copy names the route that does not depend on a guess.** Each pick speaks
+a sample immediately (the global picker has called `testVoice()` since it was
+written, and the per-coach sheet has previewed since v483), so a few taps finds
+the voice by ear. That is the only reliable method on a phone whose voice names
+are opaque, and it was already built — it just was not said.
+
+### The guard is the whole finding
+
+Every assertion below *"no voice is labelled with the wrong sex"* is satisfied
+by a rule that was never wrong, so the block re-derives the OLD rule and
+requires it to fail on the same names — and requires every one of its failures
+to be a female voice called male. **Its floor is that the fix has not simply
+stopped answering**: a `voiceSexLabel()` that always returns `''` satisfies
+"never wrong" and deletes the feature, and it is caught by eight checks.
+
+### Two escapes, and neither was a bad mutant
+
+- **The per-coach sheet was never asserted on an unreadable name.** Its check
+  read `Daniel · male`, which both versions produce — *the global picker being
+  right says nothing about its twin*, and the player's twins have now drifted
+  six times. It reads the unlabelled option out of the sheet too.
+- **A loose `/male/` cannot change today's answer, because `female` is tested
+  FIRST** — so the ORDER is the only thing protecting it, and *"female"* ends
+  in *"male"*. Rather than record it equivalent, the male test's **own contract
+  is pinned directly**: it must refuse `female`, `Google UK English Female` and
+  `en-us-female-2`, whatever order it is asked in. The v338 `prepDatePassed()`
+  shape — a guard consulted in one narrow branch still has to mean what it is
+  named.
+
+### And the check pinned the behaviour that was wrong
+
+v484's own `and a name it has never seen reads as male, which is what it does
+with it` asserted the defect, with a comment justifying it. Re-aimed rather
+than deleted: the requirement underneath — that the label matches what the app
+really knows — survives, and it is now *no label rather than a wrong one*.
+**When a rule changes, the check is part of the change** — the seventh time
+this file has recorded a check holding a defect in place rather than catching
+it.
+
+Ten mutants, all caught by name.
+
+### And the probe could not fake a voice object
+
+`u.voice = v` throws in Chromium for a plain object, so a probe that stubs
+`speechSynthesis.speak` and hands `_deviceSpeak()` a fake voice gets `false`
+back and captures nothing — which reads exactly like a pick that never
+arrives. **Assert on `coachVoiceFor()`, which is where the rule lives**, rather
+than on an utterance the browser will not let a probe build.
+
+### The floor read a microphone a previous block had opened (v486)
+
+CI went red on **one** check — `FLOOR: a healthy rest still promises the word`,
+`{"promises":false,"quiet":true}` — on a suite that was green locally three
+runs in a row. It is a v482 floor, and it was **passing on residue**.
+
+The line reads `_vrEverLive`, which only `onstart` sets. The floor stubbed
+nothing, so the flag it read had been left true by the block above it — and
+`voiceCmdStop()` and `playerQuit()` do **not** clear it. **Only
+`voiceCmdSync()` does, when nothing is open** — which is exactly what the app's
+own 2-second `plGuardTick()` calls. On a loaded runner one beat lands in the
+gap between two blocks and the floor goes red on correct code.
+
+Measured deterministically, everything else identical:
+
+| the gap between the blocks | the floor reads |
+|---|---|
+| no beat | `promises: true` — the block above's microphone |
+| **one `voiceCmdSync()` beat** | **`promises: false`** — the CI failure, byte for byte |
+
+**Each block builds the state it asserts on**, and here "healthy" means a
+microphone that actually CAME UP — so the floor stubs a recogniser of its own,
+exactly as its two siblings do. **The proof is the control, not the green
+run**: the old floor plus an injected beat reproduces
+`{"promises":false,"quiet":true}` exactly, and the new one is green under the
+same beat.
+
+**And the guard is what makes it a fix rather than a coincidence.** Removing
+the stub leaves `armed:false` beside `live:true, promises:true` — the residue
+named in the failure detail — so the block can never again pass on a
+microphone it did not open.
+
+**Fifth fixed-gap race in this suite family**, after v414, v420, v437 and
+v451, and the first where the thing racing was **the app's own heartbeat
+clearing a flag**, rather than an encode or a deferred repaint. The tell is
+the same every time: green locally, red on a loaded runner, and a check that
+does not build what it reads.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

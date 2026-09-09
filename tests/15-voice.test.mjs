@@ -1251,16 +1251,48 @@ export default async function run() {
     t.ok('guard: the refusal really turned the switch off', ref.switchOff, ref);
     t.ok('a switch the app turned off stops promising the word', !ref.promises, ref);
 
-    /* FLOOR: an ordinary healthy rest is unchanged. */
-    const ok = await page.evaluate(() => {
-      _vrDown = ''; _vrNetFails = 0;
+    /* FLOOR: an ordinary healthy rest is unchanged.
+
+       EACH BLOCK BUILDS THE STATE IT ASSERTS ON, and "healthy" here means a
+       microphone that actually CAME UP: the line reads _vrEverLive, which only
+       onstart sets. So this block stubs a recogniser of its own rather than
+       inheriting one.
+       Without that it passed on residue. voiceCmdStop() and playerQuit() do NOT
+       clear _vrEverLive — only voiceCmdSync() does, when nothing is open — so
+       the flag survived from the block above and the floor read `true` for a
+       microphone this block never opened. The app's own 2 s guard beat calls
+       voiceCmdSync(); on a loaded runner one lands in the gap between two
+       blocks, the flag clears, and the floor goes red on correct code.
+       Measured, with everything else identical: no beat in the gap gives
+       promises:true, one beat gives promises:false — which is the CI failure
+       byte for byte. */
+    const ok = await page.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      window.__recs4 = [];
+      class Rec {
+        constructor(){ this._on = false; window.__recs4.push(this); }
+        start(){ this._on = true; if (this.onstart) this.onstart(); }
+        stop(){ this._end(); }
+        _end(){ if (!this._on) return; this._on = false; if (this.onend) this.onend(); }
+      }
+      const real = window.SpeechRecognition;
+      window.SpeechRecognition = Rec;
+      _vrDown = ''; _vrNetFails = 0; _vrEverLive = false;
       STATE.settings.voiceCmd = true; save();
       go('today'); openPlayer(0); plEnterRest(60, 'ex');
+      voiceCmdSync(); await wait(10);
       const body = () => (document.querySelector('#plBody') || {}).innerText || '';
-      const r = { promises: /Say .continue./.test(body()), quiet: !/speech service|offline/i.test(body()) };
-      playerQuit(); STATE.settings.voiceCmd = false; save();
+      const last = () => window.__recs4[window.__recs4.length - 1];
+      const r = { armed: !!(last() && last()._on), live: _vrEverLive,
+                  promises: /Say .continue./.test(body()),
+                  quiet: !/speech service|offline/i.test(body()) };
+      voiceCmdStop(); playerQuit();
+      STATE.settings.voiceCmd = false; _vrDown = ''; _vrNetFails = 0; save();
+      if (real) window.SpeechRecognition = real; else delete window.SpeechRecognition;
       return r;
     });
+    t.ok('guard: the microphone really armed for this rest', ok.armed, ok);
+    t.ok('guard: and really came up — the floor is not reading residue', ok.live, ok);
     t.ok('FLOOR: a healthy rest still promises the word', ok.promises, ok);
     t.ok('FLOOR: and says nothing about a failure', ok.quiet, ok);
   }
@@ -2035,31 +2067,151 @@ export default async function run() {
       const html = voiceOptionsHTML();
       out.female = /Karen[^<]*·[^<]*female/.test(html);
       out.male = /Daniel[^<]*·[^<]*male/.test(html);
-      /* An unknown name lands in the male set by default, which is what the
-         assignment does with it — so that is what the label must say. */
-      out.unknownReadsMale = /Nimbus Pro[^<]*·[^<]*male/.test(html);
+      /* AND A NAME THAT SAYS NOTHING IS LABELLED NOTHING. This used to read
+         "male", which is the v486 defect: most Android voice names carry no
+         clue at all and the great majority of them are female. */
+      out.unknownUnlabelled = /Nimbus Pro · en-US<\/option>/.test(html);
+      out.unknownNotMale = !/Nimbus Pro[^<]*male/.test(html);
+      out.noBareSeparator = !/Nimbus Pro[^<]*· *<\/option>/.test(html);
       openCoachVoices();
       const sheet = document.getElementById('sheet');
       const txt = sheet ? sheet.innerHTML : '';
       out.rows = (txt.match(/data-cv=/g) || []).length;
       out.perCoachLabelled = /Daniel · male/.test(txt);
+      /* and the sheet must leave an unreadable name unlabelled as well — the
+         global picker being right says nothing about its twin. */
+      out.perCoachUnknownBare = /<option value="Nimbus Pro"[^>]*>Nimbus Pro<\/option>/.test(txt);
+      out.perCoachUnknownNotMale = !/Nimbus Pro[^<]*male/.test(txt);
       closeSheet();
       const g = document.getElementById('v-guide');
-      out.saysItIsAGuess = /worked out from the voice's name/.test(g ? g.innerHTML : '');
+      out.saysListenToIt = /Pick one and listen/i.test(g ? g.innerHTML : '');
+      out.saysNotGuessed = /left off rather than guessed/i.test(g ? g.innerHTML : '');
       out.saysHowToRefresh = /Voice check/.test(g ? g.innerHTML : '');
       return out;
     });
     t.ok('GUARD: the phone handed over a voice list to label', r.poolN === 3, JSON.stringify(r));
     t.ok('a name the app knows as female says so', r.female, JSON.stringify(r));
     t.ok('a name it treats as male says so', r.male, JSON.stringify(r));
-    t.ok('and a name it has never seen reads as male, which is what it does with it',
-      r.unknownReadsMale, JSON.stringify(r));
+    t.ok('and a name that says nothing carries NO label rather than "male"',
+      r.unknownUnlabelled && r.unknownNotMale, JSON.stringify(r));
+    t.ok('with no bare separator left where the answer would have gone',
+      r.noBareSeparator, JSON.stringify(r));
     t.eq('GUARD: the per-coach sheet rendered a row for every coach', r.rows, 38);
     t.ok('the per-coach rows carry the same label', r.perCoachLabelled, JSON.stringify(r));
-    t.ok('FLOOR: the copy says the label is worked out from the name',
-      r.saysItIsAGuess, JSON.stringify(r));
+    t.ok('and the per-coach rows leave an unreadable name unlabelled too',
+      r.perCoachUnknownBare && r.perCoachUnknownNotMale, JSON.stringify(r));
+    t.ok('FLOOR: the copy names the reliable route — pick one and listen',
+      r.saysListenToIt, JSON.stringify(r));
+    t.ok('FLOOR: and says an unreadable name is left unlabelled, not guessed',
+      r.saysNotGuessed, JSON.stringify(r));
     t.ok('FLOOR: and points at the refresh for a pack added since the page opened',
       r.saysHowToRefresh, JSON.stringify(r));
+  }
+
+  /* ---- "even after selecting male, the default voice is still the female" ---
+     The PICK was never the problem: coachVoiceFor() returns exactly the voice
+     chosen, and this block pins that as its floor. What lied was the LABEL.
+     voiceSexLabel() answered "male" for every name it did not recognise, and
+     most Android voice names carry nothing to recognise — "Google US English",
+     "English (United States)", "en-us-x-tpf-local" are all FEMALE voices whose
+     names say so nowhere. Measured over ten realistic Android names, SEVEN were
+     wrong and every one of the seven was a female voice labelled male.
+     There is no sex field in the Web Speech API, so the honest answer is three
+     ways: female, male, or nothing at all. */
+  {
+    const r = await page.evaluate(() => {
+      const out = {};
+      /* Names a real Android phone hands over, and what each voice really is. */
+      const cases = [
+        ['Google US English', 'female'],
+        ['English (United States)', 'female'],
+        ['en-us-x-tpf-local', 'female'],
+        ['Samsung TTS English (US)', 'female'],
+        ['Google UK English Female', 'female'],
+        ['Google UK English Male', 'male'],
+        ['Microsoft David - English', 'male'],
+        ['Daniel', 'male'],
+        ['Karen', 'female']
+      ];
+      /* GUARD: the OLD rule really did answer male for the unreadable ones, or
+         every assertion below passes on a rule that was never wrong. */
+      const oldRule = n => _FEMALE_RE.test(n) ? 'female' : 'male';
+      out.oldWrong = cases.filter(([n, truth]) => oldRule(n) !== truth).length;
+      out.oldWrongAllFemale = cases
+        .filter(([n, truth]) => oldRule(n) !== truth)
+        .every(([, truth]) => truth === 'female');
+
+      /* Never wrong now: it says female, male, or nothing. */
+      out.nowWrong = cases.filter(([n, truth]) => {
+        const l = voiceSexLabel({ name: n, lang: 'en-US' });
+        return l && l !== truth;
+      }).length;
+      /* FLOOR: and it has not simply stopped answering. */
+      out.stillAnswers = cases.filter(([n]) =>
+        voiceSexLabel({ name: n, lang: 'en-US' })).length;
+      out.readsFemale = voiceSexLabel({ name: 'Karen' }) === 'female';
+      out.readsMale = voiceSexLabel({ name: 'Daniel' }) === 'male';
+      /* "female" contains "male": a loose male test would call every female
+         voice male, which is the reported bug by another route. */
+      out.femaleIsNotMale = voiceSexLabel({ name: 'Google UK English Female' }) === 'female';
+      /* The male test's OWN contract, asked directly. voiceSexLabel() checks
+         female first, so a loose /male/ cannot change today's answer — the
+         ORDER is the only thing protecting it, and a guard consulted in one
+         narrow branch still has to mean what it is named. "female" ends in
+         "male". */
+      out.maleReSkipsFemale = !_MALE_RE.test('Google UK English Female')
+        && !_MALE_RE.test('female') && !_MALE_RE.test('en-us-female-2');
+      out.maleReReadsMale = _MALE_RE.test('Google UK English Male')
+        && _MALE_RE.test('Daniel');
+      out.suffixBlank = voiceSexSuffix({ name: 'en-us-x-tpf-local' }) === '';
+      out.suffixNamed = voiceSexSuffix({ name: 'Daniel' }) === ' · male';
+
+      /* FLOOR: the pick itself still reaches the voice — the half that was
+         already right, driven through the real control. */
+      const fake = [
+        { name: 'Google US English', lang: 'en-US' },
+        { name: 'Google UK English Male', lang: 'en-GB' },
+        { name: 'en-us-x-iom-local', lang: 'en-US' }
+      ];
+      speechSynthesis.getVoices = () => fake;
+      loadCoachVoices();
+      const drill = COACHES.find(c => c.id === 'drill');
+      const cheer = COACHES.find(c => c.id === 'cheer');
+      STATE.settings.voiceName = 'Google UK English Male';
+      COACH_V = resolveVoice();
+      out.pickedReachesEveryCoach =
+        (coachVoiceFor(drill) || {}).name === 'Google UK English Male' &&
+        (coachVoiceFor(cheer) || {}).name === 'Google UK English Male';
+      /* and a per-coach pick still outranks it */
+      setCoachOwnVoice('cheer', 'en-us-x-iom-local');
+      out.perCoachStillWins = (coachVoiceFor(cheer) || {}).name === 'en-us-x-iom-local';
+      out.otherCoachUnmoved = (coachVoiceFor(drill) || {}).name === 'Google UK English Male';
+      try { delete STATE.settings.coachVoices; } catch (e) {}
+      STATE.settings.voiceName = '';
+      return out;
+    });
+
+    t.ok('GUARD: the old rule really did mislabel real Android voice names',
+      r.oldWrong >= 4, JSON.stringify(r));
+    t.ok('GUARD: and every one it got wrong was a female voice called male',
+      r.oldWrongAllFemale, JSON.stringify(r));
+    t.eq('no voice is labelled with the wrong sex any more', r.nowWrong, 0);
+    t.ok('FLOOR: it still answers wherever the name genuinely says so',
+      r.stillAnswers >= 4, JSON.stringify(r));
+    t.ok('FLOOR: a known female name still reads female', r.readsFemale, JSON.stringify(r));
+    t.ok('FLOOR: a known male name still reads male', r.readsMale, JSON.stringify(r));
+    t.ok('"Female" is not read as male, though it contains the word',
+      r.femaleIsNotMale, JSON.stringify(r));
+    t.ok('and the male test itself refuses "female", whatever order it is asked in',
+      r.maleReSkipsFemale, JSON.stringify(r));
+    t.ok('FLOOR: while still reading a genuinely male name',
+      r.maleReReadsMale, JSON.stringify(r));
+    t.ok('an unreadable name renders no suffix at all', r.suffixBlank, JSON.stringify(r));
+    t.ok('and a readable one renders the separator with it', r.suffixNamed, JSON.stringify(r));
+    t.ok('FLOOR: the picked voice still reaches every coach',
+      r.pickedReachesEveryCoach, JSON.stringify(r));
+    t.ok('FLOOR: and a per-coach pick still outranks it, for that coach only',
+      r.perCoachStillWins && r.otherCoachUnmoved, JSON.stringify(r));
   }
 
   srv.close();

@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='485';
+const APP_VERSION='486';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11131,6 +11131,12 @@ function englishVoicePool(){
   const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));
   return en.length?en:COACH_VOICES.slice();
 }
+/* Names this app can read as MALE. There is no sex field in the Web Speech
+   API — a voice exposes name, lang and little else — so a name is all there is
+   to go on, and most Android names carry nothing to read. Kept SEPARATE from
+   the female test so a name matching neither can be reported as unknown
+   rather than guessed at. */
+const _MALE_RE=/\bmale\b|\balex\b|\btom\b|daniel|arthur|brian|guy|david|mark|george|james|thomas|oliver|ryan|eric|steffan|christopher|roger|andrew|tony|jason|davis|aaron|gordon|rishi|fred|junior|ralph|reed|william|matthew|nathan|liam|ravi|richard/i;
 const _FEMALE_RE=/female|samantha|victoria|karen|moira|tessa|fiona|serena|zira|susan|allison|ava|zoe|catherine|amelie|anna|nicky|kate|hazel|linda|heera|veena|salli|joanna|kendra|kimberly|aria|jenny|michelle|sonia|clara|isha|neerja|libby|maisie/i;
 /* Give every coach the most distinct device voice we can. Coaches usually
    outnumber the phone's installed voices, so we round-robin through the pool
@@ -12084,20 +12090,37 @@ function runVoiceCheck(){loadCoachVoices();setTimeout(()=>{try{renderGuide();}ca
    just installed a voice pack and is looking for it in a list of eight.
    It asks _FEMALE_RE, the same predicate the assignment asks, rather than a
    second copy that could disagree with which bucket a voice is really in.
-   IT IS A GUESS FROM A NAME AND THE COPY UNDER THE PICKER SAYS SO. A phone can
-   name a female voice something this list has never heard of, and it lands in
-   the male set by default — the app acts on that guess either way, so showing
-   it is strictly more honest than hiding it. */
+   THE OLD VERSION ANSWERED male FOR EVERY NAME IT DID NOT RECOGNISE, and that
+   is the shape of the report: "even after selecting male the voice is still
+   female". Measured against ten realistic Android names, SEVEN were wrong and
+   every one of the seven was a FEMALE voice labelled male — because most
+   Android names carry nothing to read: "Google US English", "English (United
+   States)" and "en-us-x-tpf-local" are all female and say so nowhere.
+   So it answers THREE ways and never guesses: female when the name says so,
+   male when the name says so, and NOTHING when the name says nothing.
+   assignCoachVoices() keeps its two-way split on purpose — it has to put every
+   voice in some bucket to spread the cast across them, and an unknown voice has
+   to go somewhere. This answers a different question: what the app can honestly
+   TELL the athlete. A label is read as fact; a bucket is only a spread. */
 function voiceSexLabel(v){
-  try{return (v&&v.name&&_FEMALE_RE.test(v.name))?'female':'male';}catch(e){return '';}
+  try{
+    const n=(v&&v.name)||'';
+    if(!n)return '';
+    if(_FEMALE_RE.test(n))return 'female';
+    if(_MALE_RE.test(n))return 'male';
+    return '';
+  }catch(e){return '';}
 }
+/* The label as it appears after a voice's name, or nothing at all. Written once
+   so neither picker can render a bare " \u00b7 " where the answer is unknown. */
+function voiceSexSuffix(v){const s=voiceSexLabel(v);return s?(' \u00b7 '+s):'';}
 function voiceOptionsHTML(){
   if(!COACH_VOICES.length)return '<option value="">Tap "Test voice" to load voices…</option>';
   const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));
   const list=en.length?en:COACH_VOICES;
   const sel=STATE.settings.voiceName||'';
   return '<option value="">Auto — deepest available</option>'+
-    list.map(v=>`<option value="${_ve(v.name)}"${v.name===sel?' selected':''}>${_ve(v.name)} · ${_ve(v.lang)} · ${_ve(voiceSexLabel(v))}</option>`).join('');
+    list.map(v=>`<option value="${_ve(v.name)}"${v.name===sel?' selected':''}>${_ve(v.name)} · ${_ve(v.lang)}${_ve(voiceSexSuffix(v))}</option>`).join('');
 }
 function setCoachVoice(name){STATE.settings.voiceName=name||'';COACH_V=resolveVoice();save();testVoice();}
 /* One row per coach. The Auto option NAMES the voice that coach is currently
@@ -12109,7 +12132,7 @@ function coachVoiceRowsHTML(){
   return COACHES.map(c=>{
     const picked=coachVoicePickName(c.id), auto=COACH_VOICE_MAP[c.id];
     const opts=[`<option value=""${picked?'':' selected'}>Auto${(auto&&auto.name)?' · '+_ve(auto.name):''}</option>`]
-      .concat(pool.map(v=>`<option value="${_ve(v.name)}"${v.name===picked?' selected':''}>${_ve(v.name)} · ${_ve(voiceSexLabel(v))}</option>`)).join('');
+      .concat(pool.map(v=>`<option value="${_ve(v.name)}"${v.name===picked?' selected':''}>${_ve(v.name)}${_ve(voiceSexSuffix(v))}</option>`)).join('');
     return `<div class="row" style="align-items:center;gap:8px;padding:5px 0" data-cv="${_ve(c.id)}">
       <span style="flex:none">${_ve(c.emoji||'🎙️')}</span>
       <span class="sm" style="flex:1 1 96px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_ve(c.name)}</span>
@@ -12124,7 +12147,7 @@ function coachVoiceResetHTML(){
 }
 function coachVoiceSheetHTML(){
   return `<h3>🎙️ A voice for each coach</h3>
-    <div class="tiny muted" style="margin-bottom:8px">Pick the voice you want for one coach. Every coach left on <b>Auto</b> keeps the voice the app spreads across the cast. A choice here beats the single voice in Settings, so one coach can sound different from the rest.</div>
+    <div class="tiny muted" style="margin-bottom:8px">Pick the voice you want for one coach — that coach speaks a sample straight away, so you can hear it before you keep it. Every coach left on <b>Auto</b> keeps the voice the app spreads across the cast. A choice here beats the single voice in Settings, so one coach can sound different from the rest.</div>
     <div id="cvReset">${coachVoiceResetHTML()}</div>
     <div id="cvRows">${coachVoiceRowsHTML()}</div>
     <div class="btnrow" style="margin-top:10px"><button class="btn" onclick="closeSheet()">Done</button></div>`;
@@ -23255,7 +23278,7 @@ h+=`<div class="section-label">What changes, and when</div>
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
       <select aria-label="Coach voice" onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
       <div class="tiny muted" style="margin-top:5px">Leave this on Auto so each coach keeps its own voice. Picking one here makes <b>every</b> coach use it — except any coach you have given its own voice below.</div>
-      <div class="tiny muted" style="margin-top:5px"><b>male</b> and <b>female</b> are worked out from the voice's name, so a name this app has not seen before is read as male. Just installed a voice pack and cannot see it? Tap <b>🔎 Voice check</b> below — the phone only hands over its list when asked, and a pack added since this page opened is not on it yet.</div>
+      <div class="tiny muted" style="margin-top:5px"><b>Pick one and listen</b> — each choice speaks a sample straight away, so a few taps finds the voice you want. Your phone does not tell the app whether a voice is male or female; where the <i>name</i> says so it is shown, and where it does not the label is left off rather than guessed. Just installed a voice pack and cannot see it? Tap <b>🔎 Voice check</b> below — the phone only hands over its list when asked, and a pack added since this page opened is not on it yet.</div>
       ${voiceCheckHTML()}
       <div class="row" style="justify-content:space-between;padding:4px 0"><span class="muted sm">Give one coach its own voice</span><button class="chip" onclick="openCoachVoices()">🎙️ Per coach</button></div>
       <div class="row" style="justify-content:space-between;padding:4px 0"><span class="muted sm">Which voices is this phone using?</span><button class="chip" onclick="runVoiceCheck()">🔎 Voice check</button></div>
