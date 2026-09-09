@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='482';
+const APP_VERSION='485';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11152,12 +11152,62 @@ function assignCoachVoices(){
     COACH_VOICE_MAP[c.id]=v;
   }
 }
-/* The assigned device voice for a coach — respects a manual override, then the
-   per-coach assignment, then hint-matching, then the global default. */
+/* A VOICE FOR ONE COACH. The Settings picker is all-or-nothing by design — one
+   voice for all 38 — so an athlete who installs a voice pack and wants THAT
+   coach on it had no way to say so, and the round-robin above decides by list
+   order rather than by anything they can steer.
+   settings.coachVoices maps a coach id to a device voice NAME. It is the most
+   specific choice the athlete can make, so it outranks the global pick: the
+   same call a hand-set protein target makes over the calculation.
+   A name this phone no longer offers reads as NO choice rather than a broken
+   one — voice packs get uninstalled, and a stale name must never mute a coach.
+   Absent means Auto, so the map is deleted once it is empty: a field created
+   for every athlete is a field in every backup, and a diff on a settled state
+   fires "we repaired your data" at somebody who has never used the feature. */
+function coachVoicePickName(id){
+  try{
+    const m=STATE.settings&&STATE.settings.coachVoices;
+    if(!m||typeof m!=='object'||Array.isArray(m))return '';
+    const n=m[id];
+    return (typeof n==='string')?n:'';
+  }catch(e){return '';}
+}
+function coachVoicePick(id){
+  const n=coachVoicePickName(id);
+  if(!n)return null;
+  try{return (COACH_VOICES||[]).find(v=>v&&v.name===n)||null;}catch(e){return null;}
+}
+/* The assigned device voice for a coach — this coach's own pick, then a manual
+   override, then the per-coach assignment, then hint-matching, then the global
+   default. */
 function coachVoiceFor(persona){
   if(!persona)return COACH_V;
+  const own=coachVoicePick(persona.id);
+  if(own)return own;
   if(STATE.settings.voiceName){const v=COACH_VOICES.find(x=>x.name===STATE.settings.voiceName);if(v)return v;}
   return COACH_VOICE_MAP[persona.id]||pickVoiceByHint(persona.hint)||COACH_V;
+}
+/* MEMBERSHIP, not truthiness, on both halves: the id must name a real coach and
+   the value must be a voice name. Both reach innerHTML through the sheet, and
+   importData() accepts arbitrary JSON. */
+function setCoachOwnVoice(id,name){
+  if(!COACHES.some(c=>c.id===id))return false;
+  const s=STATE.settings;
+  if(!s.coachVoices||typeof s.coachVoices!=='object'||Array.isArray(s.coachVoices))s.coachVoices={};
+  const n=(typeof name==='string')?name.trim():'';
+  const known=n&&(COACH_VOICES||[]).some(v=>v&&v.name===n);
+  if(known)s.coachVoices[id]=n; else delete s.coachVoices[id];
+  if(!Object.keys(s.coachVoices).length)delete s.coachVoices;
+  save();
+  try{renderCoachVoiceSheet();}catch(e){}
+  if(known){const p=COACHES.find(c=>c.id===id);if(p)_deviceSpeak(`${p.name} here. Let's get to work.`,p);}
+  return known;
+}
+function clearCoachVoices(){
+  try{delete STATE.settings.coachVoices;}catch(e){}
+  save();
+  try{renderCoachVoiceSheet();}catch(e){}
+  toast('Every coach is back on Auto',2500);
 }
 
 /* ===== PREMIUM NEURAL VOICES (Azure Cognitive Services · online) =====
@@ -11214,6 +11264,29 @@ function neuralCfgFor(persona){return (persona&&COACH_NEURAL[persona.id])||NEURA
 function neuralReady(){try{const s=STATE.settings||{};return !!(s.neuralOn&&_keyStr(s.azureKey)&&_keyStr(s.azureRegion));}catch(e){return false;}}
 function neuralAvailable(){return neuralReady()&&(navigator.onLine!==false);}
 const _neuralCache=new Map();          // cacheKey -> object URL (per-session; kills repeat API calls)
+/* A PREMIUM VOICE THAT HAS STOPPED WORKING IS SILENT BY DESIGN: coachSpeak()
+   falls back to the device voice and says nothing, so the athlete hears a
+   different voice with nothing on screen to explain it — a promise in UI text
+   (the switch reads On) with no code behind it. Count the failures and name
+   them. NOT automatic: the switch is the athlete's choice, and a monthly
+   allowance that resets is not a reason to turn their setting off for them. */
+let _neuralFails=0,_neuralFailMsg='';
+const NEURAL_FAIL_STRIKES=3;
+function neuralDownHTML(){
+  if(!STATE.settings.neuralOn||_neuralFails<NEURAL_FAIL_STRIKES)return '';
+  const quota=/quota|exceed|limit|403|429/i.test(_neuralFailMsg||'');
+  return `<div class="note warn" style="margin:8px 0">
+    <b>The premium voice is not answering.</b> ${_neuralFails} tries failed this session, so your coaches are speaking in this phone's own voices instead.
+    <div class="tiny" style="margin-top:6px">${quota
+      ?'That reads like the free monthly allowance running out. It resets at the start of the month, and Azure will offer you a paid tier — you do not have to take it.'
+      :'Common causes: no connection, an expired trial key, or a region that does not match the key.'}</div>
+    <div class="btnrow" style="margin-top:8px"><button class="btn sm primary" onclick="useDeviceVoices()">Use this phone&#39;s voices</button></div></div>`;
+}
+function useDeviceVoices(){
+  STATE.settings.neuralOn=false;_neuralFails=0;_neuralFailMsg='';save();
+  try{renderGuide();}catch(e){}
+  toast("Premium voices off — your coaches use this phone's own voices",3000);
+}
 /* Every entry holds a Blob alive for the page lifetime. .clear() dropped the Map
    entries without revoking, and the prewarm paths add many lines per session, so
    the audio accumulated unbounded. Revoke on eviction, and bound the map. */
@@ -11344,7 +11417,9 @@ function neuralSpeak(text,persona,onFail){
   _sdkSynthesize(neuralSSML(text,cfg),cfg)
     .then(buf=>{const u=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));_neuralCacheSet(key,u);
       if(tok===_neuralTok)_neuralPlay(u);})   // only play if not superseded
-    .catch(err=>{try{console.warn('neural TTS failed, using device voice',err&&(err.message||err));}catch(e){}
+    .catch(err=>{const m=String((err&&(err.message||err.errorDetails))||err||'');
+      try{console.warn('neural TTS failed, using device voice',m);}catch(e){}
+      _neuralFails++;_neuralFailMsg=m;
       if(tok===_neuralTok&&typeof onFail==='function')onFail();});
   return true;
 }
@@ -11414,11 +11489,15 @@ function _deviceSpeak(text,p){
     // Speak in the active coach's own voice + pitch/rate so briefs, cues and the
     // countdown match whoever is coaching — unless the user has forced a voice or
     // manually tuned pitch/rate in Settings.
-    const manualV=!!STATE.settings.voiceName,
-          manualR=(typeof STATE.settings.voiceRate==='number');
+    const manualR=(typeof STATE.settings.voiceRate==='number');
     u.rate=manualR?voiceRatePref(0.98):((p&&p.rate)||0.98);
     u.pitch=localPitchFor(p);   // tone preset + this persona's own character
-    const v=(p&&!manualV)?coachVoiceFor(p):COACH_V;
+    /* ONE reader of the voice rule. This used to branch on voiceName here and
+       fall back to COACH_V, which is a second copy of coachVoiceFor()'s own
+       first branch — byte-identical while the global pick was the only
+       override, and it would have swallowed a per-coach pick outright.
+       coachVoiceFor(null) returns COACH_V, so the no-persona case is unchanged. */
+    const v=coachVoiceFor(p);
     if(v)u.voice=v;
     duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
@@ -11998,15 +12077,67 @@ function voiceCheckHTML(){
   return `<div class="note ok" style="margin:8px 0"><b>${d.distinct} different voices</b> in use across ${d.coaches} coaches, from the ${d.en} this phone offers.</div>`;
 }
 function runVoiceCheck(){loadCoachVoices();setTimeout(()=>{try{renderGuide();}catch(e){}toast('Voice check updated',2500);},250);}
+/* WHICH SIDE OF THE SPLIT A VOICE IS ON, in the athlete's own words.
+   assignCoachVoices() already sorts the phone's voices into a female set and a
+   male set, and it does it by reading the NAME — so the app has this answer and
+   the picker printed a bare name, which is no help at all to somebody who has
+   just installed a voice pack and is looking for it in a list of eight.
+   It asks _FEMALE_RE, the same predicate the assignment asks, rather than a
+   second copy that could disagree with which bucket a voice is really in.
+   IT IS A GUESS FROM A NAME AND THE COPY UNDER THE PICKER SAYS SO. A phone can
+   name a female voice something this list has never heard of, and it lands in
+   the male set by default — the app acts on that guess either way, so showing
+   it is strictly more honest than hiding it. */
+function voiceSexLabel(v){
+  try{return (v&&v.name&&_FEMALE_RE.test(v.name))?'female':'male';}catch(e){return '';}
+}
 function voiceOptionsHTML(){
   if(!COACH_VOICES.length)return '<option value="">Tap "Test voice" to load voices…</option>';
   const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));
   const list=en.length?en:COACH_VOICES;
   const sel=STATE.settings.voiceName||'';
   return '<option value="">Auto — deepest available</option>'+
-    list.map(v=>`<option value="${_ve(v.name)}"${v.name===sel?' selected':''}>${_ve(v.name)} · ${_ve(v.lang)}</option>`).join('');
+    list.map(v=>`<option value="${_ve(v.name)}"${v.name===sel?' selected':''}>${_ve(v.name)} · ${_ve(v.lang)} · ${_ve(voiceSexLabel(v))}</option>`).join('');
 }
 function setCoachVoice(name){STATE.settings.voiceName=name||'';COACH_V=resolveVoice();save();testVoice();}
+/* One row per coach. The Auto option NAMES the voice that coach is currently
+   assigned, because "Auto" on its own tells the athlete nothing about what
+   they are choosing between. */
+function coachVoiceRowsHTML(){
+  const pool=englishVoicePool();
+  if(!pool.length)return `<div class="tiny muted">This phone has not handed over its voice list yet. Close this, tap <b>▶ Test voice</b> in Settings, then come back.</div>`;
+  return COACHES.map(c=>{
+    const picked=coachVoicePickName(c.id), auto=COACH_VOICE_MAP[c.id];
+    const opts=[`<option value=""${picked?'':' selected'}>Auto${(auto&&auto.name)?' · '+_ve(auto.name):''}</option>`]
+      .concat(pool.map(v=>`<option value="${_ve(v.name)}"${v.name===picked?' selected':''}>${_ve(v.name)} · ${_ve(voiceSexLabel(v))}</option>`)).join('');
+    return `<div class="row" style="align-items:center;gap:8px;padding:5px 0" data-cv="${_ve(c.id)}">
+      <span style="flex:none">${_ve(c.emoji||'🎙️')}</span>
+      <span class="sm" style="flex:1 1 96px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_ve(c.name)}</span>
+      <select aria-label="Voice for ${_ve(c.name)}" onchange="setCoachOwnVoice('${_ve(c.id)}',this.value)" style="flex:1 1 130px;min-width:0;padding:8px;border-radius:10px;background:var(--card2);color:var(--ink);border:1px solid var(--line);font-size:13px">${opts}</select>
+    </div>`;
+  }).join('');
+}
+function coachVoiceResetHTML(){
+  let n=0;try{n=Object.keys(STATE.settings.coachVoices||{}).length;}catch(e){}
+  if(!n)return '';
+  return `<div class="btnrow" style="margin-bottom:6px"><button class="btn sm ghost" onclick="clearCoachVoices()">↺ Put every coach back on Auto (${n} set)</button></div>`;
+}
+function coachVoiceSheetHTML(){
+  return `<h3>🎙️ A voice for each coach</h3>
+    <div class="tiny muted" style="margin-bottom:8px">Pick the voice you want for one coach. Every coach left on <b>Auto</b> keeps the voice the app spreads across the cast. A choice here beats the single voice in Settings, so one coach can sound different from the rest.</div>
+    <div id="cvReset">${coachVoiceResetHTML()}</div>
+    <div id="cvRows">${coachVoiceRowsHTML()}</div>
+    <div class="btnrow" style="margin-top:10px"><button class="btn" onclick="closeSheet()">Done</button></div>`;
+}
+function openCoachVoices(){primeVoice();openSheet(coachVoiceSheetHTML());}
+/* Repaint IN PLACE. Re-opening the sheet would throw the athlete back to the
+   top of a 38-row list every time they set one voice. */
+function renderCoachVoiceSheet(){
+  try{
+    const r=$('#cvRows');if(r)r.innerHTML=coachVoiceRowsHTML();
+    const b=$('#cvReset');if(b)b.innerHTML=coachVoiceResetHTML();
+  }catch(e){}
+}
 /* ===== Premium neural-voice settings ===== */
 function toggleNeural(){
   STATE.settings.neuralOn=!STATE.settings.neuralOn;save();
@@ -12596,16 +12727,39 @@ function assessCoachId(){
 }
 /* Auto mode ('auto'): rotate through a random coach each exercise, so the voice
    changes from time to time without you picking one. _autoId holds the current pick. */
-let _autoId=null,_autoBag=[];
-function rollAutoPersona(){
-  // Shuffle-bag: play through ALL coaches once (shuffled) before any repeats,
-  // so Auto is guaranteed to cycle through every one of them.
-  if(!_autoBag.length){
-    _autoBag=COACHES.map(c=>c.id);
-    for(let i=_autoBag.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=_autoBag[i];_autoBag[i]=_autoBag[j];_autoBag[j]=t;}
-    if(_autoBag.length>1&&_autoBag[0]===_autoId){const t=_autoBag[0];_autoBag[0]=_autoBag[1];_autoBag[1]=t;} // no back-to-back across bags
+let _autoId=null;
+/* ONE SHUFFLE BAG, asked by the coach rotation AND by the phrase picker.
+   A bag deals every item once, shuffled, before any repeat. The rotation had
+   one and the phrase picker did not: motivateLine() drew at RANDOM with only a
+   "not the same as last time" guard, which is not the same thing at all.
+   Measured over one session of 39 during-lines from a pool of 11: random makes
+   the most-heard line land 6.4 times where the fair share is 3.5, and leaves a
+   line unheard; a bag caps it at 4 and leaves none unheard. That is the
+   "I know exactly what she is going to say" report, and it is arithmetic.
+   Keyed, so the coach rotation and every persona x line-kind hold their own
+   bag: with Auto rotating coaches, one shared "last index" compares a line
+   number from coach A against coach B's pool, which means nothing.
+   `last` is per key so the no-back-to-back guard survives the seam between
+   one bag and the next, exactly as the rotation's own guard did. */
+const _bags={};
+function _bagNext(key,n){
+  if(!(n>0))return -1;
+  let b=_bags[key];
+  if(!b||b.n!==n)b=_bags[key]={n:n,items:[],last:-1};
+  if(!b.items.length){
+    const a=[];for(let i=0;i<n;i++)a.push(i);
+    for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=a[i];a[i]=a[j];a[j]=t;}
+    if(a.length>1&&a[0]===b.last){const t=a[0];a[0]=a[1];a[1]=t;}
+    b.items=a;
   }
-  _autoId=_autoBag.shift();return _autoId;
+  const i=b.items.shift();b.last=i;return i;
+}
+function rollAutoPersona(){
+  // Play through ALL coaches once (shuffled) before any repeats, so Auto is
+  // guaranteed to cycle through every one of them. The bag lives in _bagNext().
+  const i=_bagNext('coach',(COACHES||[]).length);
+  _autoId=(i>=0&&COACHES[i])?COACHES[i].id:((COACHES[0]&&COACHES[0].id)||null);
+  return _autoId;
 }
 // Roll a new random coach for this exercise when in Auto mode. Call at each timer start.
 function autoRoll(){if(STATE.settings.coach==='auto')rollAutoPersona();}
@@ -12622,7 +12776,6 @@ function currentPersona(){
   }
   return COACHES.find(c=>c.id===STATE.settings.coach)||COACHES[0];
 }
-let _lastHype={};
 function pickVoiceByHint(hints){
   if(!COACH_VOICES||!COACH_VOICES.length)return COACH_V;
   const en=COACH_VOICES.filter(v=>/^en/i.test(v.lang));const pool=en.length?en:COACH_VOICES;
@@ -13032,10 +13185,10 @@ function motivateLine(kind,force){
   }
   const p=currentPersona();const lines=p[kind]||p.during||[];
   if(!lines.length)return '';
-  let i=Math.floor(Math.random()*lines.length);
-  if(lines.length>1&&_lastHype[kind]===i)i=(i+1)%lines.length; // avoid immediate repeat
-  _lastHype[kind]=i;
-  return String(lines[i]||'');
+  /* Keyed by PERSONA and kind. Keyed by kind alone, a bag built for one coach
+     would be dealt out against the next coach's pool the moment Auto rotates. */
+  const i=_bagNext('line|'+((p&&p.id)||'?')+'|'+kind,lines.length);
+  return String(lines[i>=0?i:0]||'');
 }
 function motivate(kind,force){
   const line=motivateLine(kind,force);
@@ -13359,11 +13512,55 @@ function beatStep(s,t){
     const o=ac.createOscillator(),og=ac.createGain();o.type='triangle';o.frequency.value=180;og.gain.setValueAtTime(0.18,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.09);o.connect(og);og.connect(out);o.start(t);o.stop(t+0.1);}
   if(BEAT.hat[s]){const src=ac.createBufferSource();src.buffer=beatNoise(ac);const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=8000;const g=ac.createGain();const v=(s%4===0)?0.16:0.10;g.gain.setValueAtTime(v,swT);g.gain.exponentialRampToValueAtTime(0.001,swT+0.045);src.connect(hp);hp.connect(g);g.connect(out);src.start(swT);src.stop(swT+0.05);}
 }
+/* THE CARD PRESCRIBED THREE SETS AND THE BUTTON DELIVERED ONE.
+   Reported three times: "after one set is done the timer starts immediately and
+   then when the time is done to zero the app just stops, and you have to press
+   hold timer again — it does not continue to the second set."
+   v350 and v375 both went looking in the GUIDED PLAYER, which chains correctly.
+   This is the other surface: the ▶ Hold timer and ▶ Guided reps buttons on the
+   session card in Today. Both runners have taken a continuation since v451 —
+   `onAfterRest`, the 8th argument of runTimer() and the 6th of runRepCadence().
+   quickPlay() passes it. NEITHER TODAY CALLER DID, so the rest ended, the
+   continuation was `undefined`, and the sheet simply sat there.
+   v451 fixed exactly this defect for Quick workouts and never came back to the
+   card it sits under — fixing one instance is not fixing the class.
+
+   ONE CHAIN FOR BOTH UNITS, so a timed movement and a rep movement cannot drift
+   apart about what a set is, which is how they came to differ in the first
+   place. Each completed set marks ONE set (a movement-level tick is quickPlay's
+   rule, because Quick has no per-set boxes); rest runs BETWEEN sets and never
+   after the last one; and the label says WHICH set it is, because "3 sets" tells
+   an athlete mid-session nothing about where they are in them. */
+function exSetChain(exId,setNo){
+  const sess=buildSession(STATE.progressPtr);
+  const m=[...sess.main,sess.finisher].find(x=>x&&x.exId===exId);
+  const ex=m&&EX[exId];
+  if(!m||!ex)return;
+  const sets=Math.max(1,m.sets|0);
+  /* START WHERE THE ATHLETE ACTUALLY IS. A movement with two sets already
+     marked opens on set 3, not on set 1 — otherwise the chain re-runs work they
+     have done and the label lies about which set it is. */
+  let n=+setNo;
+  if(!(n>0)){
+    let st={sets:[]};
+    try{const log=ensureLog();st=(log.ex&&log.ex[exId])||st;}catch(e){}
+    n=Math.min(setsDoneFor(st,m)+1,sets);
+  }
+  const last=n>=sets;
+  const label=ex.name+(sets>1?` · set ${n} of ${sets}`:'');
+  const done=()=>markSetFromTimer(exId);
+  const next=last?null:(()=>exSetChain(exId,n+1));
+  if(m.unit==='time')runTimer('hold',m.target,label,last?0:m.rest,done,false,ex,next);
+  else runRepCadence(m.target,label,last?0:m.rest,done,ex,next);
+}
 function openExerciseTimer(exId){
-  const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
-  const ex=EX[exId];
-  if(m.unit==='time'){runTimer('hold',m.target,ex.name,m.rest,()=>markSetFromTimer(exId),false,ex);}
-  else{runTimer('rest',m.rest,ex.name+' — rest',0,null,false,ex);}
+  const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x&&x.exId===exId);
+  const ex=m&&EX[exId];
+  if(!m||!ex)return;
+  /* The ⏱ Rest button on a REP movement is a standalone rest between sets the
+     athlete is counting themselves — not a set, so it chains nothing. */
+  if(m.unit!=='time'){runTimer('rest',m.rest,ex.name+' — rest',0,null,false,ex);return;}
+  exSetChain(exId);
 }
 function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
   let remain=seconds;const total=seconds;
@@ -13482,11 +13679,7 @@ function markSetFromTimer(exId){
 /* Paces reps aloud at repTempo seconds each, then flows into the spoken
    between-sets rest timer. Reuses the `timer` global (mode 'reps'). */
 let _repTok=0;
-function startGuidedReps(exId){
-  const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
-  const ex=EX[exId];
-  runRepCadence(m.target,ex.name,m.rest,()=>markSetFromTimer(exId),ex);
-}
+function startGuidedReps(exId){exSetChain(exId);}
 function cancelReps(){_repTok++;stopTimer();closeSheet();}
 function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
   const total=Math.max(1,reps);let n=0;
@@ -23061,13 +23254,16 @@ h+=`<div class="section-label">What changes, and when</div>
   h+=`
     <div style="padding:6px 0 2px"><div class="tiny muted" style="margin-bottom:5px">Coach voice</div>
       <select aria-label="Coach voice" onchange="setCoachVoice(this.value)" style="width:100%;padding:10px;border-radius:10px;background:#141b26;color:#e8eef7;border:1px solid var(--line);font-size:14px">${voiceOptionsHTML()}</select>
-      <div class="tiny muted" style="margin-top:5px">Leave this on Auto so each coach keeps its own voice. Picking one here makes <b>every</b> coach use it.</div>
+      <div class="tiny muted" style="margin-top:5px">Leave this on Auto so each coach keeps its own voice. Picking one here makes <b>every</b> coach use it — except any coach you have given its own voice below.</div>
+      <div class="tiny muted" style="margin-top:5px"><b>male</b> and <b>female</b> are worked out from the voice's name, so a name this app has not seen before is read as male. Just installed a voice pack and cannot see it? Tap <b>🔎 Voice check</b> below — the phone only hands over its list when asked, and a pack added since this page opened is not on it yet.</div>
       ${voiceCheckHTML()}
+      <div class="row" style="justify-content:space-between;padding:4px 0"><span class="muted sm">Give one coach its own voice</span><button class="chip" onclick="openCoachVoices()">🎙️ Per coach</button></div>
       <div class="row" style="justify-content:space-between;padding:4px 0"><span class="muted sm">Which voices is this phone using?</span><button class="chip" onclick="runVoiceCheck()">🔎 Voice check</button></div>
     </div>
     <div class="divider" style="margin:10px 0"></div>
     <div class="row" style="justify-content:space-between;padding:6px 0"><span>Premium AI voices <span class="tiny muted">· online · Azure neural</span></span><button class="chip ${STATE.settings.neuralOn?'on':''}"${pressed(STATE.settings.neuralOn)} onclick="toggleNeural()">${STATE.settings.neuralOn?'On':'Off'}</button></div>
     ${STATE.settings.neuralOn?`<div style="padding:2px 0 2px">
+      ${neuralDownHTML()}
       <div class="tiny muted" style="margin-bottom:6px">Genuinely neural voices — each coach gets a hand-picked Azure voice, with shouting/intense delivery on the hardcore coaches. Your key stays only on this phone; offline it automatically falls back to the device voices.</div>
       <label class="tiny muted" style="display:block;margin-bottom:3px">Azure Speech key</label>
       ${(STATE.settings.azureKey&&!_editKey)?`<div class="row" style="justify-content:space-between;gap:8px;background:#141b26;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px">
@@ -23709,6 +23905,21 @@ function normalizeState(){
      about a state that is not true, offering a button to undo something that
      never happened. A device voice name is a string or it is nothing. */
   if(typeof STATE.settings.voiceName!=='string')STATE.settings.voiceName='';
+  /* The per-coach voice map. MEMBERSHIP on the key — it must name a real coach,
+     and an inherited key is truthy — and a non-empty string on the value; both
+     reach innerHTML through the sheet and importData() accepts arbitrary JSON.
+     ABSENT STAYS ABSENT: an athlete who has never used this gains no key, so no
+     empty object travels in their backup and no diff fires the repair note. */
+  if(STATE.settings.coachVoices!==undefined){
+    const _cv=STATE.settings.coachVoices;
+    if(!_cv||typeof _cv!=='object'||Array.isArray(_cv))delete STATE.settings.coachVoices;
+    else{
+      Object.keys(_cv).forEach(k=>{
+        if(!COACHES.some(c=>c.id===k)||typeof _cv[k]!=='string'||!_cv[k])delete _cv[k];
+      });
+      if(!Object.keys(_cv).length)delete STATE.settings.coachVoices;
+    }
+  }
   /* A name is free text the athlete types, so the writer always hands a string;
      importData() does not. Capped at the same 60 as a food name — an import can
      carry a hundred thousand characters and every backup would carry them too. */

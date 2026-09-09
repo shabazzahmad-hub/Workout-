@@ -19356,6 +19356,297 @@ Eight mutants, all caught, including the two over-eager twins: a busy
 microphone turning the switch off, and a hint that never promises the word.
 
 
+## The picker was all-or-nothing, so one coach could never differ (v483)
+
+Asked for after installing a male voice pack: *"how can I get the wrestling
+coach voice on my phone permanently?"*
+
+The Settings picker sets **`settings.voiceName`, which `coachVoiceFor()`
+returns for EVERY coach** — by design, and v302 added a warning saying so.
+Underneath it `assignCoachVoices()` splits the phone's English voices into a
+male bucket and a female bucket **by NAME** and hands them round in list order.
+So a new voice pack does reach the cast, and **which coach gets it is decided
+by array position** — nothing the athlete can steer.
+
+`settings.coachVoices` maps a coach id to a device voice name, and it is the
+**most specific choice the athlete can make, so it outranks the global pick** —
+the same call a hand-set protein target makes over the calculation. Measured
+through the real speak path, with a global pick of *Karen* also set:
+
+| | before | after |
+|---|---|---|
+| the wrestling coach | Daniel (Auto) | **Alex** — the chosen one |
+| every other coach | Daniel (Auto) | **Karen** — still the global pick |
+
+**Absent means Auto, and the map is deleted once it is empty.** A field created
+for every athlete is a field in every backup, and a diff on a settled state
+fires *"we repaired your data"* at somebody who has never used the feature.
+
+### `_deviceSpeak()` held a second copy of the override rule
+
+```js
+const manualV=!!STATE.settings.voiceName, …
+const v=(p&&!manualV)?coachVoiceFor(p):COACH_V;
+```
+
+That is `coachVoiceFor()`'s own **first branch, restated at the call site** —
+byte-identical while the global pick was the only override, and it would have
+**swallowed the per-coach pick outright** for any athlete who had also picked a
+global voice. `_hypeDeviceSpeak()` one function below already asked the helper
+and nothing else. *One of a pair guarded and its twin not*, on a read rather
+than on a repair, and it collapses to `coachVoiceFor(p)` because that helper
+returns `COACH_V` for a missing persona anyway.
+
+### A stale name survives the BOOT and reads as Auto at the READ site
+
+The two doors take **opposite** answers here, and the asymmetry is the point.
+
+- **The boot repair keeps a name this phone does not currently offer.** The
+  voice list is routinely not loaded when `normalizeState()` runs — headless
+  Chromium reports **zero voices**, and a real phone reports them
+  asynchronously through `voiceschanged` — so dropping it there would erase the
+  athlete's choice on a launch that merely started cold.
+- **`coachVoicePick()` reads a name the phone no longer has as NO choice**, not
+  as a broken one. Voice packs get uninstalled, and a stale name must never
+  mute a coach.
+
+So the repair enforces the SHAPE (an object, a coach id, a non-empty string)
+and the reader enforces AVAILABILITY. A check pins both, and the boot half is
+driven with no writer in front of it, because `importData()` writes `STATE`
+directly.
+
+### Fake the SOURCE, not the cache
+
+The first probe assigned `COACH_VOICES` directly — the pattern suite 15
+already uses for `voiceCheckHTML()`, which reads that array and nothing else —
+and the sheet came back with **0 rows on 38 coaches**. `openCoachVoices()`
+calls `primeVoice()` → `loadCoachVoices()`, which **re-reads
+`speechSynthesis.getVoices()` and overwrote the fake list with the headless
+browser's empty one**. Stubbing `getVoices()` instead makes the whole route
+real: 38 rows, six options each, the pick selected.
+
+**A fake that the route under test refreshes is not a fake.** Same family as
+*calling the helper is not driving the route*, one layer down — the route was
+driven and it rebuilt the state the probe had planted.
+
+## A premium voice that stops working is silent by design (v483)
+
+Asked in the same breath: *"the voices from Azure stopped working ... they want
+me to upgrade and pay."*
+
+`coachSpeak()` tries `neuralSpeak()` and falls back to `_deviceSpeak()` on any
+failure. The catch was a `console.warn` and nothing else — so the coaches
+changed voice mid-session with **the switch still reading On and nothing on
+screen**. That is a promise in UI text with no code behind it, on the one
+feature the athlete pays for.
+
+`neuralDownHTML()` names it after three failures, reads the error to tell a
+**quota** wall from a connection or key problem, and offers one tap to the
+built-in voices.
+
+**It is NOT automatic**, and that is v422's call one service over: the switch is
+the athlete's choice, and a monthly allowance that resets is not a reason to
+turn their setting off for them. **The strike count is what keeps it from being
+noise** — a working key says nothing, and one or two failures say nothing.
+
+**Turning it off needs no fallback code at all**, which is what makes the fix
+cheap: `neuralReady()` false → `neuralAvailable()` false → `neuralSpeak()`
+returns false → `coachSpeak()` uses the device voice. That path has existed
+since the feature shipped and is what every offline session already takes.
+
+## A shuffle bag for the coaches, and random for the words (v484)
+
+Reported from the phone: *"the voice is repeating the same phrases for every
+exercise over and over again ... so that I don't get accustomed to exactly what
+she's going to say."*
+
+**The app already had the right mechanism and had applied it to one of the two
+things that repeat.** `rollAutoPersona()` is a shuffle bag — it deals all 38
+coaches once before any repeat, and its own comment says so. `motivateLine()`
+drew a phrase at **random**, with a "not the same as last time" guard, which is
+not the same thing at all.
+
+Measured on the real app, one session of 39 `during` lines from the Drill
+Sergeant's pool of 14, five runs:
+
+| | most-heard line | lines never heard |
+|---|---|---|
+| **random** (v483) | **5, 6, 6, 7, 8** | 0, 0, 0, 1, 1 |
+| bag (v484) | **3** | **0** |
+
+The fair share is 2.8. So one line landed **up to three times its share** while
+another never played — which is exactly what "I know what she is going to say"
+sounds like, and it is arithmetic rather than an impression.
+
+**ONE BAG, asked by both consumers.** Hoisting it removes the second copy of an
+algorithm this file already warns is a second place to drift — and the drift had
+already happened in the other direction: the rotation had the bag and the phrase
+picker had none.
+
+**The key carries the PERSONA as well as the kind**, and that is the half a
+naive fix gets wrong. `_lastHype` was keyed by kind alone, so with Auto rotating
+coaches per effort the "last line number" from coach A was compared against
+coach B's pool — a number with no meaning there. The check that catches it draws
+a full pool for one coach, switches, and requires the second coach to get a full
+pass of its own.
+
+**`last` is per key**, so the no-back-to-back guard survives the seam between one
+bag and the next exactly as the rotation's own guard did.
+
+**The floors are the rotation this was hoisted out of**: all 38 dealt, all 38
+again in the next bag, and no repeat across the seam. The mutant that puts
+`rollAutoPersona()` back on `Math.random()` is caught there and nowhere else.
+
+**And the helper's own contract is pinned directly**, because it is consulted
+from two narrow branches (v338's shape): a pool of one deals that one every time
+rather than running dry, and an empty pool asks for nothing.
+
+### The check failed on correct code, on this file's oldest test rule
+
+`FLOOR: the coach rotation still deals all 38` read **31**. Earlier blocks in
+suite 15 have already drawn coaches, so the bag was part-way through and 38
+consecutive draws spanned two passes. **Each block builds the state it asserts
+on** — and here the state is a bag, which no previous block had ever left
+behind. It deletes the bag first, with a guard that the reset really happened.
+
+## A voice pack you cannot find in a list of names (v484)
+
+Asked in the same breath: *"I did download a package with a male voice but I do
+not know how you seek that voice."*
+
+`assignCoachVoices()` sorts the phone's voices into a female set and a male set
+by reading the **NAME** (`_FEMALE_RE`), and anything it does not recognise falls
+into the male set. So the app has that answer for every voice on the phone — and
+both pickers printed the bare name (`Daniel · en-GB`), which is no help to
+somebody scanning eight names for the pack they just installed.
+
+Both now carry the label, asking `_FEMALE_RE` — **the same predicate the
+assignment asks**, rather than a second copy that could disagree with which
+bucket a voice is really in.
+
+**IT IS A GUESS FROM A NAME AND THE COPY SAYS SO.** A phone can name a female
+voice something this list has never heard of, and it lands in the male set by
+default. The app **acts on that guess either way**, so showing it is strictly
+more honest than hiding it — and the check pins that an unknown name reads as
+male, because that is what the assignment does with it. A label presented as
+fact would be the "derived number wearing the label of a control that does not
+exist" defect, one screen over.
+
+**The other half of "cannot see it" is a stale list**, so the copy points at the
+existing `🔎 Voice check` button: the phone only hands over its voices when
+asked, and a pack installed since the page opened is not on the list yet. That
+is a pointer, so it is asserted **both ways** — the copy names the control and
+the control is on the same screen.
+
+**Fixing one picker is not fixing the class**: the per-coach sheet (v483) got the
+same label in the same change, and the mutant that reverts only that one is
+caught by its own check.
+
+### Two escapes, and both were a neighbour supplying the answer
+
+- **The wrong KEY was invisible because the pools were different sizes.**
+  `_bagNext()` rebuilds whenever the item count changes, so a second coach with
+  a different pool gets a fresh bag whatever the key says — and the check drew
+  its second pool from a coach with 10 lines against the first's 14. The two
+  coaches must share a pool size (`relentless` is the one other 14) so a shared
+  bag is **reused rather than rebuilt**, and the guard pins that.
+- **One seam cannot test a seam guard.** A missing no-back-to-back guard
+  collides only 1 time in n, so `a[37] !== b[0]` passes 37 times out of 38 on
+  the defect. Exercised directly instead, at **n = 2**, where every adjacent
+  pair that matches IS a seam repeat: the guard makes that exactly 0 over 20
+  boundaries and its absence makes it about half. Same technique as the
+  hardness-band and anchor-unit guards — and the same lesson as v380's clamp,
+  where the value beside the guard was answering for it.
+
+Ten mutants, all caught by name.
+
+## The card prescribed three sets and the button delivered one (v485)
+
+Reported for the **third** time: *"after one set is done the timer starts
+immediately and then when the time is done to zero the app just stops, and you
+have to press hold timer again — it does not continue to the second set."*
+
+**v350 and v375 both went looking in the GUIDED PLAYER**, which chains
+correctly — v350 could not reproduce a stall there and removed a dependency
+instead, and v375 added the heartbeat. The words in the report name a different
+surface: *"press hold timer again"* is the **▶ Hold timer** button on the
+session card in Today, and its twin **▶ Guided reps**.
+
+Both runners have taken a continuation since v451 — `onAfterRest`, the 8th
+argument of `runTimer()` and the 6th of `runRepCadence()`. **`quickPlay()`
+passes it. Neither Today caller did**, so the rest ended, the continuation was
+`undefined`, and the sheet sat there:
+
+| | passes a continuation |
+|---|---|
+| `quickPlay()` — Quick workouts (v451) | **yes** |
+| `openExerciseTimer()` — Today ▸ ▶ Hold timer | **no** |
+| `startGuidedReps()` — Today ▸ ▶ Guided reps | **no** |
+
+**v451 fixed exactly this defect one surface over and never came back to the
+card it sits under.** Fixing one instance is not fixing the class, and here the
+class had three members and one was already correct — which is what made it
+invisible: the mechanism was built, tested and shipped.
+
+**ONE CHAIN FOR BOTH UNITS.** `exSetChain()` is asked by both buttons, so a
+timed movement and a rep movement cannot drift apart about what a set is —
+which is how they came to differ. Rest runs BETWEEN sets and never after the
+last, each completed set marks ONE set, and the label says **which** set it is,
+because "3 sets" tells an athlete mid-session nothing about where they are.
+
+**IT STARTS WHERE THE ATHLETE ACTUALLY IS.** A movement with two sets already
+marked opens on set 3, not on set 1 — otherwise the chain re-runs work they have
+done and the label lies about which set it is.
+
+**The floors are the two things that must NOT chain**: the ⏱ Rest button on a
+rep movement is a standalone rest between sets the athlete counts themselves, so
+it marks nothing and names no set; and a one-set movement gets no trailing rest.
+The over-eager mutants — the Rest button becoming a set, and a rest after the
+last set — each fail exactly there.
+
+### Driven through the button, because the defect WAS the caller
+
+Every assertion clicks `[data-act="timer"]` and `[data-act="reps"]` on the real
+card. The whole defect was a caller that did not pass its 8th argument, and a
+check that calls `exSetChain()` itself cannot see that — *calling the helper is
+not driving the route*, for the twelfth time in this file.
+
+**`buildSession()` is wrapped rather than a built session mutated**, because
+`exSetChain()` rebuilds on every set — a shortened target written into one
+session object is gone by set 2.
+
+### The check read too early, and reported a roll-over that had happened
+
+`label2` came back `set 1 of 3` on correct code. A hold opens with a **5-second
+GET READY**, so set 2 lands about 8 seconds in and the fixed 6.5-second read
+landed inside set 1's countdown. **Wait for the CONDITION, never for a
+duration** — it polls for the label now, which is also faster when it works.
+
+The rep path is what proved the app was right: it chained at `set 1 of 3` →
+`set 2 of 3` in the same run that the timed one appeared to fail.
+
+### The escape: nothing ever drove a chain to its END
+
+Seven of eight mutants were caught. The one that got through hangs a rest on the
+**last** set (`m.rest` where the fix has `last?0:m.rest`) — and every case above
+starts at set 1 and reads the label once set 2 arrives, so the tail of the chain
+was never watched. A check that exercises the middle of a sequence says nothing
+about its end.
+
+It opens on the last set by marking the ones before it, then **watches every
+label to the close** and requires none of them to be a rest. Its mirror sits
+beside it as a guard — a rest really does run BETWEEN sets — because
+"no rest after the last set" is otherwise satisfied by a chain that never rests
+at all.
+
+And one seed was a **BAD ANCHOR (2)**: `const label=ex.name+(sets>1?…)` is
+byte-identical in `exSetChain()` and in `quickPlay()`, which is what sharing a
+rule looks like. The driver's `assert count == 1` turned a half-applied edit
+into a clean no-op — the sixth time that rule has paid — and the fix is to
+anchor on the surrounding lines rather than to loosen the assert.
+
+Ten mutants, all caught by name.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -13528,6 +13528,141 @@ export default async function () {
     await page.waitForTimeout(150);
   }
 
+  /* ---- EVERY SET, NOT ONE — the session card's own timer buttons ---------
+     Reported three times: "after one set is done the timer starts immediately
+     and then when the time is done to zero the app just stops, and you have to
+     press hold timer again — it does not continue to the second set."
+     v350 and v375 both investigated the GUIDED PLAYER, which chains correctly.
+     The surface in the report is the ▶ Hold timer / ▶ Guided reps button on the
+     card in Today. Both runners have taken a continuation since v451 and
+     NEITHER Today caller passed one, so the rest ended and nothing followed.
+
+     DRIVEN THROUGH THE BUTTON, never by calling the helper: the whole defect
+     was a caller that did not pass its 8th argument, and a check that calls the
+     chain itself cannot see that. buildSession() is wrapped rather than a built
+     session mutated, because exSetChain() rebuilds on every set. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const real = buildSession;
+      const shorten = () => { buildSession = (p) => { const ss = real(p);
+        [...ss.main, ss.finisher].forEach(m => { if (m) { m.target = 1; m.rest = 1; } }); return ss; }; };
+      const restore = () => { buildSession = real; };
+
+      const sess = real(STATE.progressPtr);
+      const items = [...sess.main, sess.finisher].filter(Boolean);
+      const timed = items.find(m => m.unit === 'time' && m.sets > 1);
+      const reps = items.find(m => m.unit !== 'time' && m.sets > 1);
+      o.timedSets = timed ? timed.sets : 0;
+      o.repSets = reps ? reps.sets : 0;
+
+      /* WAIT FOR THE CONDITION, NEVER FOR A DURATION. A hold opens with a
+         5-second GET READY, so set 2 lands about 8s in and a fixed 6.5s read
+         reported a roll-over that had not happened yet — the check, not the
+         app. Polling is also fast when it works. */
+      const watch = async (re, ms) => {
+        const seen = {}; const t0 = Date.now(); let hit = '';
+        while (Date.now() - t0 < ms) {
+          const tt = (document.querySelector('#sheet .tt') || {}).textContent || '';
+          if (tt) seen[tt] = 1;
+          if (re && re.test(tt)) { hit = tt; break; }
+          await new Promise(r2 => setTimeout(r2, 150));
+        }
+        return { hit: hit || (document.querySelector('#sheet .tt') || {}).textContent || '', seen: Object.keys(seen) };
+      };
+      const waitFor = async (re, ms) => (await watch(re, ms)).hit;
+      const log = ensureLog(); log.ex = {}; save();
+      shorten(); go('today');
+      const card = document.querySelector('#v-today .ex[data-ex="' + timed.exId + '"]');
+      o.foundCard = !!card;
+      const btn = card && card.querySelector('[data-act="timer"]');
+      o.foundBtn = !!btn;
+      btn.click();                                   // the athlete's own tap
+      o.label1 = (document.querySelector('#sheet .tt') || {}).textContent || '';
+      const w1 = await watch(/set 2 of /, 25000);
+      o.label2 = w1.hit;
+      /* The mirror of the floor below: a rest really does run BETWEEN sets, so
+         "no rest after the last set" cannot pass on a chain that never rests. */
+      o.restedBetween = w1.seen.some(x => / — rest/.test(x));
+      o.setsAfter2 = ((ensureLog().ex[timed.exId] || {}).sets || []).filter(Boolean).length;
+      o.sheetStillOpen = document.querySelector('#scrim').classList.contains('open');
+      stopTimer(); closeSheet();
+      await new Promise(r2 => setTimeout(r2, 400));
+
+      /* THE REP CADENCE IS THE OTHER RUNNER, and it had the same missing
+         argument. A check that drives only the timed one leaves half unfixed. */
+      const log2 = ensureLog(); log2.ex = {}; save(); go('today');
+      const card2 = document.querySelector('#v-today .ex[data-ex="' + reps.exId + '"]');
+      const btn2 = card2 && card2.querySelector('[data-act="reps"]');
+      o.foundRepBtn = !!btn2;
+      btn2.click();
+      o.repLabel1 = (document.querySelector('#sheet .tt') || {}).textContent || '';
+      o.repLabel2 = await waitFor(/set 2 of /, 30000);
+      stopTimer(); closeSheet();
+      await new Promise(r2 => setTimeout(r2, 400));
+
+      /* START WHERE THE ATHLETE IS: two sets already marked opens on set 3. */
+      const log3 = ensureLog();
+      log3.ex[timed.exId] = { sets: [true, true], done: false }; save(); go('today');
+      document.querySelector('#v-today .ex[data-ex="' + timed.exId + '"] [data-act="timer"]').click();
+      o.resumeLabel = (document.querySelector('#sheet .tt') || {}).textContent || '';
+      stopTimer(); closeSheet();
+      await new Promise(r2 => setTimeout(r2, 400));
+
+      /* FLOOR: NO REST AFTER THE LAST SET. Nothing drove a chain to its end, so
+         a rest hung on the final set was invisible — the mutant that passes
+         m.rest unconditionally escaped every check above. Open on the last set
+         by marking the ones before it, then watch every label to the close. */
+      const log5 = ensureLog();
+      log5.ex[timed.exId] = { sets: new Array(Math.max(0, timed.sets - 1)).fill(true), done: false };
+      save(); go('today');
+      document.querySelector('#v-today .ex[data-ex="' + timed.exId + '"] [data-act="timer"]').click();
+      o.lastLabel = (document.querySelector('#sheet .tt') || {}).textContent || '';
+      const w3 = await watch(null, 14000);
+      o.afterLast = w3.seen;
+      o.restAfterLast = w3.seen.some(x => / — rest/.test(x));
+      stopTimer(); closeSheet();
+      await new Promise(r2 => setTimeout(r2, 400));
+
+      /* FLOOR: the ⏱ Rest button on a rep movement is a standalone rest between
+         sets the athlete counts themselves — it must chain nothing. */
+      const log4 = ensureLog(); log4.ex = {}; save(); go('today');
+      document.querySelector('#v-today .ex[data-ex="' + reps.exId + '"] [data-act="rest"]').click();
+      o.restLabel = (document.querySelector('#sheet .tt') || {}).textContent || '';
+      await new Promise(r2 => setTimeout(r2, 4000));
+      o.restMarked = ((ensureLog().ex[reps.exId] || {}).sets || []).filter(Boolean).length;
+      stopTimer(); closeSheet();
+
+      restore(); go('today');
+      return o;
+    });
+
+    t.ok('GUARD: the session really prescribes more than one set of a timed movement',
+      r.timedSets > 1, JSON.stringify(r));
+    t.ok('GUARD: and of a rep movement', r.repSets > 1, JSON.stringify(r));
+    t.ok('GUARD: the card and its ▶ Hold timer button are on the glass',
+      r.foundCard && r.foundBtn, JSON.stringify(r));
+    t.ok('the hold names which set it is', /set 1 of /.test(r.label1), JSON.stringify(r));
+    t.ok('and the rest rolls into the SECOND set on its own',
+      /set 2 of /.test(r.label2), JSON.stringify(r));
+    t.ok('with the first set marked on the card', r.setsAfter2 >= 1, JSON.stringify(r));
+    t.ok('and the sheet still open rather than shut', r.sheetStillOpen, JSON.stringify(r));
+    t.ok('GUARD: the ▶ Guided reps button is on the glass', r.foundRepBtn, JSON.stringify(r));
+    t.ok('guided reps names its set too', /set 1 of /.test(r.repLabel1), JSON.stringify(r));
+    t.ok('and rolls into the second set on its own',
+      /set 2 of /.test(r.repLabel2), JSON.stringify(r));
+    t.ok('two sets already marked opens on set 3',
+      /set 3 of /.test(r.resumeLabel), JSON.stringify(r));
+    t.ok('GUARD: a rest really runs between sets', r.restedBetween, JSON.stringify(r));
+    t.ok('GUARD: the last-set case really opened on the last set',
+      new RegExp('set ' + r.timedSets + ' of ' + r.timedSets).test(r.lastLabel), JSON.stringify(r));
+    t.ok('FLOOR: and no rest follows the LAST set', !r.restAfterLast,
+      JSON.stringify({ lastLabel: r.lastLabel, afterLast: r.afterLast }));
+    t.ok('FLOOR: the ⏱ Rest button is a plain rest, not a set',
+      / — rest/.test(r.restLabel) && !/set \d+ of/.test(r.restLabel), JSON.stringify(r));
+    t.eq('FLOOR: and it marks nothing', r.restMarked, 0);
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
