@@ -15373,15 +15373,24 @@ function noteOpen(){
    not drift, and it must not break the run either — nobody is expected to open
    the app on a day they picked off. trainedDaysSet() is hoisted out of the
    loop; rebuilding it per iteration is the acwr() shape. */
+/* A PAIN STOP IS TRANSPARENT HERE TOO, exactly as a logged rest day is. This
+   banner says "N training days here, and none of them trained" — and the
+   athlete DID open the app on a pain-stop day, because starting the session is
+   how the stop happened, so `_opens` carries it and the day was counted. v347
+   taught both banners to honour the rest days and this round taught gapSince()
+   about the pain stop; fixing the one banner and leaving its twin is the shape
+   this file records more than any other. Neither counts, and neither breaks
+   the run. */
 function driftingDays(){
   try{
     const o=STATE._opens||{};const trained=trainedDaysSet();
     const rest=STATE.restDays||{};const sched=scheduledDays();
+    const hurtDays=painDaysSet();
     let n=0;
     for(let i=0;i<7;i++){
       const d=new Date();d.setDate(d.getDate()-i);const k=localISO(d);
       if(trained.has(k))break;
-      if(sched.indexOf(d.getDay())<0||rest[k])continue;
+      if(sched.indexOf(d.getDay())<0||rest[k]||hurtDays.has(k))continue;
       if(!o[k])break;
       n++;
     }

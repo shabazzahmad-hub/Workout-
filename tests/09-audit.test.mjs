@@ -1032,6 +1032,21 @@ export default async function run() {
     STATE.quickLog[todayISO()] = 1;
     o.trainingClearsDriftOnARestDay = driftingDays() === 0 && driftBanner() === '';
 
+    /* A PAIN STOP IS TRANSPARENT TO DRIFT TOO. The athlete opened the app on
+       that day — starting the session is how the stop happened — so `_opens`
+       carries it and this banner counted it as a day "none of them trained".
+       Same treatment as a logged rest day: it neither counts nor breaks. */
+    reset(); STATE.runs = [];
+    STATE.profile.days = ALL.slice();
+    for (let i = 0; i < 7; i++) STATE._opens[iso(i)] = 1;
+    o.driftAllSevenWithoutIt = driftingDays() === 7;        // guard: the day really was counted
+    STATE.logs = { 5: { date: iso(1), ex: {}, done: false, stoppedForPain: iso(1) } };
+    o.driftSkipsThePainStop = driftingDays() === 6;
+    const h4 = driftBanner();
+    o.driftStillFiresOverAPainStop = /5-minute/.test(h4);
+    o.driftCountExcludesThePainStop = /6 training days here/.test(h4);
+    STATE.logs = {};
+
     /* One reader for the schedule. An absent list means "not chosen", which is
        every day; isTrainingDay()'s own `|| []` read it as NO training days and
        silently killed the evening reminder for ever. */
@@ -1058,6 +1073,10 @@ export default async function run() {
   t.ok('floor: with nothing rested the banner does not mention rest days', rday.noRestNoteWhenNoneWereRested, rday);
   t.ok('trained today, nothing to welcome back from', rday.quietWhenTrainedToday, rday);
   t.ok('drift skips a rest day and keeps counting past it', rday.driftSkipsRestAndKeepsGoing, rday);
+  t.ok('GUARD: without a pain stop every one of the seven days is counted', rday.driftAllSevenWithoutIt, rday);
+  t.ok('drift skips a pain stop and keeps counting past it (v493)', rday.driftSkipsThePainStop, rday);
+  t.ok('and the drift banner still fires over one', rday.driftStillFiresOverAPainStop, rday);
+  t.ok('naming a count that leaves the pain stop out', rday.driftCountExcludesThePainStop, rday);
   t.ok('floor: drift still offers the 5-minute version', rday.driftStillFires, rday);
   t.ok('and the drift banner names the count it measured', rday.driftNamesTheCount, rday);
   t.ok('training today clears drift even on a rest day', rday.trainingClearsDriftOnARestDay, rday);
