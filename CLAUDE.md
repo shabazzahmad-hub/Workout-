@@ -19963,6 +19963,32 @@ attributed every speaker to `_ve()` and `intakeHTML()`, which is the v388
 trap verbatim. The six pairs worth reading were the phase hand-offs, and two
 of the six were real.
 
+## A one-sided movement with no flag, found by asking for four sets (v489)
+
+*"Make it all 4 sets for exercises that are focusing on one side of the
+body."* Measured first: **the rule already exists.** `evenSets()` has given
+every `side:'perSet'` movement an even count since v351 (up, 3 → 4; down to 2
+only under safe mode, a deload, a slump or a comeback), v481 carried it into
+the weights circuit, the custom builder and Quick, and v481's own sweep found
+**zero odd per-side sets across 378 athlete configurations.** The athlete's
+phone is on v396, which predates all of it — so the request is the report of
+a defect that shipped fixed 85 versions ago, and the answer is the update.
+
+**What the sweep could not see was a movement carrying no flag at all.**
+Reading every entry whose steps use one-sided wording — 44 of them — against
+its flag found one: the **Medicine Ball Woodchopper**, whose own steps say
+*"finish all reps on one side"* (one side per SET) and which carried no
+`side` at all. The other 43 alternate inside the set (*"count each side as a
+rep"*), which v351 read and deliberately left. It is `perSet` now, and its
+step says *"switch sides for the next set"* so the validator's both-ways
+rule holds.
+
+**The six `side:'switch'` movements stay at three sets on purpose.** A halo,
+a suitcase carry or a windmill switches at the halfway call inside every set,
+so each set already works both sides equally; a fourth set there would add
+volume without a balance reason, which is the v310 rule that a request never
+buys volume by accident.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

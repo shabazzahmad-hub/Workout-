@@ -176,6 +176,11 @@ export default async function run() {
     o.dbpallofFlags = Object.keys(JOINT_RISK).filter(j => JOINT_RISK[j].includes('dbpallof'));
     // a loaded, ballistic standing rotation is flagged the same way its seated cousins (mbtwist, russiantwist) already are
     o.mbchopLowback = JOINT_RISK.lowback.includes('mbchop');
+    /* v489: its own steps say "finish all reps on one side" — one side per SET —
+       and it carried no side flag, so it was the one one-sided movement the
+       even-set rule (v351/v481) and the LEFT/RIGHT labels could not see. */
+    o.mbchopSide = EX.mbchop.side;
+    o.mbchopSaysSwitch = /switch sides/i.test((EX.mbchop.steps || []).join(' '));
     o.mbchopLandsSafe = (() => {
       const real = STATE.profile.limitations; STATE.profile.limitations = ['lowback'];
       const out = safeSwap('mbchop'); STATE.profile.limitations = real;
@@ -201,6 +206,8 @@ export default async function run() {
   t.eq('the anti-rotation press is not flagged for any joint — that is its whole purpose', core.dbpallofFlags, []);
   t.ok('the loaded standing woodchopper is flagged for a low back, like its seated cousins', core.mbchopLowback, core);
   t.ok('and a flagged low back is actually routed somewhere safe', core.mbchopLandsSafe, core);
+  t.eq('the woodchopper is a per-side movement, so its set count is even and each set names its side (v489)', core.mbchopSide, 'perSet');
+  t.ok('and its steps say to switch sides between sets', core.mbchopSaysSwitch, core);
   t.ok('the full dragon flag inherits the shoulder flag its bent-knee rung carries', core.dragonflagfullShoulder, core);
   t.ok('and the low-back flag too', core.dragonflagfullLowback, core);
   t.eq('and lands on the same safe substitutes', core.dragonflagfullSwaps, { safe: 'hollow', lowback: 'plank' });
