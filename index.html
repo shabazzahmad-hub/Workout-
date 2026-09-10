@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='491';
+const APP_VERSION='492';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4932,7 +4932,7 @@ function todayWorkoutHTML(){
     </div>
     <div class="pbar${doneCount>=totalCount?' green':''}"><i style="width:${setsPct}%"></i></div>
   </div>
-  ${restedToday?`<div class="note info" style="margin:2px 0 10px">🛌 <b>Rest day logged for today.</b> Recovery is part of the plan — your workout is still here if you change your mind. <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openRestSheet()">Recovery options</button></div>`:''}
+  ${restedToday?`<div class="note info" style="margin:2px 0 10px">🛌 <b>Rest day logged for today.</b> Recovery is part of the plan${todayClosed()?'':' \u2014 your workout is still here if you change your mind'}. <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="openRestSheet()">Recovery options</button></div>`:''}
   <button class="btn primary" style="margin:2px 0 6px;font-size:17px;padding:18px;font-weight:900" onclick="startMyDay()">☀️ Start my day — Sarge runs the whole flow</button>
   <div class="tiny muted" style="text-align:center;margin:-2px 0 10px">Brief → warm-up → workout → cool-down, guided end-to-end. Or pick a tab below.</div>
   ${readinessCardHTML()}`;
@@ -6864,7 +6864,7 @@ function clearForceDate(){
 }
 function altSessionHTML(){
   const rested=restedTodayFlag();
-  const done=todayDone()||todayStoppedForPain();
+  const done=todayClosed();
   return `<div class="section-label">${done?'Something else today?':'Not today\u2019s session?'}</div>
   <div class="tilegrid" style="margin-bottom:6px">
     ${hasWeights()?`<button class="tile" onclick="startWeights()"><span class="ti">\ud83c\udfcb\ufe0f</span>Weights</button>`:''}
@@ -11695,7 +11695,9 @@ function briefSegments(){
      second session gets a brief that correctly describes it as today's. */
   const _tp=todayPtr();
   const sess=buildSession(_tp);
-  const _bDone=todayDone(), _bPain=todayStoppedForPain(), _bOver=_bDone||_bPain;
+  /* _bDone and _bPain say DIFFERENT things below, so both are read; only the
+     disjunction moves to the one predicate. */
+  const _bDone=todayDone(), _bPain=todayStoppedForPain(), _bOver=todayClosed();
   const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
   const sessNum=((sess.pos&&sess.pos.dayInWeek)||0)+1;
   const vol=sessionVolume(sess);
