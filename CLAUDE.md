@@ -20319,8 +20319,10 @@ lacked.
 
 Found by auditing v490 four rounds after it shipped. v490 made the pain-stop
 state **reachable** — before it, `todayPtr()`'s pain arm tested a field
-`hurtStop()` never writes, so no surface had ever rendered that state. Three
-surfaces had therefore never seen it, and all three are wrong on it.
+`hurtStop()` never writes, so no surface had ever rendered that state. **Four**
+surfaces had therefore never seen it, and all four are wrong on it — and the
+fourth was found only after the first three had been written up as "all three",
+which is the claim that made it findable.
 
 ### A pain stop counted as a missed training day
 
@@ -20364,6 +20366,24 @@ a training day in that block**: `seedAthlete` trains five days a week, so on
 two weekdays in seven the day under test is `off` whatever the fix does and the
 whole block passes on nothing. *The calendar is part of the state a block has
 to build* — v347's own lesson, one round later.
+
+### And its twin banner counted the same day as drift
+
+`driftBanner()` says **"N training days here, and none of them trained."**
+`driftingDays()` skips a scheduled day only when it is a logged rest day — and
+the athlete **did open the app** on a pain-stop day, because starting the
+session is how the stop happened, so `_opens` carries it and the day was
+counted. Measured over a seven-day window with the app opened every day: **7
+before, 6 after.**
+
+v347 taught *both* banners to honour the rest days in one round. This round
+taught `gapSince()` about the pain stop and left its twin — **fixing one
+instance is not fixing the class, landing inside the round that quotes it.**
+
+The treatment matches the rest day exactly: it neither counts nor breaks the
+run. And the guard is what makes the check mean anything — without pinning that
+all seven days really are counted when there is no pain stop, "six" is a number
+with nothing behind it.
 
 ### What was measured and is NOT in the class
 
