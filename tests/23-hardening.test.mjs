@@ -14068,11 +14068,14 @@ export default async function () {
     const r = await page.evaluate(async () => {
       const out = {};
       const wait = ms => new Promise(r => setTimeout(r, ms));
-      const real = { speak: window.coachSpeak, hype: window.hypeSpeak, say: window.plSay, beep: window.beep, toast: window.toast };
+      const real = { speak: window.coachSpeak, hype: window.hypeSpeak, say: window.plSay, plHype: window.plHype, beep: window.beep, toast: window.toast };
       const spoken = [], toasts = [];
       window.coachSpeak = t => { spoken.push(String(t)); };
       window.hypeSpeak = t => { spoken.push(String(t)); return true; };
-      window.plSay = () => {}; window.beep = () => {};
+      /* the MID-effort coaching (plSay / plHype, both deferred a tick) is not the
+         hand-off, and on CI four deferred hype lines landed inside the window
+         that was meant to hold the one completion line */
+      window.plSay = () => {}; window.plHype = () => {}; window.beep = () => {};
       window.toast = (t) => { toasts.push(String(t)); };
       try {
         let rp = null, ptr = -1;
@@ -14104,8 +14107,12 @@ export default async function () {
         if (per) {
           save(); clear(per.exId); spoken.length = 0;
           exSetChain(per.exId); await wait(20);
-          for (let i = 0; i < 400 && timer; i++) timer.tick();
+          /* past the 5-second get-ready first — its "Go!" is not the hand-off —
+             and the mark is taken BEFORE the hold runs out, because the
+             completion line is spoken synchronously inside the last tick */
+          for (let i = 0; i < 6 && timer; i++) timer.tick();
           const b2 = spoken.length;
+          for (let i = 0; i < 400 && timer; i++) timer.tick();
           await wait(950);
           out.holdHandoff = spoken.slice(b2);
           out.holdRestLabel = ($('#sheet .tt') || {}).textContent || '';
@@ -14113,7 +14120,7 @@ export default async function () {
         }
       } catch (e) { out.err = String(e); }
       try { stopTimer(); closeSheet(); } catch (e) {}
-      window.coachSpeak = real.speak; window.hypeSpeak = real.hype; window.plSay = real.say; window.beep = real.beep; window.toast = real.toast;
+      window.coachSpeak = real.speak; window.hypeSpeak = real.hype; window.plSay = real.say; window.plHype = real.plHype; window.beep = real.beep; window.toast = real.toast;
       return out;
     });
     t.ok('GUARD: the rep chain reached its rest', !r.err && !r.notFound && /— rest$/.test(r.restLabel), JSON.stringify(r));
