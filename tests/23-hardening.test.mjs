@@ -14477,6 +14477,92 @@ export default async function () {
     t.ok('and never commits that program session as done', r.doneAfter2 === false, JSON.stringify(r));
   }
 
+  /* ============ THE CARD PROMISED A CONVERSATION IT COULD NOT HAVE =========
+     "tell me where it hurt and I will work around it" — on a card with no
+     control on it at all, while noteHurt() had just recorded the exercise and
+     its region. adoptPainLimit() existed and was wired only to
+     painPromptHTML(), which fires on a PATTERN, so the FIRST stop offered
+     nothing. The card now offers the same one tap, reading the same region map
+     painPattern() reads so the two cannot disagree about what the joint is. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const settle = () => new Promise(z => setTimeout(z, 700));
+      const card = () => [...document.querySelectorAll('#v-today .note.warn')]
+        .find(n => /stopped for pain/i.test(n.innerText)) || null;
+      const paint = () => { setTodayTab('workout'); renderToday(); };
+
+      /* Build the state this asserts on: a pointer whose first movement has a
+         region the map knows, so the driven stop can produce a button at all. */
+      let p = 3;
+      for (let i = 3; i < 40; i++) {
+        const m0 = buildSession(i).main[0];
+        if (m0 && EX[m0.exId] && PAIN_JOINT[EX[m0.exId].region]) { p = i; break; }
+      }
+      R.gPtr = p;
+      R.gRegionMaps = !!PAIN_JOINT[EX[buildSession(p).main[0].exId].region];
+
+      STATE.logs = {}; STATE.progressPtr = p; delete STATE._trainAgain;
+      STATE.pain = []; STATE.profile.limitations = []; save();
+      openPlayer();
+      await new Promise(z => setTimeout(z, 250));
+      hurtStop();
+      await settle();
+
+      R.recordedRegion = ((STATE.pain || [])[0] || {}).region || null;
+      R.expectJoint = PAIN_JOINT[R.recordedRegion] || null;
+      paint();
+      const c1 = card();
+      R.cardText = c1 ? c1.innerText : '';
+      R.noDeadPromise = !/tell me where it hurt/i.test(R.cardText);
+      const btn = c1 ? [...c1.querySelectorAll('button')]
+        .find(b => /work around my/i.test(b.innerText)) : null;
+      R.hasOffer = !!btn;
+      R.offerNamesJoint = !!(btn && R.expectJoint && btn.innerText.toLowerCase().includes(R.expectJoint));
+
+      /* DRIVE THE BUTTON, not the helper */
+      if (btn) btn.click();
+      await new Promise(z => setTimeout(z, 300));
+      R.flagged = (STATE.profile.limitations || []).includes(R.expectJoint);
+
+      /* FLOOR: a joint already being worked around is not offered again */
+      paint();
+      R.afterAdoptOffer = !!(card() && [...card().querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+
+      /* FLOOR: the pattern prompt above owns it once it fires — one gap, one note */
+      STATE.profile.limitations = [];
+      STATE.pain = [
+        { exId: 'squat', region: R.recordedRegion, date: todayISO(), ptr: p },
+        { exId: 'squat', region: R.recordedRegion, date: todayISO(), ptr: p },
+      ];
+      save(); paint();
+      R.patternFires = !!painPattern();
+      R.cardDefersToPattern = !!(card() && ![...card().querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+
+      /* FLOOR: a region the map does not know promises nothing and offers nothing */
+      STATE.pain = [{ exId: 'burpee', region: 'cardio', date: todayISO(), ptr: p }];
+      STATE.profile.limitations = []; save(); paint();
+      const c4 = card();
+      R.unmappedNoOffer = !!(c4 && ![...c4.querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+      R.unmappedNoPromise = !!(c4 && !/tell me where it hurt/i.test(c4.innerText));
+      return R;
+    });
+    t.ok('GUARD: the driven stop ran on a movement whose region maps to a joint', r.gRegionMaps === true && !!r.expectJoint, JSON.stringify(r));
+    t.ok('the pain card no longer asks the athlete to tell it what it already knows', r.noDeadPromise === true, JSON.stringify({ text: (r.cardText || '').slice(0, 240) }));
+    t.ok('and offers the one tap that acts on it (v490)', r.hasOffer === true, JSON.stringify({ text: (r.cardText || '').slice(0, 240) }));
+    t.ok('naming the joint the app recorded', r.offerNamesJoint === true, JSON.stringify({ joint: r.expectJoint, text: (r.cardText || '').slice(0, 240) }));
+    t.ok('and tapping it really flags that joint', r.flagged === true, JSON.stringify(r));
+    t.ok('FLOOR: a joint already being worked around is not offered again', r.afterAdoptOffer === false, JSON.stringify(r));
+    t.ok('GUARD: two reports on one region really do make a pattern', r.patternFires === true, JSON.stringify(r));
+    t.ok('FLOOR: and the card defers to the pattern prompt rather than repeating it', r.cardDefersToPattern === true, JSON.stringify(r));
+    t.ok('FLOOR: a region the map does not know is offered nothing', r.unmappedNoOffer === true, JSON.stringify(r));
+    t.ok('FLOOR: and is promised nothing either', r.unmappedNoPromise === true, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

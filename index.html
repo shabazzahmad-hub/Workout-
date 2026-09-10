@@ -4772,7 +4772,8 @@ function sessionDoneCardHTML(sess,log,doneSets){
        produced this report. */
     return `<div class="note warn"><b>🩹 Session ${sess.ptr!=null?sess.ptr+1:''} — you stopped for pain.</b>
       Right call. That is what the button is for, and it is <b>not</b> logged as a completed session.
-      Your program still moved on, so the next one is below — and tell me where it hurt and I will work around it.</div>`;
+      Your program still moved on, so the next one is below.${(()=>{const j=painJustNow();return j?`
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="adoptPainLimit('${j.joint}')">Work around my ${_ve(j.joint)}</button><button class="btn sm ghost" onclick="dismissPain('${j.region}')">It is fine</button></div>`:'';})()}</div>`;
   }
   return `<div class="note ok">
     <div style="font-size:17px;font-weight:900">✅ ${partial?'Session done — partial':'Session done'}</div>
@@ -7635,6 +7636,37 @@ function painPattern(){
       .map(r=>({region:r,joint:PAIN_JOINT[r],n:painCount(r)}))
       .filter(x=>x.n>=PAIN_PATTERN_MIN&&!lims.includes(x.joint));
     return hits.length?hits.sort((a,b)=>b.n-a.n)[0]:null;
+  }catch(e){return null;}
+}
+/* WHAT THE CARD PROMISES, IT HAS TO OFFER. The pain card said "tell me where
+   it hurt and I will work around it" and carried no control at all — while
+   noteHurt(), one line above the stop, had just recorded the exercise AND its
+   region. The one tap that acts on it (adoptPainLimit) existed and was wired
+   only to painPromptHTML(), which fires on a PATTERN — "twice is a pattern" —
+   so on the FIRST stop the athlete was told to tell the app something it
+   already knew, with no way to say it.
+
+   IT READS THE SAME REGION MAP painPattern() READS, so the two offers cannot
+   disagree about what "the joint that hurt" means. Measured, 123 of the 200
+   movements carry a region that maps; the rest name a joint only in
+   JOINT_RISK, which would be a second definition, so they get no button and
+   the card promises them nothing.
+
+   It stands down when the pattern prompt is already offering the same joint:
+   both render on Today's workout tab, and two notes telling the athlete to
+   close one gap is the defect v393 removed. */
+function painJustNow(){
+  try{
+    const rows=Array.isArray(STATE.pain)?STATE.pain:[];
+    const last=rows[rows.length-1];
+    if(!last||last.date!==todayISO())return null;
+    const joint=PAIN_JOINT[last.region];
+    if(!joint)return null;
+    const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+    if(lims.includes(joint))return null;          // already training around it
+    const pat=painPattern();
+    if(pat&&pat.joint===joint)return null;        // the prompt above already offers this one
+    return {joint,region:last.region};
   }catch(e){return null;}
 }
 function painPromptHTML(){

@@ -20124,6 +20124,37 @@ that `hurtStop()` really does leave `completedAt` absent. Without it, a future
 writer that stamped the field would make every assertion below pass for the
 wrong reason — which is exactly how this survived for many versions.
 
+### And the card promised a conversation it could not have
+
+Reading the card that had just been made reachable, its last clause was:
+
+> …and **tell me where it hurt and I will work around it**.
+
+There was **no control on the card at all** — while `noteHurt()`, one line
+above the stop, had already recorded the exercise AND its region. The one tap
+that acts on it, `adoptPainLimit()`, existed and was wired only to
+`painPromptHTML()`, which fires on a **pattern** — *"twice is a pattern, not a
+bad day"*. So on the FIRST stop the athlete was told to tell the app something
+it already knew, with no way to say it. A promise in UI text with no code
+behind it, on the button this app most needs pressed.
+
+**It reads the same region map `painPattern()` reads**, so the two offers
+cannot disagree about what "the joint that hurt" means. Measured, **123 of the
+200 movements** carry a region that maps; the other 77 name a joint only in
+`JOINT_RISK` — 60 of them do — and reading THAT would be a second definition of
+one fact, which is the class this round exists to close. So they get no button,
+and the card promises them nothing. Recorded as measured and deferred rather
+than closed by inventing a second rule.
+
+**Three floors, and each catches a different over-eager twin**: a joint already
+being worked around is not offered again, the card **defers to the pattern
+prompt** when that is already offering the same joint (two notes closing one
+gap is the v393 defect, and both render on this tab), and an unmapped region is
+offered nothing and promised nothing.
+
+**And the button is CLICKED, not the helper called** — the twelfth time this
+file has recorded that the route is the thing to drive.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
