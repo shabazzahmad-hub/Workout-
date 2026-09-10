@@ -1011,7 +1011,12 @@ export default async function run() {
     const pain = await page.evaluate(() => {
       STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save();
       const log = ensureLog();
-      log.stoppedForPain = todayISO(); log.done = false; log.completedAt = todayISO();
+      /* THE WRITER'S OWN SHAPE. hurtStop() writes stoppedForPain and done:false
+         and NEVER completedAt — commitSession() is the only writer of that
+         field. This fixture used to stamp it, so the pain card was only ever
+         exercised on a shape the app cannot produce, and todayPtr()'s real
+         answer (the NEW pointer, so no card at all) was never measured. */
+      log.stoppedForPain = todayISO(); log.done = false;
       STATE.progressPtr = 4; save();
       setTodayTab('workout'); renderToday();
       const t = document.querySelector('#v-today').innerText;

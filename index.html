@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='489';
+const APP_VERSION='490';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4834,7 +4834,21 @@ function todayPtr(){
     if(prev<0)return p;
     if(trainAgainAsked())return p;   // they asked for the next one, on THIS pointer
     const l=(STATE.logs||{})[prev];
-    if(l&&l.completedAt===todayISO()&&(l.done||l.stoppedForPain))return prev;
+    /* TWO WAYS A SLOT CLOSES, EACH TESTED THE WAY ITS OWN WRITER WRITES IT.
+       This read completedAt===todayISO() && (done || stoppedForPain), and
+       commitSession() is the ONLY writer of completedAt — hurtStop() writes
+       stoppedForPain and done:false and no completedAt at all. A suite comment
+       already states that as fact ("in real data completedAt is only ever set
+       alongside done:true"), so the codebase knew the shape and this reader
+       asked for the other one. The pain arm could therefore never decide
+       anything: measured, a stop before any set left this on the NEW pointer,
+       todayStoppedForPain() read false, and Today rendered the NEXT session's
+       exercise list under the word TODAY with a Mark Session Complete button —
+       the v313 defect the pain card exists to prevent, with the card itself
+       unreachable, and the spoken brief describing the next session as today's.
+       The exact-date test is the one todayStoppedForPain() already uses, so the
+       two readers of one fact now agree. */
+    if(l&&((l.done&&l.completedAt===todayISO())||l.stoppedForPain===todayISO()))return prev;
     return p;
   }catch(e){return STATE.progressPtr;}
 }
@@ -7551,6 +7565,25 @@ function hurtStop(){
   if(!PLAYER)return;
   noteHurt(plCur().exId);
   hurtCloseMenu();
+  /* A BONUS SESSION HAS NO PROGRAM SLOT TO CLOSE, and this was the one path in
+     the player that did not ask. Every other one does — plSaveResume(),
+     markSetFromTimer(), the set advance, the rating chips, the finish screen —
+     so the pain button on a custom workout, a saved favourite or a quick
+     workout wrote stoppedForPain onto the program session at progressPtr and
+     ADVANCED the pointer, consuming a session the athlete never started. With
+     program work already logged today it went further: the branch below hands
+     to playerFeel(), which commits that session as done. "Bonus only; won't
+     affect your program" is a promise the builder screen makes.
+     The pain is still recorded — noteHurt() above runs for every session and
+     saves — and the player still closes; there is simply nothing to log. */
+  if(PLAYER.free){
+    const _hadHistF=!!PLAYER.hist;
+    playerClose();
+    if(_hadHistF){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+    try{render();}catch(e){}
+    toast('Stopped — bonus session, so nothing was logged. Rest that joint.');
+    return;
+  }
   const p=STATE.progressPtr;
   const noWork=sessionWork(p).setsDone===0;
   if(noWork){

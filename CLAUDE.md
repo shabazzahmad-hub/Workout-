@@ -20040,6 +20040,90 @@ so each set already works both sides equally; a fourth set there would add
 volume without a balance reason, which is the v310 rule that a request never
 buys volume by accident.
 
+## The card that could not render, and the writer nobody asked (v490)
+
+Found by asking which pointer the Today runners build from — `exSetChain()`
+uses `STATE.progressPtr` while the card offering it is built from `todayPtr()`
+— and then asking when those two can differ. They differ after a session is
+closed, and chasing that found the closing itself was broken.
+
+`todayPtr()` decided a slot was closed today with
+
+```js
+if(l&&l.completedAt===todayISO()&&(l.done||l.stoppedForPain))return prev;
+```
+
+**`commitSession()` is the ONLY writer of `completedAt`.** `hurtStop()` writes
+`stoppedForPain` and `done:false` and nothing else — so the `||l.stoppedForPain`
+arm could never decide anything. Measured on a real pain stop before any set:
+
+| | before | after |
+|---|---|---|
+| `todayPtr()` | **the NEW pointer** | the session that was stopped |
+| `todayStoppedForPain()` | **false** | true |
+| what Today rendered | **the NEXT session's exercise list, under TODAY, with a Mark Session Complete button** | the pain card, and the next session as NEXT |
+| the spoken brief | **prescribed the next session as today's** | says what happened and prescribes nothing |
+
+So v313's whole pain branch — *"the card says so, claims no completion, and
+states out loud that the program moved on — because that surprise is exactly
+what produced this report"* — was **unreachable**, and the defect it was
+written to prevent was live on the one button this app most needs pressed.
+
+**THE FIXTURES ARE WHY IT SURVIVED, and they said so.** Every check of that
+card hand-wrote `completedAt` beside `stoppedForPain`, so the card was only
+ever exercised on a shape the app cannot produce. A third fixture's own comment
+states the truth outright — *"in real data completedAt is only ever set
+alongside `done:true` — an abandoned/stoppedForPain log never gets one"* — and
+that fixture is CORRECT to stamp it, because it deliberately builds an
+impossible shape to exercise a `done` guard. **The codebase knew the shape and
+one reader asked for the other one**, which is v284's sentence on a predicate
+rather than a repair.
+
+**Complete the record; do not weaken the rule — pointed the other way.** Five
+times this file has recorded a fixture that was too THIN. This is the first
+where the fixture was too COMPLETE: it carried a field the writer never writes,
+so the check passed on a shape no athlete can reach. **Check what the WRITER
+writes before believing a fixture, in both directions.**
+
+The fix is the predicate, not the stored data: `completedAt` keeps meaning
+*completed*, which is what every other reader assumes (all five pair it with
+`done`), and the pain arm now tests `stoppedForPain===todayISO()` — the exact
+test `todayStoppedForPain()` already uses, so the two readers of one fact
+agree. Nothing stored changes, so no athlete's existing logs move.
+
+**Four floors, and each catches a different over-eager twin**: a finished
+session still hands back the previous pointer, a pain stop YESTERDAY leaves
+today on the live session with its button, an untrained day is unchanged, and
+`trainAgainAsked()` still wins.
+
+### And the pain button on a bonus session ate a program session
+
+Found in the same read. **Every other path in the player asks `PLAYER.free`
+before it touches the program** — `plSaveResume()`, `markSetFromTimer()`, the
+set advance, the rating chips, the finish screen. `hurtStop()` did not, and the
+pain menu renders in every player session. So the pain button on a custom
+workout, a saved favourite or a quick workout wrote `stoppedForPain` onto the
+program session at `progressPtr` and **advanced the pointer**, consuming a
+session the athlete never started — and with program work already logged today
+it went further, handing to `playerFeel()`, which **commits that session as
+done**. *"Bonus only; won't affect your program"* is a promise the builder
+screen makes, and v355's sweep confirmed it for `plEnterDone()`'s free branch;
+this was the door that sweep could not see.
+
+**The pain is still recorded** — `noteHurt()` runs above the branch for every
+session and saves — and the player still closes. There is simply no slot to
+close, so nothing is logged and the toast says so.
+
+**The class is one member wide, and that was swept rather than assumed.**
+`playerSwap()` persists only when `PLAYER.sess.ptr===STATE.progressPtr`, which
+a free session's own `sess` object cannot satisfy; `playerSkip()` and
+`hurtSkip()` write no stored state; the rating chips are already gated.
+
+**The guard is what makes the whole block mean anything**: the check asserts
+that `hurtStop()` really does leave `completedAt` absent. Without it, a future
+writer that stamped the field would make every assertion below pass for the
+wrong reason — which is exactly how this survived for many versions.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

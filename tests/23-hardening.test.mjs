@@ -14344,6 +14344,139 @@ export default async function () {
     t.ok('and the player\'s ready announcement says "1 rep"', /\b1 rep\./.test(r.readyLine) && !/1 reps/.test(r.readyLine), JSON.stringify({ readyLine: r.readyLine }));
   }
 
+  /* ============ A PAIN STOP CLOSED NOTHING, AND THE CARD WAS UNREACHABLE ====
+     v313 built sessionDoneCardHTML()'s pain branch so a stop is never
+     congratulated and the pointer move is said out loud, "because that
+     surprise is exactly what produced this report". It could not render.
+
+     todayPtr() asked `completedAt===todayISO() && (done || stoppedForPain)`,
+     and commitSession() is the ONLY writer of completedAt — hurtStop() writes
+     stoppedForPain and done:false and nothing else. So after a stop before any
+     set, todayPtr() stayed on the NEW pointer, todayStoppedForPain() read
+     false, and Today rendered the NEXT session's exercise list under the word
+     TODAY with a Mark Session Complete button: the v313 defect the card exists
+     to prevent. The spoken brief went with it.
+
+     EVERY EXISTING CHECK HAND-WROTE completedAt BESIDE stoppedForPain, so the
+     card was only ever exercised on a shape the app cannot produce — which is
+     why the guard below (the writer really does leave completedAt absent) is
+     what makes this block mean anything. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const settle = () => new Promise(z => setTimeout(z, 700));
+      /* seedAthlete starts at pointer 0 and todayPtr() needs a previous slot to
+         hand back, so this runs from a pointer past the first. */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save();
+      R.gNoWork = sessionWork(3).setsDone === 0;   // guard: the no-work branch
+
+      openPlayer();
+      await new Promise(z => setTimeout(z, 250));
+      R.gOpenedProgram = !!PLAYER && !PLAYER.free;
+      hurtStop();
+      await settle();
+
+      const l = STATE.logs[3] || {};
+      R.gWriterLeavesCompletedAtAbsent = l.completedAt === undefined;
+      R.gWriterStampsPain = l.stoppedForPain === todayISO();
+      R.gPtrMoved = STATE.progressPtr === 4;
+
+      R.ptr = todayPtr(); R.pain = todayStoppedForPain(); R.done = todayDone();
+      setTodayTab('workout'); renderToday();
+      const txt = document.querySelector('#v-today').innerText;
+      R.saysStopped = /stopped for pain/i.test(txt);
+      R.neverCongratulates = !/Session done/i.test(txt);
+      R.noCompleteButton = !document.querySelector('#finishSession');
+      R.exCards = document.querySelectorAll('#v-today .ex').length;
+      R.nextAsNext = /not today/i.test(txt);
+      R.brief = briefSegments().map(x => x.say).join(' | ');
+
+      /* FLOOR: an untrained day still offers a live, startable session */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save();
+      renderToday();
+      R.liveCards = document.querySelectorAll('#v-today .ex').length;
+      R.liveButton = !!document.querySelector('#finishSession');
+
+      /* FLOOR: a pain stop on an EARLIER day is not today's business */
+      const d = new Date(); d.setDate(d.getDate() - 1);
+      const y = localISO(d);
+      STATE.logs = { 3: { date: y, ex: {}, done: false, stoppedForPain: y } };
+      STATE.progressPtr = 4; save(); renderToday();
+      R.ydayPtr = todayPtr();
+      R.ydayCards = document.querySelector('#v-today').querySelectorAll('.ex').length;
+      R.ydayButton = !!document.querySelector('#finishSession');
+      return R;
+    });
+    t.ok('GUARD: the session carried no logged sets, so the no-work branch ran', r.gNoWork === true, JSON.stringify(r));
+    t.ok('GUARD: the player opened on a PROGRAM session', r.gOpenedProgram === true, JSON.stringify(r));
+    t.ok('GUARD: hurtStop() writes stoppedForPain and leaves completedAt ABSENT', r.gWriterStampsPain === true && r.gWriterLeavesCompletedAtAbsent === true, JSON.stringify(r));
+    t.ok('GUARD: and the pointer moved on, as the pain stop promises', r.gPtrMoved === true, JSON.stringify(r));
+    t.eq('todayPtr() stays on the session that was stopped (v490)', r.ptr, 3, JSON.stringify(r));
+    t.ok('so todayStoppedForPain() is true and todayDone() is not', r.pain === true && r.done === false, JSON.stringify(r));
+    t.ok('Today says the athlete stopped for pain', r.saysStopped === true, JSON.stringify({ pain: r.pain, says: r.saysStopped }));
+    t.ok('and never congratulates it as a completed session', r.neverCongratulates === true, JSON.stringify({ n: r.neverCongratulates }));
+    t.ok('and offers no Mark Session Complete button', r.noCompleteButton === true, JSON.stringify({ btn: r.noCompleteButton }));
+    t.eq('and no exercise list to burn the next session on', r.exCards, 0, JSON.stringify({ cards: r.exCards }));
+    t.ok('and shows the next session as NEXT, not as today’s', r.nextAsNext === true, JSON.stringify({ next: r.nextAsNext }));
+    t.ok('the spoken brief says it too, and prescribes nothing', /hurt|pain/i.test(r.brief) && !/Then the main work/.test(r.brief), JSON.stringify({ brief: (r.brief || '').slice(0, 300) }));
+    t.ok('FLOOR: an untrained day still shows a live session and its button', r.liveCards > 0 && r.liveButton === true, JSON.stringify({ cards: r.liveCards, btn: r.liveButton }));
+    t.eq('FLOOR: a pain stop YESTERDAY leaves today on the live pointer', r.ydayPtr, 4, JSON.stringify(r));
+    t.ok('FLOOR: and today offers a real session again', r.ydayCards > 0 && r.ydayButton === true, JSON.stringify({ cards: r.ydayCards, btn: r.ydayButton }));
+  }
+
+  /* ============ THE PAIN BUTTON ON A BONUS SESSION ATE A PROGRAM SESSION ====
+     Every other path in the player asks PLAYER.free before it touches the
+     program — plSaveResume(), markSetFromTimer(), the set advance, the rating
+     chips, the finish screen. hurtStop() did not. So the pain button on a
+     custom workout, a saved favourite or a quick workout wrote stoppedForPain
+     onto the program session at progressPtr and ADVANCED the pointer, and with
+     program work already logged today it handed to playerFeel(), which COMMITS
+     that session as done. "Bonus only; won't affect your program" is a promise
+     the builder screen makes. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const settle = () => new Promise(z => setTimeout(z, 700));
+      const bonus = () => ({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 1 }],
+                             free: true, title: 'probe' });
+
+      /* nothing logged on the program today */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; STATE.pain = []; save();
+      R.gNoProgramWork = sessionWork(3).setsDone === 0;
+      openPlayer(bonus());
+      await new Promise(z => setTimeout(z, 250));
+      R.gFree = !!PLAYER && PLAYER.free === true;
+      hurtStop();
+      await settle();
+      R.ptrAfter = STATE.progressPtr;
+      R.painStamped = !!(STATE.logs[3] || {}).stoppedForPain;
+      R.painRecorded = (STATE.pain || []).some(x => x.date === todayISO());
+
+      /* and with program work already logged today */
+      STATE.logs = {}; STATE.progressPtr = 3; save();
+      const m0 = buildSession(3).main[0];
+      markSetFromTimer(m0.exId);
+      R.gHasWork = sessionWork(3).setsDone > 0;
+      openPlayer(bonus());
+      await new Promise(z => setTimeout(z, 250));
+      R.gFree2 = !!PLAYER && PLAYER.free === true;
+      hurtStop();
+      await settle();
+      R.ptrAfter2 = STATE.progressPtr;
+      R.doneAfter2 = !!(STATE.logs[3] || {}).done;
+      return R;
+    });
+    t.ok('GUARD: the program had no logged sets, and the player was FREE', r.gNoProgramWork === true && r.gFree === true, JSON.stringify(r));
+    t.eq('a bonus session’s pain stop leaves the program pointer alone (v490)', r.ptrAfter, 3, JSON.stringify(r));
+    t.ok('and stamps no stoppedForPain on a session never started', r.painStamped === false, JSON.stringify(r));
+    t.ok('while the pain itself is still recorded', r.painRecorded === true, JSON.stringify(r));
+    t.ok('GUARD: the second case really had program work logged, in a FREE player', r.gHasWork === true && r.gFree2 === true, JSON.stringify(r));
+    t.eq('and with program work logged today it still leaves the pointer alone', r.ptrAfter2, 3, JSON.stringify(r));
+    t.ok('and never commits that program session as done', r.doneAfter2 === false, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
