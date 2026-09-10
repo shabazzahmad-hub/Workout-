@@ -19776,6 +19776,71 @@ the same every time: green locally, red on a loaded runner, and a check that
 does not build what it reads.
 
 
+## The label named the set and not the side (v487)
+
+Found by auditing v485 an hour after it shipped — the fifteenth round running
+where the best finding was in the round immediately before, and the eighth in a
+row where it was in my own new code.
+
+v351 gave a per-side movement an even set count and had the guided player say
+**LEFT / RIGHT on every set**, because *"an even count balances nothing if the
+athlete does not know to alternate."* v481 fixed the set COUNT on the Today
+runners and Quick, and v485 chained their sets — and each built its own label
+by hand. Measured, driven through the real buttons:
+
+| surface | said | the player says |
+|---|---|---|
+| Today ▸ ▶ Hold timer, Side Plank Hip Dips | `set 1 of 4` — and spoke *"Guided set. 20 reps. Get ready."* | `LEFT SIDE`, spoken first |
+| Quick, Side Plank | `set 1 of 2` | `LEFT SIDE` |
+| Today ▸ ▶ Hold timer, Kettlebell Halo (one-sided hold) | **nothing**, the whole set | *"Switch sides now."* at halfway, with the tone pair |
+| Today ▸ ▶ Guided reps, the same | **nothing** | *"5. Switch sides now."* |
+
+So the two surfaces v481 fixed the count FOR were the two where the count still
+balanced nothing. Fixing one instance is not fixing the class, and the class was
+the player's twins for the seventh time.
+
+**One label builder, and the label is the contract.** `setChainLabel()` names
+the side for a per-side movement, and both runners read the side back off the
+label (`sidePrefix()`) rather than taking a ninth argument — a runner has no
+exercise id, and the label is the one thing every caller already hands it. The
+side goes FIRST in the spoken line so the next utterance's `cancel()` can only
+clip the filler, which is v307's rule.
+
+**The switch cue is the player's own, copied to both runners**: the same
+660→880 pair, the same `SIDE_LINE`, at the same halfway point, and on the rep
+cadence it OUTRANKS the hype for the reason `plTickRep()` gives — a missed hype
+line costs nothing and a missed switch costs the whole other side.
+
+**The floors are the two-sided movements**, byte-identical: a plank is never
+told to switch, a crunch neither, and a two-sided chain names no side at all.
+
+**And the REST between two sides names no side.** The chain's label ends in
+the side just done, and the runners built the rest label as `label+' — rest'`
+— so the clock whose whole job is the side about to start read *"… · Left side
+— rest"*, naming the wrong one. Found by re-reading the fix: the label is the
+contract, and a contract that carries a side has to be stripped where the side
+no longer applies. `restLabel()` does it once for both runners, driven through
+the timed chain's own hand-off, with the floor that a two-sided label is left
+alone.
+
+### A note about a state that was no longer true
+
+v483's neural stand-down counted failures and never counted a success. Three
+transient failures early in a session — a short signal drop on the drive in —
+left *"The premium voice is not answering"* on Settings for the rest of the day
+while every line since had played. The count is CONSECUTIVE failures now, reset
+by the success path, and it is driven through `neuralSpeak()` with the
+synthesiser stubbed rather than asserted on the source.
+
+### A male name inside a female one
+
+v486 made `voiceSexLabel()` answer nothing when a name says nothing. It still
+answered **male** for `Erica`, `Frederica`, `Winifred`, `Marketa` and
+`English (America)` — `eric`, `fred` and `mark` are substrings, none of those
+names is on the female list, and the female test running first cannot save a
+name it has never heard of. Word boundaries on the five short names that live
+inside a longer one, with the floor that each still reads as male on its own.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -1892,7 +1892,57 @@ export default async function run() {
       STATE.settings.neuralOn = realOn; STATE.settings.azureKey = realKey;
       return o;
     });
+    /* v487: A SUCCESS RESETS THE STRIKES. Three transient failures early in
+       a session, then every line since playing, still showed "not answering"
+       on Settings for the rest of the day. Driven through neuralSpeak() with
+       the synthesiser stubbed to succeed.
+
+       ITS OWN evaluate, and NOTHING ELSE may touch _neuralFails between the
+       arm and the read. The first version armed this inside the block above,
+       whose later lines set _neuralFails to 9, then to 0 through
+       useDeviceVoices(), then to 0 again in its own teardown — all
+       synchronously, BEFORE the stubbed synth's microtask resolved. So the
+       count read 0 whether or not the app reset it, and the mutant that
+       deleted the reset walked straight through. The neighbour was my own
+       teardown supplying the answer. The reset is read here, the payload
+       (Settings stays silent) beside it, and the guard pins that the count
+       really was at the strike line before the success. */
+    const reset = await page.evaluate(async () => {
+      const real = { synth: _sdkSynthesize, play: _neuralPlay, on: STATE.settings.neuralOn,
+        key: STATE.settings.azureKey, region: STATE.settings.azureRegion };
+      const o = {};
+      try {
+        STATE.settings.neuralOn = true; STATE.settings.azureKey = 'x'.repeat(32);
+        STATE.settings.azureRegion = STATE.settings.azureRegion || 'eastus';
+        _neuralFails = NEURAL_FAIL_STRIKES; _neuralFailMsg = 'network';
+        o.guardAvailable = neuralAvailable();
+        o.guardDownBefore = neuralDownHTML() !== '';
+        o.guardFailsBefore = _neuralFails; o.strikes = NEURAL_FAIL_STRIKES;
+        await new Promise(res => {
+          _sdkSynthesize = () => Promise.resolve(new ArrayBuffer(8));
+          _neuralPlay = () => { res(); };
+          o.handled = neuralSpeak('v487 strike reset ' + Date.now(), COACHES[0], () => {});
+          if (!o.handled) res();
+          setTimeout(res, 1500);
+        });
+        o.fails = _neuralFails; o.msg = _neuralFailMsg;
+        o.downAfter = neuralDownHTML() !== '';
+      } finally {
+        _sdkSynthesize = real.synth; _neuralPlay = real.play;
+        _neuralFails = 0; _neuralFailMsg = '';
+        STATE.settings.neuralOn = real.on; STATE.settings.azureKey = real.key; STATE.settings.azureRegion = real.region;
+      }
+      return o;
+    });
+    t.ok('GUARD: the strikes really were at the line before the success',
+      reset.guardFailsBefore === reset.strikes && reset.guardDownBefore,
+      JSON.stringify(reset));
     t.ok('a working premium voice says nothing at all', r.quietAtZero, JSON.stringify(r));
+    t.ok('GUARD: the neural path was available for the strike-reset case', reset.guardAvailable && reset.handled,
+      JSON.stringify({ guardAvailable: reset.guardAvailable, handled: reset.handled }));
+    t.eq('a successful line RESETS the strike count (v487)', reset.fails, 0);
+    t.eq('and clears the remembered failure', reset.msg, '');
+    t.ok('and Settings stops saying the premium voice is not answering', reset.downAfter === false, JSON.stringify(reset));
     t.ok('and one or two failures still say nothing — a note that always fires is noise',
       r.quietUnderStrikes, JSON.stringify(r));
     t.ok('it speaks up once the failures reach the strike count',
@@ -2165,6 +2215,15 @@ export default async function run() {
         && _MALE_RE.test('Daniel');
       out.suffixBlank = voiceSexSuffix({ name: 'en-us-x-tpf-local' }) === '';
       out.suffixNamed = voiceSexSuffix({ name: 'Daniel' }) === ' · male';
+      /* v487: a short male name INSIDE a female one. "Erica" carries "eric",
+         "Winifred" carries "fred", "Marketa" carries "mark", and none of them
+         is on the female list — so the male test, asked second, still read
+         them as male. A wrong label is worse than none. */
+      const insideFemale = ['Erica', 'Frederica', 'Winifred', 'Marketa', 'Antonia', 'English (America)'];
+      out.noneInsideRead = insideFemale.filter(n => voiceSexLabel({ name: n }) !== '');
+      /* FLOOR: the bounded names still read as male on their own. */
+      const bare = ['Eric', 'Fred', 'Mark', 'Tony', 'Microsoft Guy Online', 'Mark - English (United States)'];
+      out.bareStillMale = bare.filter(n => voiceSexLabel({ name: n }) !== 'male');
 
       /* FLOOR: the pick itself still reaches the voice — the half that was
          already right, driven through the real control. */
@@ -2208,6 +2267,10 @@ export default async function run() {
       r.maleReReadsMale, JSON.stringify(r));
     t.ok('an unreadable name renders no suffix at all', r.suffixBlank, JSON.stringify(r));
     t.ok('and a readable one renders the separator with it', r.suffixNamed, JSON.stringify(r));
+    t.eq('a male name INSIDE a female one is not read as male (v487)',
+      JSON.stringify(r.noneInsideRead), '[]');
+    t.eq('FLOOR: the bounded names still read as male on their own',
+      JSON.stringify(r.bareStillMale), '[]');
     t.ok('FLOOR: the picked voice still reaches every coach',
       r.pickedReachesEveryCoach, JSON.stringify(r));
     t.ok('FLOOR: and a per-coach pick still outranks it, for that coach only',

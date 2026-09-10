@@ -13663,6 +13663,154 @@ export default async function () {
     t.eq('FLOOR: and it marks nothing', r.restMarked, 0);
   }
 
+  /* v487 — THE LABEL NAMES THE SIDE, AND THE RUNNERS CUE THE SWITCH.
+     v351 gave a per-side movement an even set count and had the guided player
+     say LEFT / RIGHT on every set, because an even count balances nothing if
+     the athlete does not know to alternate. v481 and v485 fixed the SET COUNT
+     on the Today runners and Quick and built each label by hand — so "Side
+     Plank · set 1 of 4" sat on the sheet with no side at all, and a one-sided
+     hold (kettlebell halo) ran its whole set with no "Switch sides now."
+     Measured before the fix: chain label "Side Plank Hip Dips · set 1 of 4",
+     spoken "Guided set. 20 reps. Get ready.", and zero switch lines on either
+     runner. */
+  {
+    const r = await page.evaluate(async () => {
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      const o = {};
+      const savePtr = STATE.progressPtr;
+      let ptr = -1;
+      for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p++) {
+        const s = buildSession(p);
+        if (s.main.some(m => sidePerSet(m.exId)) && s.main.some(m => !sidePerSet(m.exId) && !sideSwitch(m.exId))) { ptr = p; break; }
+      }
+      o.ptr = ptr;
+      if (ptr < 0) return o;
+      STATE.progressPtr = ptr; save();
+      const s = buildSession(ptr);
+      const per = s.main.find(m => sidePerSet(m.exId));
+      const two = s.main.find(m => !sidePerSet(m.exId) && !sideSwitch(m.exId));
+      o.perId = per.exId; o.perSets = per.sets; o.twoId = two.exId;
+      const spoken = [], tones = [];
+      const oc = window.coachSpeak, os = window.plSay, ob = window.beep;
+      window.coachSpeak = t => { spoken.push(String(t)); };
+      window.plSay = t => { spoken.push(String(t)); };
+      window.beep = (f) => { tones.push(f); };
+      const label = () => (document.querySelector('#sheet .tt') || {}).textContent || '';
+      go('today');
+      exSetChain(per.exId); await wait(20);
+      o.set1 = label(); o.set1Spoken = spoken.slice();
+      closeSheet(); await wait(400); spoken.length = 0;
+      exSetChain(per.exId, 2); await wait(20);
+      o.set2 = label(); o.set2Spoken = spoken.slice();
+      closeSheet(); await wait(400); spoken.length = 0;
+      exSetChain(two.exId); await wait(20);
+      o.twoLabel = label(); o.twoSpoken = spoken.slice();
+      closeSheet(); await wait(400); spoken.length = 0;
+      /* the chained REST carries the label with " — rest" on it and must not
+         speak a side of its own */
+      o.restSide = sideInLabel(o.set1 + ' — rest');
+      /* a one-sided hold on the ▶ Hold timer, pumped through its own tick */
+      tones.length = 0;
+      runTimer('hold', 20, 'Kettlebell Halo', 0, null, false, EX.kbhalo); await wait(20);
+      let phaseAtSwitch = '';
+      for (let i = 0; i < 30; i++) {
+        if (timer && timer.tick) timer.tick();
+        if (/SWITCH/.test((document.querySelector('#tphase') || {}).textContent || '')) phaseAtSwitch = 'SWITCH SIDES';
+      }
+      o.holdSwitch = spoken.filter(x => x === SIDE_LINE).length;
+      o.holdTone = tones.includes(660);
+      o.holdPhase = phaseAtSwitch;
+      closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
+      /* FLOOR: a two-sided hold never hears it */
+      runTimer('hold', 20, 'Plank', 0, null, false, EX.plank); await wait(20);
+      for (let i = 0; i < 30; i++) { if (timer && timer.tick) timer.tick(); }
+      o.plankSwitch = spoken.filter(x => x === SIDE_LINE).length;
+      o.plankTone = tones.includes(660);
+      closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
+      /* and on the rep cadence */
+      runRepCadence(10, 'Kettlebell Halo', 0, null, EX.kbhalo); await wait(20);
+      for (let i = 0; i < 20; i++) { if (timer && timer.tick) timer.tick(); }
+      o.repSwitch = spoken.find(x => /Switch sides now/.test(x)) || '';
+      o.repTone = tones.includes(660);
+      closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
+      runRepCadence(10, 'Crunch', 0, null, EX.crunch); await wait(20);
+      for (let i = 0; i < 20; i++) { if (timer && timer.tick) timer.tick(); }
+      o.crunchSwitch = spoken.filter(x => /Switch sides now/.test(x)).length;
+      closeSheet(); await wait(400); spoken.length = 0;
+      /* Quick's label goes through the same builder */
+      const q = QUICKIES.find(x => x.items.some(i => i.exId === 'sideplank'));
+      o.quickFound = !!q;
+      if (q) {
+        QUICK_ID = q.id; const idx = q.items.findIndex(i => i.exId === 'sideplank');
+        quickPlay(idx); await wait(20); o.quick1 = label(); closeSheet(); await wait(400);
+        quickPlay(idx, 2); await wait(20); o.quick2 = label(); closeSheet(); await wait(400);
+      }
+      window.coachSpeak = oc; window.plSay = os; window.beep = ob;
+      STATE.progressPtr = savePtr; save();
+      return o;
+    });
+    t.ok('GUARD: a session carrying both a per-side and a two-sided movement was found', r.ptr >= 0, JSON.stringify(r));
+    t.ok('GUARD: the per-side movement really has an even count above one', r.perSets >= 2 && r.perSets % 2 === 0, JSON.stringify(r));
+    t.ok('the Today chain names the side on set 1', new RegExp('set 1 of ' + r.perSets + ' · Left side$').test(r.set1), JSON.stringify(r));
+    t.ok('and speaks it BEFORE its own announcement', (r.set1Spoken[0] || '').indexOf('Left side. ') === 0, JSON.stringify(r));
+    t.ok('set 2 is the OTHER side', /Right side$/.test(r.set2) && /^Right side\. /.test(r.set2Spoken[0] || ''), JSON.stringify(r));
+    t.ok('FLOOR: a two-sided movement names no side', !/side$/i.test(r.twoLabel) && !/^(Left|Right) side/.test(r.twoSpoken[0] || ''), JSON.stringify(r));
+    t.eq('FLOOR: the chained rest label carries no side to speak', r.restSide, '');
+    t.eq('the ▶ Hold timer cues a one-sided hold to switch halfway, once', r.holdSwitch, 1);
+    t.ok('with the side-switch tone pair', r.holdTone, JSON.stringify(r));
+    t.eq('and names it on the ring', r.holdPhase, 'SWITCH SIDES');
+    t.eq('FLOOR: a two-sided hold is never told to switch', r.plankSwitch, 0);
+    t.ok('FLOOR: and hears no switch tone', !r.plankTone, JSON.stringify(r));
+    t.ok('the ▶ Guided reps cadence calls the switch WITH the count, at the halfway rep', /^5\. Switch sides now\./.test(r.repSwitch), JSON.stringify(r));
+    t.ok('with the tone pair', r.repTone, JSON.stringify(r));
+    t.eq('FLOOR: a two-sided rep movement is never told to switch', r.crunchSwitch, 0);
+    t.ok('GUARD: a Quick workout carries the side plank', r.quickFound, JSON.stringify(r));
+    t.ok('Quick names the side too, through the same builder', /Left side$/.test(r.quick1 || '') && /Right side$/.test(r.quick2 || ''), JSON.stringify(r));
+  }
+
+  /* v487 — THE REST BETWEEN TWO SIDES NAMES NO SIDE. The chain's label ends in
+     the side just done, and the rest clock's whole job is the side about to
+     start, so a rest labelled "… · Left side — rest" reads as the wrong side.
+     Driven through the timed chain's own rest hand-off, and the helper's own
+     contract pinned beside it (a two-sided label is left alone). */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      try {
+        const real = { speak: window.coachSpeak, say: window.plSay, beep: window.beep };
+        window.coachSpeak = () => {}; window.plSay = () => {}; window.beep = () => {};
+        out.helperPer = restLabel('Side Plank · set 1 of 4 · Left side');
+        out.helperRight = restLabel('Side Plank · set 2 of 4 · Right side');
+        out.helperTwo = restLabel('Plank · set 1 of 3');
+        // drive: a per-side TIMED movement, first set, to its rest
+        let per = null;
+        for (let p = 0; p < 80 && !per; p++) {
+          const s = buildSession(p);
+          for (const m of s.main) { const e = EX[m.exId]; if (e && e.side === 'perSet' && e.unit === 'time') { per = { ptr: p, exId: m.exId }; break; } }
+        }
+        if (!per) { out.noPer = true; return out; }
+        STATE.progressPtr = per.ptr; save();
+        exSetChain(per.exId);
+        const ex = EX[per.exId];
+        out.setLabel = ($('#sheet .tt') || {}).textContent || '';
+        // pump the hold to zero
+        for (let i = 0; i < 400 && timer; i++) timer.tick();
+        await new Promise(r => setTimeout(r, 900));
+        out.restLabel = ($('#sheet .tt') || {}).textContent || '';
+        out.restPhase = ($('#tphase') || {}).textContent || '';
+        stopTimer(); closeSheet();
+        window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
+      } catch (e) { out.err = String(e); }
+      return out;
+    });
+    t.ok('GUARD: the rest probe ran', !r.err && !r.noPer, JSON.stringify(r));
+    t.eq('restLabel() drops the side the chain wrote', r.helperPer, 'Side Plank · set 1 of 4 — rest');
+    t.eq('and the other side', r.helperRight, 'Side Plank · set 2 of 4 — rest');
+    t.eq('FLOOR: a two-sided label is left alone', r.helperTwo, 'Plank · set 1 of 3 — rest');
+    t.ok('GUARD: the set label named a side', /Left side/i.test(r.setLabel || ''), JSON.stringify(r));
+    t.ok('the rest clock after a per-side set names no side', /rest/i.test(r.restLabel || '') && !/Left side|Right side/i.test(r.restLabel || ''), JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
