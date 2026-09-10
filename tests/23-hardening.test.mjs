@@ -14738,6 +14738,71 @@ export default async function () {
     t.ok('FLOOR: quitting the PROGRAM session still clears it', r.afterProgramQuit === false, JSON.stringify(r));
   }
 
+  /* ============ THE REST NOTE OFFERED BACK A WORKOUT THAT WAS FINISHED =====
+     altSessionHTML() keeps the "Rest day" tile on a CLOSED day — its own
+     heading correctly flips to "Something else today?" — so tapping it after
+     finishing, or after a pain stop where the pointer has already moved, put
+     "your workout is still here if you change your mind" on the same screen as
+     "✅ Session done" or "🩹 you stopped for pain". One screen, two answers. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const R = {};
+      const paint = () => { setTodayTab('workout'); renderToday(); };
+      const restNote = () => {
+        const n = [...document.querySelectorAll('#v-today .note')]
+          .find(x => /Rest day logged for today/i.test(x.innerText));
+        return n ? n.innerText : '';
+      };
+      const rest = () => { STATE.restDays = { [todayISO()]: true }; };
+
+      /* an OPEN day: the offer is true and must stay */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; rest(); save(); paint();
+      R.gOpen = todayClosed() === false;
+      R.openNote = restNote();
+      R.openOffers = /still here if you change your mind/i.test(R.openNote);
+
+      /* a FINISHED day */
+      STATE.logs = { 3: { date: todayISO(), ex: {}, done: true, completedAt: todayISO() } };
+      STATE.progressPtr = 4; rest(); save(); paint();
+      R.gDone = todayDone() === true;
+      R.doneNote = restNote();
+      R.doneStillNoted = !!R.doneNote;
+      R.doneOffers = /still here if you change your mind/i.test(R.doneNote);
+
+      /* a PAIN-STOP day: the pointer has already moved on */
+      STATE.logs = { 3: { date: todayISO(), ex: {}, done: false, stoppedForPain: todayISO() } };
+      STATE.progressPtr = 4; rest(); save(); paint();
+      R.gPain = todayStoppedForPain() === true;
+      R.painNote = restNote();
+      R.painStillNoted = !!R.painNote;
+      R.painOffers = /still here if you change your mind/i.test(R.painNote);
+      return R;
+    });
+    t.ok('GUARD: the three days really are open, finished and pain-stopped', r.gOpen === true && r.gDone === true && r.gPain === true, JSON.stringify(r));
+    t.ok('FLOOR: an open day still offers the workout back', r.openOffers === true, JSON.stringify({ note: r.openNote }));
+    t.ok('a finished day still logs the rest day', r.doneStillNoted === true, JSON.stringify({ note: r.doneNote }));
+    t.ok('and never offers back a workout that is done (v492)', r.doneOffers === false, JSON.stringify({ note: r.doneNote }));
+    t.ok('a pain-stop day still logs the rest day', r.painStillNoted === true, JSON.stringify({ note: r.painNote }));
+    t.ok('and never offers back a session the program has moved past', r.painOffers === false, JSON.stringify({ note: r.painNote }));
+  }
+
+  /* The disjunction "today's slot is closed" is written ONCE. Six consumers ask
+     todayClosed(); a seventh copy is how the next one drifts. */
+  {
+    const r = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const clean = src.replace(/\/\*[\s\S]*?\*\//g, '');
+      return { gApp: /function todayClosed\(/.test(clean),
+               dis: (clean.match(/todayDone\(\)\s*\|\|\s*todayStoppedForPain\(\)/g) || []).length,
+               asks: (clean.match(/todayClosed\(\)/g) || []).length };
+    });
+    t.ok('GUARD: the scan read the app’s own script', r.gApp === true, JSON.stringify(r));
+    t.eq('the day-closed disjunction is written exactly once (v492)', r.dis, 1, JSON.stringify(r));
+    t.ok('and every consumer asks the predicate', r.asks >= 6, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

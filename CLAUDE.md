@@ -20040,6 +20040,63 @@ so each set already works both sides equally; a fourth set there would add
 volume without a balance reason, which is the v310 rule that a request never
 buys volume by accident.
 
+## The rest note offered back a workout that was finished (v492)
+
+v491 gave "today's slot is closed" one predicate and six consumers. Reading the
+screens for the state v490 opened found a seventh sentence that had never asked
+it — and it is the FIRST note on the workout tab, above everything:
+
+> 🛌 **Rest day logged for today.** Recovery is part of the plan — **your
+> workout is still here if you change your mind.**
+
+`altSessionHTML()` keeps the "Rest day" tile on a closed day, and correctly so
+— its own heading flips to *"Something else today?"*. So tapping it after
+finishing puts that sentence on the same screen as **✅ Session done**, and
+after a pain stop on the same screen as **🩹 you stopped for pain**, where the
+pointer has already moved past the session it offers back. One screen, two
+answers — v450's class, on the note that renders first.
+
+**Only the second clause is conditional.** Logging a rest day on a day you
+already trained is a real thing to want to record, so the note stays and the
+offer goes. The floors pin all three states: an open day still offers the
+workout back, and both closed days still log the rest.
+
+### And the last two hand-written copies of the disjunction
+
+`altSessionHTML()` and `briefSegments()` still spelled out
+`todayDone()||todayStoppedForPain()`. Nothing was wrong with either — both
+already knew both ways — and that is precisely the shape a seventh copy drifts
+from. The brief legitimately reads `_bDone` and `_bPain` separately, because it
+says different things per state; only the disjunction moves.
+
+**A source assertion pins that the disjunction is written exactly once**, which
+is the only thing that can see a future consumer restating it: on today's data
+the two forms are byte-identical, so no rendered check can tell them apart.
+
+### Three sweeps that came back clean, recorded as coverage
+
+- **Every sentence naming a button by its label** — three of them, all present
+  on their own surface.
+- **Every registry indexed by a computed key** — 63. Every key that comes from
+  STATE is already behind a membership test (goal, theme, prep path, cardio
+  mode, meal, trouble zone, joint, level, exercise id, pain region), and
+  `FOOD_BY_NAME[name]` is keyed only from `REF_DAYS`/`REF_TOPUP`, so its
+  `i===undefined` guard cannot be walked past by an inherited key.
+- **The stylesheet and the overlay stack** — no selector sets the same property
+  twice at one specificity, and `.toast` (80) sits above `.pl` (75), which is
+  load-bearing: v413 made the toast the live region and most confirmations are
+  spoken from inside a session.
+
+### And `pgrep -f` killed its own shell, in a third form
+
+This file already records the trap for `pkill -f` and for `pgrep -f`
+over-reporting. The new form is a loop:
+`for p in $(pgrep -f "tests/run.mjs"); do kill $p; done` — the wrapper shell's
+own command line contains the pattern, so the loop kills the shell, the command
+exits **144**, and everything after it in the compound never runs. **Kill by a
+PID read from a pattern that cannot match the reader**, or filter the shell out
+by `comm`.
+
 ## Two controls knew one way to close a day (v491)
 
 Found by auditing v490 an hour after it merged — the sixteenth round running
