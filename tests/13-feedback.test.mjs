@@ -1110,8 +1110,17 @@ export default async function run() {
       o.photo = run(() => { STATE.photos = [{ id: 'a', date: todayISO(), pose: 'front' }]; });
       o.all   = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }];
                             STATE.photos = [{ id: 'a', date: todayISO(), pose: 'front' }]; });
-      o.stale = run(() => { STATE.measurements = [{ date: iso(8), weight: 88, waist: 96 }];
-                            STATE.photos = [{ id: 'a', date: iso(8), pose: 'front' }]; });
+      /* ONE PART STALE AT A TIME. An all-stale case cannot see either week
+         test: whichever half the mutant leaves alone keeps `any` true, so the
+         banner still renders and the floor passes on the half that was never
+         in question. A guard is only visible when the value beside it cannot
+         supply the answer. */
+      o.stale     = run(() => { STATE.measurements = [{ date: iso(8), weight: 88, waist: 96 }];
+                                STATE.photos = [{ id: 'a', date: iso(8), pose: 'front' }]; });
+      o.oldPhoto  = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }];
+                                STATE.photos = [{ id: 'a', date: iso(8), pose: 'front' }]; });
+      o.oldMeas   = run(() => { STATE.measurements = [{ date: iso(8), weight: 88, waist: 96 }];
+                                STATE.photos = [{ id: 'a', date: todayISO(), pose: 'front' }]; });
       /* The joiner's own contract — one item takes no "and". */
       o.words1 = weeklyCheckinWords({ photo: true, waist: false, weight: false });
       o.words3 = weeklyCheckinWords({ photo: true, waist: true, weight: true });
@@ -1137,8 +1146,58 @@ export default async function run() {
          JSON.stringify(r.none));
     t.ok('FLOOR: last week\'s check-in does not answer this week\'s',
          r.stale.banner !== '' && r.stale.push !== '', JSON.stringify(r.stale));
+    t.ok('last week\'s PHOTO does not answer this week\'s, with the rest done',
+         r.oldPhoto.left.photo === true && /progress photo/.test(r.oldPhoto.banner),
+         JSON.stringify(r.oldPhoto.left));
+    t.ok('last week\'s MEASUREMENTS do not answer this week\'s, with the photo done',
+         r.oldMeas.left.waist === true && r.oldMeas.left.weight === true
+         && /weigh in/.test(r.oldMeas.banner), JSON.stringify(r.oldMeas.left));
     t.eq('one thing left reads as one thing', r.words1, 'take a progress photo', JSON.stringify(r));
     t.eq('three read as a list', r.words3, 'take a progress photo, measure your waist and weigh in', JSON.stringify(r));
+
+    /* THE FRIDAY HEADS-UP ASKS A NARROWER QUESTION, and only a Friday can tell
+       the two apart: only the tape and the scale need fetching, so an athlete
+       whose measurements are already done but whose photo is not must NOT be
+       told to have a scale ready tomorrow. That is this round's own class one
+       branch over, and a Saturday page cannot reach it. */
+    const p3 = await ctx.newPage();
+    await p3.clock.install({ time: new Date('2026-09-11T18:00:00') });   // a Friday
+    await p3.goto(`http://127.0.0.1:${own.port}/`, { waitUntil: 'networkidle' });
+    await waitForBoot(p3);
+    await seedAthlete(p3);
+
+    const f = await p3.evaluate(() => {
+      const o = { dow: new Date().getDay() };
+      const perm = Object.getOwnPropertyDescriptor(Notification, 'permission');
+      Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+      const run = setup => {
+        STATE.measurements = []; STATE.photos = [];
+        delete STATE._weeklyRemindedWeek; delete STATE._weeklyPrepWeek;
+        STATE.settings.weeklyOn = true; STATE.settings.reminderOn = false;
+        setup();
+        let sent = [];
+        const real = window.fireProgressNotif;
+        window.fireProgressNotif = m => { sent.push(String(m)); };
+        try { checkReminder(); } catch (e) { o.threw = String(e).slice(0, 80); }
+        window.fireProgressNotif = real;
+        return { push: sent.join(' '), left: weeklyCheckinLeft() };
+      };
+      o.none  = run(() => {});
+      o.photoLeft = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }]; });
+      o.all   = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }];
+                            STATE.photos = [{ id: 'a', date: todayISO(), pose: 'front' }]; });
+      if (perm) Object.defineProperty(Notification, 'permission', perm);
+      return o;
+    });
+
+    t.eq('GUARD: the heads-up block really is running on a Friday', f.dow, 5, JSON.stringify({ dow: f.dow }));
+    t.ok('GUARD: with the measurements done only the photo is outstanding',
+         f.photoLeft.left.any === true && f.photoLeft.left.kit === false, JSON.stringify(f.photoLeft.left));
+    t.ok('a photo is the only thing left, so no scale is asked for tomorrow',
+         f.photoLeft.push === '', JSON.stringify(f.photoLeft));
+    t.ok('FLOOR: with the measurements still to do, the heads-up fires',
+         /scale and a tape measure/.test(f.none.push), JSON.stringify(f.none));
+    t.ok('FLOOR: and a finished check-in gets no heads-up at all', f.all.push === '', JSON.stringify(f.all));
 
     await ctx.close();
     own.srv.close();

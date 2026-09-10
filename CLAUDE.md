@@ -20730,6 +20730,24 @@ v494's.
 - **`testReminderNotif()` correctly always fires.** It is the manual "does this
   work?" button, so every one of these gates would defeat its purpose.
 
+### The stale floor was satisfied by the half the mutant did not touch
+
+Two of thirteen mutants escaped, and both were the same weak check. The floor
+seeded a photo AND a measurement from last week and asserted the banner still
+rendered. Under the mutant that drops the PHOTO week-test, the MEASUREMENT
+week-test survives — so `any` stays true, the banner still renders, and the
+floor passes on the half that was never in question. The mutant that drops the
+measurement week-test escapes for the mirror reason.
+
+**A guard is only visible when the value beside it cannot supply the answer.**
+The discriminating case is ONE part stale with the others done THIS week: a
+last-week photo beside today's measurements, and last week's measurements beside
+today's photo. Seeded that way each mutant fails by name, and the all-stale case
+is kept as the broader floor it always was.
+
+That is this file's most-repeated escape, and it is the first time it has been a
+sibling FIELD rather than a neighbouring guard doing the supplying.
+
 ### And the block was appended after the server had closed
 
 Suite 13 calls `srv.close()` at line 634 and runs on for another 500 lines
