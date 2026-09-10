@@ -20155,6 +20155,31 @@ offered nothing and promised nothing.
 **And the button is CLICKED, not the helper called** — the twelfth time this
 file has recorded that the route is the thing to drive.
 
+### An inherited key is not a region, and the offer put it in an onclick
+
+Found by re-reading the fix an hour after writing it. `PAIN_JOINT['constructor']`
+is **truthy** — an inherited key — and `STATE.pain[].region` is stored data the
+boot repair checked only for `exId`. So a bracket read hands back
+`Object.prototype.constructor` as *"the joint that hurt"* and interpolates a
+**function** into an `onclick` attribute. That is v328's `CARDIO_INFO` lesson and
+v400's `EX[id] &&` lesson, arriving in code written the same hour.
+
+`painJoint(region)` is a real membership test, asked by the card AND by
+`adoptPainLimit()`'s own filter, so there is one definition. **After it the
+region is one of nine literal keys, which is what makes the attribute safe by
+construction rather than by escaping.**
+
+**Two guards, two doors**: the boot repair now keeps a row only if its region is
+a string — the same shape as the `exId` test beside it — because a cross-tab
+adopt replaces `STATE` with no boot behind it, and because junk otherwise
+travels in every backup. The row is **dropped rather than coerced**: a report
+with no usable region can be neither counted nor offered, and every row
+`noteHurt()` writes carries a string, so a settled state is left alone and no
+athlete is told their data needed repairing.
+
+**The guard is what makes the block mean anything**: it asserts the inherited
+key really is truthy on the map before asserting the card refuses it.
+
 ### The guard caught a floor asserting on a pattern that was never built
 
 `painCount()` counts **DISTINCT sessions** — it de-duplicates on `date|ptr`, and

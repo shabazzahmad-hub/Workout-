@@ -14453,6 +14453,7 @@ export default async function () {
       R.ptrAfter = STATE.progressPtr;
       R.painStamped = !!(STATE.logs[3] || {}).stoppedForPain;
       R.painRecorded = (STATE.pain || []).some(x => x.date === todayISO());
+      R.playerClosed = !PLAYER && !document.querySelector('#player').classList.contains('open');
 
       /* and with program work already logged today */
       STATE.logs = {}; STATE.progressPtr = 3; save();
@@ -14472,6 +14473,7 @@ export default async function () {
     t.eq('a bonus session’s pain stop leaves the program pointer alone (v490)', r.ptrAfter, 3, JSON.stringify(r));
     t.ok('and stamps no stoppedForPain on a session never started', r.painStamped === false, JSON.stringify(r));
     t.ok('while the pain itself is still recorded', r.painRecorded === true, JSON.stringify(r));
+    t.ok('and the player still closes', r.playerClosed === true, JSON.stringify(r));
     t.ok('GUARD: the second case really had program work logged, in a FREE player', r.gHasWork === true && r.gFree2 === true, JSON.stringify(r));
     t.eq('and with program work logged today it still leaves the pointer alone', r.ptrAfter2, 3, JSON.stringify(r));
     t.ok('and never commits that program session as done', r.doneAfter2 === false, JSON.stringify(r));
@@ -14546,6 +14548,33 @@ export default async function () {
       R.cardDefersToPattern = !!(card() && ![...card().querySelectorAll('button')]
         .some(b => /work around my/i.test(b.innerText)));
 
+      /* AN INHERITED KEY IS NOT A REGION. PAIN_JOINT['constructor'] is truthy,
+         and this region is stored data an import controls, so a bracket read
+         would hand back a FUNCTION and interpolate its source into an onclick. */
+      R.gInheritedIsTruthy = !!PAIN_JOINT['constructor'];
+      R.jointOfInherited = painJoint('constructor');
+      R.jointOfReal = painJoint('legs');
+      STATE.pain = [{ exId: 'squat', region: 'constructor', date: todayISO(), ptr: p }];
+      STATE.profile.limitations = []; save(); paint();
+      const c3 = card();
+      R.inheritedNoOffer = !!(c3 && ![...c3.querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+      R.inheritedNoFunction = !!(c3 && !/function\s|=>/.test(c3.innerHTML));
+
+      /* and the boot repair drops a row whose region is not a string at all */
+      STATE.pain = [{ exId: 'squat', region: { bad: 1 }, date: todayISO(), ptr: p },
+                    { exId: 'squat', region: 'legs', date: todayISO(), ptr: p }];
+      normalizeState();
+      R.repairKept = (STATE.pain || []).length;
+      R.repairKeptReal = (STATE.pain || []).every(x => typeof x.region === 'string');
+
+      /* FLOOR: the offer is about the stop that just happened, not an old report */
+      const dy = new Date(); dy.setDate(dy.getDate() - 3);
+      STATE.pain = [{ exId: 'squat', region: R.recordedRegion, date: localISO(dy), ptr: p }];
+      STATE.profile.limitations = []; save(); paint();
+      R.staleNoOffer = !!(card() && ![...card().querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+
       /* FLOOR: a region the map does not know promises nothing and offers nothing */
       STATE.pain = [{ exId: 'burpee', region: 'cardio', date: todayISO(), ptr: p }];
       STATE.profile.limitations = []; save(); paint();
@@ -14563,6 +14592,11 @@ export default async function () {
     t.ok('FLOOR: a joint already being worked around is not offered again', r.afterAdoptOffer === false, JSON.stringify(r));
     t.ok('GUARD: two reports on one region really do make a pattern', r.patternFires === true, JSON.stringify(r));
     t.ok('FLOOR: and the card defers to the pattern prompt rather than repeating it', r.cardDefersToPattern === true, JSON.stringify(r));
+    t.ok('GUARD: an inherited key really is truthy on the region map', r.gInheritedIsTruthy === true, JSON.stringify(r));
+    t.ok('painJoint() refuses it and still answers for a real region (v490)', r.jointOfInherited === null && r.jointOfReal === 'knee', JSON.stringify({ inh: r.jointOfInherited, real: r.jointOfReal }));
+    t.ok('so an inherited key offers nothing and puts no function on the glass', r.inheritedNoOffer === true && r.inheritedNoFunction === true, JSON.stringify(r));
+    t.ok('and the boot repair drops a row whose region is not a string', r.repairKept === 1 && r.repairKeptReal === true, JSON.stringify(r));
+    t.ok('FLOOR: a report from three days ago is not offered on today\u2019s card', r.staleNoOffer === true, JSON.stringify(r));
     t.ok('FLOOR: a region the map does not know is offered nothing', r.unmappedNoOffer === true, JSON.stringify(r));
     t.ok('FLOOR: and is promised nothing either', r.unmappedNoPromise === true, JSON.stringify(r));
   }

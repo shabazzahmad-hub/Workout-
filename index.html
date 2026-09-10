@@ -7655,12 +7655,22 @@ function painPattern(){
    It stands down when the pattern prompt is already offering the same joint:
    both render on Today's workout tab, and two notes telling the athlete to
    close one gap is the defect v393 removed. */
+/* MEMBERSHIP, not a bracket read. PAIN_JOINT['constructor'] is TRUTHY — an
+   inherited key — and STATE.pain[].region is stored data importData() accepts
+   with no shape check on that field, so a bracket read hands back
+   Object.prototype's own constructor as "the joint that hurt" and interpolates
+   a FUNCTION into an onclick attribute. After this the region is one of the
+   nine literal keys, which is what makes the attribute below safe by
+   construction rather than by escaping. */
+function painJoint(region){
+  try{return Object.prototype.hasOwnProperty.call(PAIN_JOINT,region)?PAIN_JOINT[region]:null;}catch(e){return null;}
+}
 function painJustNow(){
   try{
     const rows=Array.isArray(STATE.pain)?STATE.pain:[];
     const last=rows[rows.length-1];
     if(!last||last.date!==todayISO())return null;
-    const joint=PAIN_JOINT[last.region];
+    const joint=painJoint(last.region);
     if(!joint)return null;
     const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
     if(lims.includes(joint))return null;          // already training around it
@@ -7684,7 +7694,7 @@ function adoptPainLimit(joint){
     if(!Array.isArray(P.limitations))P.limitations=[];
     if(!P.limitations.includes(joint))P.limitations.push(joint);
     // the reports have done their job; clearing them stops the prompt repeating
-    STATE.pain=(STATE.pain||[]).filter(x=>PAIN_JOINT[x&&x.region]!==joint);
+    STATE.pain=(STATE.pain||[]).filter(x=>painJoint(x&&x.region)!==joint);
     save();render();
     toast('Working around your '+joint+' from now on');
   }catch(e){}
@@ -25393,7 +25403,12 @@ function normalizeState(){
     }
   }catch(e){}
   if(!Array.isArray(STATE.pain))STATE.pain=[];
-  STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string');
+  /* AND ITS REGION, which reaches an onclick through the pain card's offer.
+     Same shape as the exId test beside it: a report with no usable region can
+     be neither counted nor offered, so the row goes rather than being coerced
+     — every row noteHurt() writes carries a string, so a settled state is left
+     alone and no athlete is told their data needed repairing. */
+  STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string'&&typeof x.region==='string');
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object'||Array.isArray(STATE.achievements))STATE.achievements={};
   /* THE SAME CLASS, one map over. The Badges tile on Progress > Summary is
