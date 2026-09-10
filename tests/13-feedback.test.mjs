@@ -5,7 +5,7 @@
    scale, prescribing movements with no way to say one hurt, rewriting six weeks
    of targets from a single bad morning, and advancing a 378-session pointer on
    a tap that could not be taken back. */
-import { serve, launch, suite, seedAthlete } from './lib/harness.mjs';
+import { serve, launch, suite, seedAthlete, waitForBoot } from './lib/harness.mjs';
 
 export default async function run() {
   const t = suite('feedback loops');
@@ -986,6 +986,221 @@ export default async function run() {
     t.ok('FLOOR: a phone that granted it sees no warning at all', r.grantedSilent, r);
     t.ok('FLOOR: with both switches off there is nothing to warn about', r.offSilent, r);
     t.ok('a device with no notifications at all names the iPhone case', r.noApi, r);
+  }
+
+
+  /* ---- a nudge must not ask for work already done, or on a day declared off -
+     The evening reminder asked two questions — is today scheduled, and did they
+     train — and the screens ask two more. Measured, every day scheduled:
+
+       nothing logged      fires, correctly
+       trained today       quiet, correctly
+       LOGGED A REST DAY   "Time to train — keep your streak!" + a push
+       STOPPED FOR PAIN    "Time to train — keep your streak!" + a push
+
+     v347 taught gapSince() and driftingDays() that a rest day the athlete chose
+     is not a debt; v493 taught the same pair that a pain stop is not a missed
+     session. Neither round reached the notification — the one surface that
+     reaches the athlete when they are NOT looking at the app, and the one where
+     a scolding after a pain stop costs the safety button its next press.
+
+     THE GUARD IS THE WHOLE BLOCK: without pinning that an ordinary untrained
+     evening still fires, every assertion below is satisfied by a reminder that
+     never fires at all — which would kill the feature outright. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const keep = { days: STATE.profile.days.slice(), on: STATE.settings.reminderOn,
+                     at: STATE.settings.reminderTime, weekly: STATE.settings.weeklyOn };
+      const perm = Object.getOwnPropertyDescriptor(Notification, 'permission');
+      Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+
+      const run = setup => {
+        STATE.logs = {}; STATE.quickLog = {}; STATE.restDays = {};
+        delete STATE._remindedOn;
+        STATE.progressPtr = 3;
+        STATE.settings.reminderOn = true; STATE.settings.reminderTime = '00:01';
+        STATE.settings.weeklyOn = false;           // isolate the training reminder
+        STATE.profile.days = [0, 1, 2, 3, 4, 5, 6];
+        setup();
+        let sent = 0, said = '';
+        const rs = window.sendCoreNotif, rt = window.toast;
+        window.sendCoreNotif = () => { sent++; };
+        window.toast = x => { said = String(x); };
+        try { checkReminder(); } catch (e) { o.threw = String(e).slice(0, 80); }
+        window.sendCoreNotif = rs; window.toast = rt;
+        return { sent, said, due: trainingNudgeDue() };
+      };
+
+      o.plain   = run(() => {});
+      o.trained = run(() => { STATE.logs[3] = { done: true, completedAt: todayISO(), ex: {}, items: [] }; });
+      o.quick   = run(() => { STATE.quickLog[todayISO()] = 1; });
+      /* A genuinely unscheduled day, computed from the weekday this actually
+         runs on — the calendar is part of the state a block has to build. */
+      o.offDay  = run(() => { const d = new Date().getDay();
+                              STATE.profile.days = [0,1,2,3,4,5,6].filter(x => x !== d); });
+      o.rested  = run(() => { STATE.restDays[todayISO()] = true; });
+      o.pain    = run(() => { STATE.logs[3] = { done: false, stoppedForPain: todayISO(), ex: {}, items: [] };
+                              STATE.progressPtr = 4; });
+      o.painSeen = (() => { STATE.logs = {}; STATE.progressPtr = 3;
+        STATE.logs[3] = { done: false, stoppedForPain: todayISO(), ex: {}, items: [] };
+        STATE.progressPtr = 4; const v = todayStoppedForPain(); STATE.logs = {}; return v; })();
+
+      if (perm) Object.defineProperty(Notification, 'permission', perm);
+      STATE.profile.days = keep.days; STATE.settings.reminderOn = keep.on;
+      STATE.settings.reminderTime = keep.at; STATE.settings.weeklyOn = keep.weekly;
+      STATE.logs = {}; STATE.quickLog = {}; STATE.restDays = {};
+      delete STATE._remindedOn; STATE.progressPtr = 0; save();
+      return o;
+    });
+    t.ok('GUARD: an ordinary untrained evening still nudges', r.plain.sent === 1 && r.plain.due === true, JSON.stringify(r.plain));
+    t.ok('GUARD: a pain stop really is visible to the screens', r.painSeen === true, JSON.stringify(r));
+    t.ok('a day the athlete logged as REST is not nudged', r.rested.sent === 0 && r.rested.due === false, JSON.stringify(r.rested));
+    t.ok('and a day they STOPPED FOR PAIN is not nudged', r.pain.sent === 0 && r.pain.due === false, JSON.stringify(r.pain));
+    t.ok('neither is told to keep a streak that is not at risk',
+         r.rested.said === '' && r.pain.said === '', JSON.stringify(r));
+    t.ok('FLOOR: a day they trained is still quiet', r.trained.sent === 0, JSON.stringify(r.trained));
+    t.ok('FLOOR: a quick session today counts as trained', r.quick.sent === 0, JSON.stringify(r.quick));
+    t.ok('FLOOR: a day off the schedule is still quiet', r.offDay.sent === 0, JSON.stringify(r.offDay));
+  }
+
+  /* ---- the weekly check-in asked for all three, every Saturday, always -----
+     It asks for a photo, a waist and a weight, and the app can see all three.
+     Measured on a Saturday with a weight AND a waist recorded that morning: the
+     banner still read "Take a progress photo, measure your waist, and weigh in"
+     and the push still said "step on the scale, measure your waist, and log
+     them". A note that always fires is a note nobody reads.
+
+     One predicate, so the banner on Today and the push cannot disagree about
+     what is left. Needs a real Saturday, so it runs on its own page with the
+     clock pinned — the weekday is part of the state this block asserts on. */
+  {
+    /* Its own server: suite 13 closes the shared one long before this point, so
+       a fresh page here cannot navigate to it (ERR_CONNECTION_REFUSED). */
+    const own = await serve();
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const p2 = await ctx.newPage();
+    await p2.clock.install({ time: new Date('2026-09-12T18:00:00') });   // a Saturday
+    await p2.goto(`http://127.0.0.1:${own.port}/`, { waitUntil: 'networkidle' });
+    await waitForBoot(p2);
+    await seedAthlete(p2);
+
+    const r = await p2.evaluate(() => {
+      const o = { dow: new Date().getDay() };
+      const perm = Object.getOwnPropertyDescriptor(Notification, 'permission');
+      Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+      const iso = back => { const d = new Date(); d.setDate(d.getDate() - back); return localISO(d); };
+
+      const run = (setup, dow) => {
+        STATE.measurements = []; STATE.photos = [];
+        delete STATE._weeklyRemindedWeek; delete STATE._weeklyPrepWeek;
+        STATE.settings.weeklyOn = true; STATE.settings.reminderOn = false;
+        setup();
+        let sent = [];
+        const real = window.fireProgressNotif;
+        window.fireProgressNotif = m => { sent.push(String(m)); };
+        try { checkReminder(); } catch (e) { o.threw = String(e).slice(0, 80); }
+        window.fireProgressNotif = real;
+        const b = weeklyBannerHTML();
+        return { push: sent.join(' '), banner: b, left: weeklyCheckinLeft() };
+      };
+
+      o.none  = run(() => {});
+      o.meas  = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }]; });
+      o.photo = run(() => { STATE.photos = [{ id: 'a', date: todayISO(), pose: 'front' }]; });
+      o.all   = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }];
+                            STATE.photos = [{ id: 'a', date: todayISO(), pose: 'front' }]; });
+      /* ONE PART STALE AT A TIME. An all-stale case cannot see either week
+         test: whichever half the mutant leaves alone keeps `any` true, so the
+         banner still renders and the floor passes on the half that was never
+         in question. A guard is only visible when the value beside it cannot
+         supply the answer. */
+      o.stale     = run(() => { STATE.measurements = [{ date: iso(8), weight: 88, waist: 96 }];
+                                STATE.photos = [{ id: 'a', date: iso(8), pose: 'front' }]; });
+      o.oldPhoto  = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }];
+                                STATE.photos = [{ id: 'a', date: iso(8), pose: 'front' }]; });
+      o.oldMeas   = run(() => { STATE.measurements = [{ date: iso(8), weight: 88, waist: 96 }];
+                                STATE.photos = [{ id: 'a', date: todayISO(), pose: 'front' }]; });
+      /* The joiner's own contract — one item takes no "and". */
+      o.words1 = weeklyCheckinWords({ photo: true, waist: false, weight: false });
+      o.words3 = weeklyCheckinWords({ photo: true, waist: true, weight: true });
+      if (perm) Object.defineProperty(Notification, 'permission', perm);
+      return o;
+    });
+
+    t.eq('GUARD: the block really is running on a Saturday', r.dow, 6, JSON.stringify({ dow: r.dow }));
+    t.ok('GUARD: with nothing logged all three are outstanding',
+         r.none.left.photo && r.none.left.waist && r.none.left.weight, JSON.stringify(r.none.left));
+    t.ok('a check-in already done this week raises no banner', r.all.banner === '', JSON.stringify(r.all));
+    t.ok('and sends no push either', r.all.push === '', JSON.stringify(r.all));
+    t.ok('with the measurements done it asks only for the photo',
+         /progress photo/.test(r.meas.banner) && !/weigh in/.test(r.meas.banner)
+         && /progress photo/.test(r.meas.push) && !/scale/.test(r.meas.push), JSON.stringify(r.meas));
+    t.ok('and its Waist & weight button goes with them',
+         !/logMeasure\(\)/.test(r.meas.banner) && /go\(&#39;progress&#39;\)|go\('progress'\)/.test(r.meas.banner), JSON.stringify(r.meas));
+    t.ok('with the photo done it asks only for the measurements',
+         !/progress photo/.test(r.photo.banner) && /weigh in/.test(r.photo.banner)
+         && /logMeasure\(\)/.test(r.photo.banner), JSON.stringify(r.photo));
+    t.ok('FLOOR: with nothing done it still asks for all three',
+         /progress photo/.test(r.none.banner) && /waist/.test(r.none.banner) && /weigh in/.test(r.none.banner),
+         JSON.stringify(r.none));
+    t.ok('FLOOR: last week\'s check-in does not answer this week\'s',
+         r.stale.banner !== '' && r.stale.push !== '', JSON.stringify(r.stale));
+    t.ok('last week\'s PHOTO does not answer this week\'s, with the rest done',
+         r.oldPhoto.left.photo === true && /progress photo/.test(r.oldPhoto.banner),
+         JSON.stringify(r.oldPhoto.left));
+    t.ok('last week\'s MEASUREMENTS do not answer this week\'s, with the photo done',
+         r.oldMeas.left.waist === true && r.oldMeas.left.weight === true
+         && /weigh in/.test(r.oldMeas.banner), JSON.stringify(r.oldMeas.left));
+    t.eq('one thing left reads as one thing', r.words1, 'take a progress photo', JSON.stringify(r));
+    t.eq('three read as a list', r.words3, 'take a progress photo, measure your waist and weigh in', JSON.stringify(r));
+
+    /* THE FRIDAY HEADS-UP ASKS A NARROWER QUESTION, and only a Friday can tell
+       the two apart: only the tape and the scale need fetching, so an athlete
+       whose measurements are already done but whose photo is not must NOT be
+       told to have a scale ready tomorrow. That is this round's own class one
+       branch over, and a Saturday page cannot reach it. */
+    const p3 = await ctx.newPage();
+    await p3.clock.install({ time: new Date('2026-09-11T18:00:00') });   // a Friday
+    await p3.goto(`http://127.0.0.1:${own.port}/`, { waitUntil: 'networkidle' });
+    await waitForBoot(p3);
+    await seedAthlete(p3);
+
+    const f = await p3.evaluate(() => {
+      const o = { dow: new Date().getDay() };
+      const perm = Object.getOwnPropertyDescriptor(Notification, 'permission');
+      Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+      const run = setup => {
+        STATE.measurements = []; STATE.photos = [];
+        delete STATE._weeklyRemindedWeek; delete STATE._weeklyPrepWeek;
+        STATE.settings.weeklyOn = true; STATE.settings.reminderOn = false;
+        setup();
+        let sent = [];
+        const real = window.fireProgressNotif;
+        window.fireProgressNotif = m => { sent.push(String(m)); };
+        try { checkReminder(); } catch (e) { o.threw = String(e).slice(0, 80); }
+        window.fireProgressNotif = real;
+        return { push: sent.join(' '), left: weeklyCheckinLeft() };
+      };
+      o.none  = run(() => {});
+      o.photoLeft = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }]; });
+      o.all   = run(() => { STATE.measurements = [{ date: todayISO(), weight: 88, waist: 96 }];
+                            STATE.photos = [{ id: 'a', date: todayISO(), pose: 'front' }]; });
+      if (perm) Object.defineProperty(Notification, 'permission', perm);
+      return o;
+    });
+
+    t.eq('GUARD: the heads-up block really is running on a Friday', f.dow, 5, JSON.stringify({ dow: f.dow }));
+    t.ok('GUARD: with the measurements done only the photo is outstanding',
+         f.photoLeft.left.any === true && f.photoLeft.left.kit === false, JSON.stringify(f.photoLeft.left));
+    t.ok('a photo is the only thing left, so no scale is asked for tomorrow',
+         f.photoLeft.push === '', JSON.stringify(f.photoLeft));
+    t.ok('FLOOR: with the measurements still to do, the heads-up fires',
+         /scale and a tape measure/.test(f.none.push), JSON.stringify(f.none));
+    t.ok('FLOOR: and a finished check-in gets no heads-up at all', f.all.push === '', JSON.stringify(f.all));
+
+    await ctx.close();
+    own.srv.close();
   }
 
   const failed = t.finish(errors);
