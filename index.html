@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='487';
+const APP_VERSION='488';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13684,27 +13684,35 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
     }
     // rest keeps the plain 3-2-1 so the two phases stay distinguishable by ear
     if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0){beepDuck(300);beep(920,.17,0.92);}
-    if(remain<=0){
-      beepGo();haptic(30);clearInterval(timer.iv);
-      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,restLabel(label),0,onAfterRest||null,true);},700))(_sheetGen);if(onDone)onDone();return;}
-      if(onDone)onDone();
-      /* A CHAINED REST HANDS STRAIGHT TO THE NEXT SET, which has already opened
-         its own sheet — so writing "Done" into it and queueing a close would
-         blank the set the athlete is about to do. No other caller passes a rest
-         an onDone, so this branch is only ever the chain. */
-      if(!isHold&&onDone)return;
-      if(!motivate('done'))coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
-      $('#tnum')&&($('#tnum').textContent='Done');
-      autoClose(700,()=>closeSheet());return;
-    }
+    if(remain<=0){complete();return;}
     update();
   }
+  /* THE ONE COMPLETION PATH, reached by the clock running out AND by the Done
+     button. Done used to be Stop under a different label — stopTimer() and
+     closeSheet(), the set unmarked and the chain ended — so an athlete who
+     finished the hold and tapped the green button recorded nothing. It marks
+     the set (onDone) and hands on exactly as the clock does; on a chained REST
+     it is the player's own "Skip rest". Stop is still the abandon. */
+  function complete(){
+    beepGo();haptic(30);if(timer)clearInterval(timer.iv);
+    if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,restLabel(label),0,onAfterRest||null,true,ex);},700))(_sheetGen);if(onDone)onDone();return;}
+    if(onDone)onDone();
+    /* A CHAINED REST HANDS STRAIGHT TO THE NEXT SET, which has already opened
+       its own sheet — so writing "Done" into it and queueing a close would
+       blank the set the athlete is about to do. No other caller passes a rest
+       an onDone, so this branch is only ever the chain. */
+    if(!isHold&&onDone)return;
+    if(!motivate('done'))coachSpeak(isHold?'Time. Strong hold.':'Rest over. Back to work.');
+    $('#tnum')&&($('#tnum').textContent='Done');
+    autoClose(700,()=>closeSheet());return;
+  }
+  function finish(){if(!timer)return;remain=0;update();complete();}
   function update(){if(phase==='ready')return;const n=$('#tnum');if(n){n.textContent=fmtTime(remain);}const r=$('#tring');if(r){r.style.strokeDashoffset=C*(1-remain/total);} }
   stopTimer();
   /* The sixth timed surface. It counted `remain--` with no wall clock and had
      no rescue at all — a hold that froze stayed frozen. The tick goes ON the
      object so the heartbeat can re-arm what it cannot see. */
-  timer={iv:setInterval(tick,1000),mode,tick,lastTick:monoNow()};
+  timer={iv:setInterval(tick,1000),mode,tick,finish,lastTick:monoNow()};
   wakeOn();   // hands-free and timed, same as the player
   update();
 }
@@ -13729,7 +13737,7 @@ function timerHTML(label,secs,isHold,total,ex){
     </div>
     <div class="btnrow" style="margin-top:20px">
       <button class="btn ghost" onclick="stopTimer();closeSheet()">Stop</button>
-      <button class="btn ${isHold?'green':'primary'}" onclick="stopTimer();closeSheet()">Done</button>
+      <button class="btn ${isHold?'green':'primary'}" onclick="timerFinish()">${isHold?'Done':'Skip rest'}</button>
     </div>
   </div>`;
 }
@@ -13747,6 +13755,11 @@ function markSetFromTimer(exId){
 let _repTok=0;
 function startGuidedReps(exId){exSetChain(exId);}
 function cancelReps(){_repTok++;stopTimer();closeSheet();}
+/* Done on a timer sheet means "this set is done" — mark it and hand on the way
+   the clock would — never merely "close". A sheet with no live clock behind
+   it (already finished, or torn down) just closes, which is what Done used to
+   do everywhere. */
+function timerFinish(){if(timer&&typeof timer.finish==='function'){timer.finish();return;}stopTimer();closeSheet();}
 function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
   const total=Math.max(1,reps);let n=0;
   const tempo=repTempoSetting();
@@ -13775,7 +13788,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
     if(ready>0){beep(1000,.15,0.7);const e=$('#rcNum');if(e)e.textContent=ready;return;}
     beepGo();haptic(30);coachSay('Go!');clearInterval(timer.iv);
     const e=$('#rcNum');if(e){e.textContent='0';e.className='tnum go';}setP('OF '+total+' REPS');
-    timer={iv:setInterval(step,tempo*1000),mode:'reps',tick:step,lastTick:monoNow(),every:tempo*1000,catchUp:false};
+    timer={iv:setInterval(step,tempo*1000),mode:'reps',tick:step,finish,lastTick:monoNow(),every:tempo*1000,catchUp:false};
   }
   function step(){
     if(timer)timer.lastTick=monoNow();
@@ -13789,22 +13802,32 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
     const swap=(n===half&&ex&&ex.side==='switch'&&total>1);
     const h=swap?SIDE_LINE:((total>=8&&n===half)?motivateLine('during'):'');
     plSay(String(n)+(h?'. '+h:''));
-    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);}
+    /* And on the GLASS, as the ▶ Hold timer (setPhase) and the player (#plCoach)
+       both do: a phone on silent with the voice off hears neither the tones nor
+       the line, and the ring is what the athlete is looking at. */
+    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setP('SWITCH SIDES');}
     paint();
-    if(n>=total){
-      stopTimer();
-      const tok=++_repTok,rest=restAfter,done=onDone,lbl=label,gen=_sheetGen,nxt=onAfterRest;
-      setTimeout(()=>{
-        if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
-        if(!motivate('done'))coachSpeak('Set complete. Strong work.');
-        if(done)done();
-        if(rest>0)runTimer('rest',rest,restLabel(lbl),0,nxt||null);
-        else{const nn=$('#rcNum');if(nn)nn.textContent='✓';autoClose(700,closeSheet);}
-      },Math.max(400,tempo*450));
-    }
+    if(n>=total)complete();
   }
+  /* The one completion path — the last rep AND the Done button (timerFinish).
+     Done used to be cancelReps() under a green label: the set unmarked and the
+     chain ended. */
+  function complete(){
+    stopTimer();
+    const tok=++_repTok,rest=restAfter,done=onDone,lbl=label,gen=_sheetGen,nxt=onAfterRest;
+    setTimeout(()=>{
+      if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
+      if(!motivate('done'))coachSpeak('Set complete. Strong work.');
+      if(done)done();
+      /* the exercise rides along so the rest ring keeps the photograph, as the
+         player's rest does (v290) and the standalone Rest button already did */
+      if(rest>0)runTimer('rest',rest,restLabel(lbl),0,nxt||null,false,ex);
+      else{const nn=$('#rcNum');if(nn)nn.textContent='✓';autoClose(700,closeSheet);}
+    },Math.max(400,tempo*450));
+  }
+  function finish(){if(!timer)return;n=total;paint();complete();}
   stopTimer();
-  timer={iv:setInterval(readyTick,1000),mode:'reps',tick:readyTick,lastTick:monoNow(),catchUp:false};
+  timer={iv:setInterval(readyTick,1000),mode:'reps',tick:readyTick,finish,lastTick:monoNow(),catchUp:false};
   wakeOn();
 }
 function repHTML(label,total,ex){
@@ -13823,7 +13846,7 @@ function repHTML(label,total,ex){
     <div class="tiny muted" style="text-align:center;margin-top:6px">Do one rep on each call. It rests you between sets automatically.</div>
     <div class="btnrow" style="margin-top:16px">
       <button class="btn ghost" onclick="cancelReps()">Stop</button>
-      <button class="btn green" onclick="cancelReps()">Done</button>
+      <button class="btn green" onclick="timerFinish()">Done</button>
     </div>
   </div>`;
 }
@@ -15264,16 +15287,40 @@ function backupNudgeHTML(){
 }
 function dismissBackupNudge(){STATE._backupNudgeDismissed=Date.now();save();render();}
 /* #5 — Grocery list compiled from today's meal plan. */
-function openGrocery(){
+/* The ingredients of today's plan, de-duplicated and sorted — one derivation,
+   asked by the sheet AND by the tick writer, so the two cannot disagree about
+   which ticks still belong to a plan. */
+function groceryItems(){
   const plan=currentMealPlan();const recs=plan.meals.map(recipeById).filter(Boolean);
-  if(!recs.length){toast('No meal plan yet');return;}
   const seen=new Map();
   recs.forEach(r=>(r.ing||[]).forEach(x=>{const s=String(x).trim();const k=s.toLowerCase();if(s&&!seen.has(k))seen.set(k,s);}));
-  const items=[...seen.values()].sort((a,b)=>a.localeCompare(b));
+  return {date:plan.date,recs,items:[...seen.values()].sort((a,b)=>a.localeCompare(b))};
+}
+/* A grocery tick is keyed to the PLAN'S DAY as well as the ingredient, so it
+   lives exactly as long as the list it was ticked on: it survives the sheet
+   closing and the app reloading in the shop, and it is gone with tomorrow's
+   plan. It shares STATE.shopTicks with the month list under its own prefix,
+   so neither list's ticks can be mistaken for the other's. */
+function groceryKey(date,item){return 'g:'+date+':'+String(item).toLowerCase();}
+function groceryTicked(date,item){return !!shopTicks()[groceryKey(date,item)];}
+function toggleGrocery(item){
+  if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
+  const g=groceryItems();const k=groceryKey(g.date,item);
+  if(STATE.shopTicks[k])delete STATE.shopTicks[k];else STATE.shopTicks[k]=1;
+  /* prune every grocery tick that is not on TODAY'S list — yesterday's plan,
+     or an ingredient a regenerated plan no longer carries — so a backup never
+     accumulates ticks for lists that are gone */
+  const live=new Set(g.items.map(x=>groceryKey(g.date,x)));
+  Object.keys(STATE.shopTicks).forEach(key=>{if(key.indexOf('g:')===0&&!live.has(key))delete STATE.shopTicks[key];});
+  save();haptic(8);
+}
+function openGrocery(){
+  const g=groceryItems();const recs=g.recs,items=g.items;
+  if(!recs.length){toast('No meal plan yet');return;}
   openSheet(`
     <h3>🛒 Grocery list</h3>
     <div class="tiny muted" style="margin-bottom:10px">${_ve(dietLabel())} · from today's ${plural(recs.length,'meal')} · tap to check off</div>
-    <div class="card pad">${items.map(x=>`<label class="kv" style="cursor:pointer;border-top:1px solid var(--line)"><span>${_ve(x)}</span><input type="checkbox" onchange="this.closest('label').style.opacity=this.checked?.4:1" style="width:20px;height:20px;flex:0 0 auto"></label>`).join('')}</div>
+    <div class="card pad">${items.map(x=>{const on=groceryTicked(g.date,x);return `<label class="kv" style="cursor:pointer;border-top:1px solid var(--line);opacity:${on?.4:1}"><span>${_ve(x)}</span><input type="checkbox" data-grocery="${_ve(x)}" ${on?'checked':''} onchange="this.closest('label').style.opacity=this.checked?.4:1;toggleGrocery(this.dataset.grocery)" style="width:20px;height:20px;flex:0 0 auto"></label>`;}).join('')}</div>
     <button class="btn primary" style="margin-top:12px" onclick="closeSheet()">Done</button>
   `);
 }
@@ -21719,7 +21766,10 @@ function toggleShop(k){
   if(STATE.shopTicks[k])delete STATE.shopTicks[k];else STATE.shopTicks[k]=1;
   save();haptic(8);renderRef();
 }
-function clearShop(){STATE.shopTicks={};save();toast('List reset');renderRef();}
+/* Resets the MONTH list's ticks and leaves the grocery sheet's (the g: keys)
+   alone — the button is on the month list, and a reset that also emptied a
+   list on another screen is the "erase one thing, another goes" defect. */
+function clearShop(){const t=shopTicks();const keep={};Object.keys(t).forEach(k=>{if(k.indexOf('g:')===0)keep[k]=t[k];});STATE.shopTicks=keep;save();toast('List reset');renderRef();}
 function mealSlots(){return (STATE.nutrition.meals===4)?['breakfast','lunch','dinner','snack']:['breakfast','lunch','dinner'];}
 function slotShare(slots){return slots.length===4?{breakfast:.28,lunch:.30,dinner:.30,snack:.12}:{breakfast:.30,lunch:.35,dinner:.35};}
 // Whole-food goal: default ON (only explicit false turns it off).
@@ -22885,8 +22935,12 @@ function quickPlay(idx,setNo){
      rest and then to the next set, so the check means what the row promised. */
   const done=last?(()=>quickSetDone(idx)):null;
   const next=last?null:(()=>quickPlay(idx,n+1));
-  if(ex.unit==='time') runTimer('hold',target,label,last?0:rest,done,false,null,next);
-  else runRepCadence(target,label,last?0:rest,done,null,next);
+  /* The EXERCISE goes with it, as the Today runners pass it. A null here left
+     the Quick ring with no photograph — plRingMediaHTML(null) renders nothing —
+     and a one-sided move with no switch cue, on a sheet whose twin one function
+     away had both. */
+  if(ex.unit==='time') runTimer('hold',target,label,last?0:rest,done,false,ex,next);
+  else runRepCadence(target,label,last?0:rest,done,ex,next);
 }
 function quickSetDone(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=true;haptic(10);if(TAB==='quick')renderQuick();}
 /* THE BUTTON SAID "Unmark" AND COULD NOT UNMARK. quickMark() only ever wrote

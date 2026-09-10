@@ -13729,7 +13729,11 @@ export default async function () {
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
       /* and on the rep cadence */
       runRepCadence(10, 'Kettlebell Halo', 0, null, EX.kbhalo); await wait(20);
-      for (let i = 0; i < 20; i++) { if (timer && timer.tick) timer.tick(); }
+      o.repPhase = '';
+      for (let i = 0; i < 20; i++) {
+        if (timer && timer.tick) timer.tick();
+        if (/SWITCH/.test((document.querySelector('#rcphase') || {}).textContent || '')) o.repPhase = 'SWITCH SIDES';
+      }
       o.repSwitch = spoken.find(x => /Switch sides now/.test(x)) || '';
       o.repTone = tones.includes(660);
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
@@ -13742,8 +13746,34 @@ export default async function () {
       o.quickFound = !!q;
       if (q) {
         QUICK_ID = q.id; const idx = q.items.findIndex(i => i.exId === 'sideplank');
-        quickPlay(idx); await wait(20); o.quick1 = label(); closeSheet(); await wait(400);
+        quickPlay(idx); await wait(20); o.quick1 = label();
+        /* v488: quickPlay() handed the runners NULL for the exercise, so the
+           Quick ring carried no photograph at all — plRingMediaHTML(null) is
+           '' — while the Today runners one function away showed one. The
+           payload is the media element inside the ring, with the movement's
+           own picture on it. */
+        const qm = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+        o.quickMedia = qm ? (qm.getAttribute('src') || '') : '';
+        /* a video the headless browser cannot decode is replaced by its own
+           image on error, so either of the movement's two files is honest */
+        o.quickOk = !!o.quickMedia && [EX.sideplank.vid, EX.sideplank.img].includes(o.quickMedia);
+        closeSheet(); await wait(400);
         quickPlay(idx, 2); await wait(20); o.quick2 = label(); closeSheet(); await wait(400);
+        /* the rep runner too — a Quick rep movement */
+        const qr = QUICKIES.find(x => x.items.some(i => EX[quickExId(i.exId)] && EX[quickExId(i.exId)].unit === 'reps'));
+        if (qr) {
+          QUICK_ID = qr.id; const ri = qr.items.findIndex(i => EX[quickExId(i.exId)] && EX[quickExId(i.exId)].unit === 'reps');
+          quickPlay(ri); await wait(20);
+          const rm = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+          o.quickRepMedia = rm ? (rm.getAttribute('src') || '') : '';
+          const rex = EX[quickExId(qr.items[ri].exId)]; o.quickRepOk = !!o.quickRepMedia && [rex.vid, rex.img].includes(o.quickRepMedia);
+          closeSheet(); await wait(400);
+        }
+        /* and the Today ▶ Hold timer is the floor the Quick sheet is measured against */
+        exSetChain(per.exId); await wait(20);
+        const tm = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+        o.todayMedia = tm ? (tm.getAttribute('src') || '') : '';
+        closeSheet(); await wait(400);
       }
       window.coachSpeak = oc; window.plSay = os; window.beep = ob;
       STATE.progressPtr = savePtr; save();
@@ -13763,9 +13793,16 @@ export default async function () {
     t.ok('FLOOR: and hears no switch tone', !r.plankTone, JSON.stringify(r));
     t.ok('the ▶ Guided reps cadence calls the switch WITH the count, at the halfway rep', /^5\. Switch sides now\./.test(r.repSwitch), JSON.stringify(r));
     t.ok('with the tone pair', r.repTone, JSON.stringify(r));
+    /* v488: the rep cadence spoke and beeped the switch and wrote NOTHING on
+       the glass — the hold timer and the player both do. A phone on silent
+       with the voice off had no switch signal at all on ▶ Guided reps. */
+    t.eq('and names it on the ring, as the hold timer does (v488)', r.repPhase, 'SWITCH SIDES');
     t.eq('FLOOR: a two-sided rep movement is never told to switch', r.crunchSwitch, 0);
     t.ok('GUARD: a Quick workout carries the side plank', r.quickFound, JSON.stringify(r));
     t.ok('Quick names the side too, through the same builder', /Left side$/.test(r.quick1 || '') && /Right side$/.test(r.quick2 || ''), JSON.stringify(r));
+    t.ok('GUARD: the Today runner shows the movement in its ring', !!r.todayMedia, JSON.stringify({ todayMedia: r.todayMedia }));
+    t.ok('the Quick hold ring shows the movement too (v488)', r.quickOk === true, JSON.stringify({ quickMedia: r.quickMedia }));
+    t.ok('and so does the Quick rep ring', r.quickRepOk === true, JSON.stringify({ quickRepMedia: r.quickRepMedia }));
   }
 
   /* v487 — THE REST BETWEEN TWO SIDES NAMES NO SIDE. The chain's label ends in
@@ -13797,8 +13834,36 @@ export default async function () {
         for (let i = 0; i < 400 && timer; i++) timer.tick();
         await new Promise(r => setTimeout(r, 900));
         out.restLabel = ($('#sheet .tt') || {}).textContent || '';
+        /* v488: the chained rest opened with NO exercise, so its ring was blank
+           while the player's rest (v290) and the standalone Rest button both
+           show the photograph. Either of the movement's two files is honest —
+           a video the headless browser cannot decode is replaced by its image. */
+        const rm = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+        out.restMedia = rm ? (rm.getAttribute('src') || '') : '';
+        out.restMediaOk = !!out.restMedia && [ex.vid, ex.img].includes(out.restMedia);
         out.restPhase = ($('#tphase') || {}).textContent || '';
         stopTimer(); closeSheet();
+        await new Promise(r => setTimeout(r, 400));
+        /* the REP chain's rest is a second call site and needs its own case:
+           a rep movement with more than one set, pumped through the cadence
+           to the end of set 1, then the rest it hands to */
+        const s1 = buildSession(per.ptr);
+        const rp = s1.main.find(m => EX[m.exId] && EX[m.exId].unit === 'reps' && m.sets > 1);
+        out.repFound = !!rp;
+        if (rp) {
+          exSetChain(rp.exId);
+          for (let i = 0; i < 400 && timer; i++) timer.tick();
+          /* the rep chain hands to its rest after max(400, tempo*450) ms —
+             1350 ms at the default cadence; a 900 ms wait read the SET label
+             back on CI and reported the rest as never opening */
+          await new Promise(r => setTimeout(r, Math.max(400, repTempoSetting() * 450) + 700));
+          const rex = EX[rp.exId];
+          out.repRestLabel = ($('#sheet .tt') || {}).textContent || '';
+          const rm2 = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+          out.repRestMedia = rm2 ? (rm2.getAttribute('src') || '') : '';
+          out.repRestMediaOk = !!out.repRestMedia && [rex.vid, rex.img].includes(out.repRestMedia);
+          stopTimer(); closeSheet();
+        }
         window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
       } catch (e) { out.err = String(e); }
       return out;
@@ -13809,6 +13874,162 @@ export default async function () {
     t.eq('FLOOR: a two-sided label is left alone', r.helperTwo, 'Plank · set 1 of 3 — rest');
     t.ok('GUARD: the set label named a side', /Left side/i.test(r.setLabel || ''), JSON.stringify(r));
     t.ok('the rest clock after a per-side set names no side', /rest/i.test(r.restLabel || '') && !/Left side|Right side/i.test(r.restLabel || ''), JSON.stringify(r));
+    t.ok('and the chained rest ring keeps the photograph (v488)', r.restMediaOk === true, JSON.stringify({ restMedia: r.restMedia }));
+    t.ok('GUARD: a rep movement with more than one set was found, and its chain reached the rest', r.repFound && /rest/i.test(r.repRestLabel || ''), JSON.stringify({ repFound: r.repFound, repRestLabel: r.repRestLabel }));
+    t.ok('the rep chain\'s rest ring keeps the photograph too (v488)', r.repRestMediaOk === true, JSON.stringify({ repRestMedia: r.repRestMedia }));
+  }
+
+  /* v488: DONE IS NOT STOP. Both timer sheets carried a ghost Stop and a green
+     Done that ran the identical `stopTimer();closeSheet()` — so an athlete who
+     finished the hold and tapped Done recorded nothing and the chain ended,
+     which is the "you have to press hold timer again" report by another door.
+     Done now runs the clock's own completion path: the set is marked, the
+     chained rest opens, and on a rest it is the player's "Skip rest". Stop is
+     still the abandon, pinned as the floor. Every case CLICKS the button. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const real = { speak: window.coachSpeak, say: window.plSay, beep: window.beep };
+      window.coachSpeak = () => {}; window.plSay = () => {}; window.beep = () => {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      try {
+        let per = null, rp = null, ptr = -1;
+        for (let p = 0; p < 80 && !(per && rp); p++) {
+          const s = buildSession(p); per = null; rp = null;
+          for (const m of s.main) {
+            const e = EX[m.exId];
+            if (!per && e && e.side === 'perSet' && e.unit === 'time' && m.sets > 1) per = m;
+            if (!rp && e && e.unit === 'reps' && m.sets > 1) rp = m;
+          }
+          if (per && rp) ptr = p;
+        }
+        if (!(per && rp)) { out.notFound = true; return out; }
+        STATE.progressPtr = ptr; save();
+        const marked = id => { const log = ensureLog(); const st = (log.ex && log.ex[id]) || { sets: [] }; return (st.sets || []).filter(Boolean).length; };
+        const clear = id => { const log = ensureLog(); if (log.ex) delete log.ex[id]; save(); };
+        const lbl = () => ($('#sheet .tt') || {}).textContent || '';
+        const green = () => document.querySelector('#sheet .btn.green');
+        const ghost = () => document.querySelector('#sheet .btn.ghost');
+        const primary = () => document.querySelector('#sheet .btn.primary');
+        const pump = k => { for (let i = 0; i < k && timer; i++) timer.tick(); };
+        /* 1. Done on a HOLD mid-set marks the set and opens the chained rest */
+        clear(per.exId); out.before = marked(per.exId);
+        exSetChain(per.exId); await wait(20); pump(7);
+        out.holdPhase = ($('#tphase') || {}).textContent || '';
+        out.doneText = (green() || {}).textContent || '';
+        green().click(); await wait(950);
+        out.afterDone = marked(per.exId);
+        out.restLabel = lbl(); out.restBtn = (primary() || {}).textContent || '';
+        /* 2. Skip rest on the chained rest hands straight to set 2 */
+        primary().click(); await wait(120);
+        out.set2 = lbl();
+        stopTimer(); closeSheet(); await wait(400);
+        /* 3. FLOOR: Stop marks nothing and opens no rest */
+        clear(per.exId);
+        exSetChain(per.exId); await wait(20); pump(7);
+        ghost().click(); await wait(950);
+        out.afterStop = marked(per.exId);
+        out.sheetAfterStop = $('#scrim').classList.contains('open');
+        /* 4. Done on the REP cadence marks the set and opens the rest */
+        clear(rp.exId);
+        exSetChain(rp.exId); await wait(20); pump(6);
+        out.repPhase = ($('#rcphase') || {}).textContent || '';
+        green().click(); await wait(Math.max(400, repTempoSetting() * 450) + 1000);
+        out.repAfterDone = marked(rp.exId);
+        out.repRest = lbl();
+        stopTimer(); closeSheet(); await wait(400);
+        /* 5. FLOOR: Stop on the rep cadence marks nothing */
+        clear(rp.exId);
+        exSetChain(rp.exId); await wait(20); pump(6);
+        ghost().click(); await wait(Math.max(400, repTempoSetting() * 450) + 1000);
+        out.repAfterStop = marked(rp.exId); out.repSheetAfterStop = $('#scrim').classList.contains('open');
+        /* 6. the standalone ⏱ Rest on a rep movement: Skip rest closes it and marks nothing */
+        clear(rp.exId);
+        openExerciseTimer(rp.exId); await wait(20);
+        out.standaloneBtn = (primary() || {}).textContent || '';
+        primary().click(); await wait(950);
+        out.standaloneMarked = marked(rp.exId); out.standaloneOpen = $('#scrim').classList.contains('open');
+        clear(per.exId); clear(rp.exId);
+      } catch (e) { out.err = String(e); }
+      stopTimer(); try { closeSheet(); } catch (e) {}
+      window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
+      return out;
+    });
+    t.ok('GUARD: the Done probe ran on a session carrying a per-side hold and a rep movement', !r.err && !r.notFound, JSON.stringify(r));
+    t.ok('GUARD: the hold was running and no set was marked yet', r.holdPhase === 'HOLD' && r.before === 0, JSON.stringify(r));
+    t.eq('GUARD: the green button reads Done', r.doneText, 'Done');
+    t.eq('Done on a running hold marks the set (v488)', r.afterDone, 1);
+    t.ok('and opens the chained rest', /— rest$/.test(r.restLabel), JSON.stringify({ restLabel: r.restLabel }));
+    t.eq('whose button is Skip rest, not Done', r.restBtn, 'Skip rest');
+    t.ok('and Skip rest hands straight to set 2', /set 2 of \d+/.test(r.set2), JSON.stringify({ set2: r.set2 }));
+    t.eq('FLOOR: Stop on a hold marks nothing', r.afterStop, 0);
+    t.ok('FLOOR: and opens no rest', r.sheetAfterStop === false, JSON.stringify({ sheetAfterStop: r.sheetAfterStop }));
+    t.ok('GUARD: the rep cadence was counting', /REPS/.test(r.repPhase), JSON.stringify({ repPhase: r.repPhase }));
+    t.eq('Done on the rep cadence marks the set (v488)', r.repAfterDone, 1);
+    t.ok('and opens the chained rest', /— rest$/.test(r.repRest), JSON.stringify({ repRest: r.repRest }));
+    t.eq('FLOOR: Stop on the rep cadence marks nothing', r.repAfterStop, 0);
+    t.ok('FLOOR: and opens no rest', r.repSheetAfterStop === false, JSON.stringify({ repSheetAfterStop: r.repSheetAfterStop }));
+    t.eq('the standalone ⏱ Rest offers Skip rest', r.standaloneBtn, 'Skip rest');
+    t.ok('FLOOR: which closes it and marks nothing — it was never a set', r.standaloneMarked === 0 && r.standaloneOpen === false, JSON.stringify(r));
+  }
+
+  /* v488: THE GROCERY TICKS LIVED IN THE CHECKBOX. The meal-plan sheet said
+     "tap to check off" and stored nothing, so closing it in the shop — a Back
+     press, a reload — lost every tick, while the month list one pane over has
+     kept its ticks in STATE.shopTicks since it was written. A tick is keyed to
+     the plan's day, so it lives exactly as long as the list it was ticked on.
+     Every tick here is a real click on the real checkbox. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const saveTicks = JSON.stringify(STATE.shopTicks || {});
+      try {
+        STATE.shopTicks = {}; save();
+        REF_TAB = 'food'; go('ref');
+        openGrocery(); await wait(20);
+        const box = () => document.querySelector('#sheet input[data-grocery]');
+        out.opened = !!box();
+        if (!box()) return out;
+        out.item = box().dataset.grocery;
+        out.checkedBefore = box().checked;
+        box().click(); await wait(20);
+        out.storedKeys = Object.keys(STATE.shopTicks || {});
+        closeSheet(); await wait(400);
+        /* the sheet reopened — the tick must still be on it */
+        openGrocery(); await wait(20);
+        out.checkedAfterReopen = box().checked;
+        out.dimmed = box().closest('label').style.opacity;
+        closeSheet(); await wait(400);
+        /* and it survives the boot repair */
+        normalizeState();
+        out.keysAfterBoot = Object.keys(STATE.shopTicks || {});
+        /* FLOOR: the month list's own count does not see a grocery tick */
+        renderRef();
+        const m = (document.querySelector('#v-ref') || {}).textContent.match(/The whole shop · (\d+)\/(\d+)/);
+        out.monthDone = m ? +m[1] : null; out.monthTotal = m ? +m[2] : null;
+        /* FLOOR: resetting the month list leaves the grocery tick alone */
+        STATE.shopTicks['Zzz month item'] = 1; save();
+        clearShop(); await wait(20);
+        out.afterClear = Object.keys(STATE.shopTicks || {});
+        /* a tick from another day's plan is pruned the next time one is written */
+        STATE.shopTicks['g:2000-01-01:stale'] = 1; save();
+        openGrocery(); await wait(20);
+        box().click(); await wait(20);   // untick the same item
+        out.afterPrune = Object.keys(STATE.shopTicks || {});
+        closeSheet(); await wait(400);
+      } catch (e) { out.err = String(e); }
+      try { closeSheet(); } catch (e) {}
+      STATE.shopTicks = JSON.parse(saveTicks); save();
+      return out;
+    });
+    t.ok('GUARD: the grocery sheet opened with a list to tick', !r.err && r.opened && r.checkedBefore === false, JSON.stringify(r));
+    t.ok('a grocery tick is stored, keyed to the plan\'s day (v488)', r.storedKeys.length === 1 && /^g:\d{4}-\d{2}-\d{2}:/.test(r.storedKeys[0]), JSON.stringify(r));
+    t.ok('and it is still ticked when the sheet is reopened', r.checkedAfterReopen === true && r.dimmed === '0.4', JSON.stringify({ checkedAfterReopen: r.checkedAfterReopen, dimmed: r.dimmed }));
+    t.ok('and it survives the boot repair', r.keysAfterBoot.length === 1 && r.keysAfterBoot[0] === r.storedKeys[0], JSON.stringify(r));
+    t.ok('FLOOR: the month list counts none of it', r.monthDone === 0 && r.monthTotal > 0, JSON.stringify({ monthDone: r.monthDone, monthTotal: r.monthTotal }));
+    t.ok('FLOOR: resetting the month list keeps the grocery tick and drops the month one', r.afterClear.length === 1 && r.afterClear[0] === r.storedKeys[0], JSON.stringify(r));
+    t.ok('a tick from another day\'s plan is pruned on the next write, and the untick is real', Array.isArray(r.afterPrune) && r.afterPrune.length === 0, JSON.stringify(r));
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
