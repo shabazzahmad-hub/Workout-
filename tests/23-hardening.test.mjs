@@ -14862,6 +14862,18 @@ export default async function () {
       R.archMissed = g2 && g2.missed;
       R.archHurt = g2 && g2.hurt;
 
+      /* ORDER IS LOAD-BEARING — a day that is BOTH a logged rest day and a
+         pain stop counts as the pain stop, because that is the more specific
+         fact and the one the athlete is owed an acknowledgement for. Without
+         this case the claim in the comment is one no check can catch. */
+      base(d2);
+      STATE.logs[3] = { date: d1, ex: {}, done: false, stoppedForPain: d1 };
+      STATE.restDays = { [d1]: true }; save();
+      const gB = gapSince();
+      R.bothWaysMissed = gB && gB.missed;
+      R.bothWaysHurt = gB && gB.hurt;
+      R.bothWaysOff = gB && gB.off;
+
       /* FLOOR — a logged rest day is still excluded and still named */
       base(d2); STATE.restDays = { [d1]: true }; save();
       const g3 = gapSince();
@@ -14887,6 +14899,9 @@ export default async function () {
     t.eq('so the welcome-back banner does not fire at all', r.painBanner, '', JSON.stringify({ b: (r.painBanner || '').slice(0, 200) }));
     t.eq('a pain stop inside an ARCHIVED run counts the same', r.archMissed, 0, JSON.stringify(r));
     t.eq('and is still counted as a pain stop', r.archHurt, 1, JSON.stringify(r));
+    t.eq('a day that is both a rest day and a pain stop counts as the pain stop', r.bothWaysHurt, 1, JSON.stringify(r));
+    t.eq('and is not double-counted as a rest day', r.bothWaysOff, 0, JSON.stringify(r));
+    t.eq('either way it is not missed', r.bothWaysMissed, 0, JSON.stringify(r));
     t.eq('FLOOR: a logged rest day is still excluded', r.restMissed, 0, JSON.stringify(r));
     t.eq('FLOOR: and is still counted as a rest day, not a pain stop', r.restOff, 1, JSON.stringify(r));
     t.eq('FLOOR: a real missed day beside a pain stop still counts', r.bothMissed, 1, JSON.stringify(r));
