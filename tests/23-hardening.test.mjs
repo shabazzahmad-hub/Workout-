@@ -13876,6 +13876,100 @@ export default async function () {
     t.ok('the rep chain\'s rest ring keeps the photograph too (v488)', r.repRestMediaOk === true, JSON.stringify({ repRestMedia: r.repRestMedia }));
   }
 
+  /* v488: DONE IS NOT STOP. Both timer sheets carried a ghost Stop and a green
+     Done that ran the identical `stopTimer();closeSheet()` — so an athlete who
+     finished the hold and tapped Done recorded nothing and the chain ended,
+     which is the "you have to press hold timer again" report by another door.
+     Done now runs the clock's own completion path: the set is marked, the
+     chained rest opens, and on a rest it is the player's "Skip rest". Stop is
+     still the abandon, pinned as the floor. Every case CLICKS the button. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const real = { speak: window.coachSpeak, say: window.plSay, beep: window.beep };
+      window.coachSpeak = () => {}; window.plSay = () => {}; window.beep = () => {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      try {
+        let per = null, rp = null, ptr = -1;
+        for (let p = 0; p < 80 && !(per && rp); p++) {
+          const s = buildSession(p); per = null; rp = null;
+          for (const m of s.main) {
+            const e = EX[m.exId];
+            if (!per && e && e.side === 'perSet' && e.unit === 'time' && m.sets > 1) per = m;
+            if (!rp && e && e.unit === 'reps' && m.sets > 1) rp = m;
+          }
+          if (per && rp) ptr = p;
+        }
+        if (!(per && rp)) { out.notFound = true; return out; }
+        STATE.progressPtr = ptr; save();
+        const marked = id => { const log = ensureLog(); const st = (log.ex && log.ex[id]) || { sets: [] }; return (st.sets || []).filter(Boolean).length; };
+        const clear = id => { const log = ensureLog(); if (log.ex) delete log.ex[id]; save(); };
+        const lbl = () => ($('#sheet .tt') || {}).textContent || '';
+        const green = () => document.querySelector('#sheet .btn.green');
+        const ghost = () => document.querySelector('#sheet .btn.ghost');
+        const primary = () => document.querySelector('#sheet .btn.primary');
+        const pump = k => { for (let i = 0; i < k && timer; i++) timer.tick(); };
+        /* 1. Done on a HOLD mid-set marks the set and opens the chained rest */
+        clear(per.exId); out.before = marked(per.exId);
+        exSetChain(per.exId); await wait(20); pump(7);
+        out.holdPhase = ($('#tphase') || {}).textContent || '';
+        out.doneText = (green() || {}).textContent || '';
+        green().click(); await wait(950);
+        out.afterDone = marked(per.exId);
+        out.restLabel = lbl(); out.restBtn = (primary() || {}).textContent || '';
+        /* 2. Skip rest on the chained rest hands straight to set 2 */
+        primary().click(); await wait(120);
+        out.set2 = lbl();
+        stopTimer(); closeSheet(); await wait(400);
+        /* 3. FLOOR: Stop marks nothing and opens no rest */
+        clear(per.exId);
+        exSetChain(per.exId); await wait(20); pump(7);
+        ghost().click(); await wait(950);
+        out.afterStop = marked(per.exId);
+        out.sheetAfterStop = $('#scrim').classList.contains('open');
+        /* 4. Done on the REP cadence marks the set and opens the rest */
+        clear(rp.exId);
+        exSetChain(rp.exId); await wait(20); pump(6);
+        out.repPhase = ($('#rcphase') || {}).textContent || '';
+        green().click(); await wait(Math.max(400, repTempoSetting() * 450) + 1000);
+        out.repAfterDone = marked(rp.exId);
+        out.repRest = lbl();
+        stopTimer(); closeSheet(); await wait(400);
+        /* 5. FLOOR: Stop on the rep cadence marks nothing */
+        clear(rp.exId);
+        exSetChain(rp.exId); await wait(20); pump(6);
+        ghost().click(); await wait(Math.max(400, repTempoSetting() * 450) + 1000);
+        out.repAfterStop = marked(rp.exId); out.repSheetAfterStop = $('#scrim').classList.contains('open');
+        /* 6. the standalone ⏱ Rest on a rep movement: Skip rest closes it and marks nothing */
+        clear(rp.exId);
+        openExerciseTimer(rp.exId); await wait(20);
+        out.standaloneBtn = (primary() || {}).textContent || '';
+        primary().click(); await wait(950);
+        out.standaloneMarked = marked(rp.exId); out.standaloneOpen = $('#scrim').classList.contains('open');
+        clear(per.exId); clear(rp.exId);
+      } catch (e) { out.err = String(e); }
+      stopTimer(); try { closeSheet(); } catch (e) {}
+      window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
+      return out;
+    });
+    t.ok('GUARD: the Done probe ran on a session carrying a per-side hold and a rep movement', !r.err && !r.notFound, JSON.stringify(r));
+    t.ok('GUARD: the hold was running and no set was marked yet', r.holdPhase === 'HOLD' && r.before === 0, JSON.stringify(r));
+    t.eq('GUARD: the green button reads Done', r.doneText, 'Done');
+    t.eq('Done on a running hold marks the set (v488)', r.afterDone, 1);
+    t.ok('and opens the chained rest', /— rest$/.test(r.restLabel), JSON.stringify({ restLabel: r.restLabel }));
+    t.eq('whose button is Skip rest, not Done', r.restBtn, 'Skip rest');
+    t.ok('and Skip rest hands straight to set 2', /set 2 of \d+/.test(r.set2), JSON.stringify({ set2: r.set2 }));
+    t.eq('FLOOR: Stop on a hold marks nothing', r.afterStop, 0);
+    t.ok('FLOOR: and opens no rest', r.sheetAfterStop === false, JSON.stringify({ sheetAfterStop: r.sheetAfterStop }));
+    t.ok('GUARD: the rep cadence was counting', /REPS/.test(r.repPhase), JSON.stringify({ repPhase: r.repPhase }));
+    t.eq('Done on the rep cadence marks the set (v488)', r.repAfterDone, 1);
+    t.ok('and opens the chained rest', /— rest$/.test(r.repRest), JSON.stringify({ repRest: r.repRest }));
+    t.eq('FLOOR: Stop on the rep cadence marks nothing', r.repAfterStop, 0);
+    t.ok('FLOOR: and opens no rest', r.repSheetAfterStop === false, JSON.stringify({ repSheetAfterStop: r.repSheetAfterStop }));
+    t.eq('the standalone ⏱ Rest offers Skip rest', r.standaloneBtn, 'Skip rest');
+    t.ok('FLOOR: which closes it and marks nothing — it was never a set', r.standaloneMarked === 0 && r.standaloneOpen === false, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

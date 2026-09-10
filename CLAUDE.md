@@ -19841,6 +19841,56 @@ names is on the female list, and the female test running first cannot save a
 name it has never heard of. Word boundaries on the five short names that live
 inside a longer one, with the floor that each still reads as male on its own.
 
+## The runners were handed no exercise, and Done was Stop in green (v488)
+
+Found by auditing v487 an hour after it shipped — the sixteenth round running
+where the best finding was in the round immediately before, and the ninth in a
+row where it was in my own new code. Four findings on two axes, and every one
+is the player's twins drifting again.
+
+### The Quick ring had no photograph
+
+`quickPlay()` handed both runners **`null`** for the exercise, while the Today
+runners one function away passed it. `plRingMediaHTML(null)` renders nothing,
+so a Quick workout's timer ring was an empty circle — v236's *"it's like there
+is no view of that exercise"* on the surface an athlete uses for a five-minute
+session — and a one-sided Quick move would have got no switch cue at all.
+Both chained rests opened with no exercise either, so the rest between two
+sets had a blank ring where the player's rest keeps the photograph (v290).
+
+**The class is every call site of the two runners**, and the sweep is what
+found the second and third instance after the first: `grep runTimer(\|runRepCadence(`
+returns six calls, and three of them passed nothing in the exercise slot.
+
+### The rep cadence's switch never reached the glass
+
+`runRepCadence()` spoke and beeped the halfway switch and wrote **nothing** on
+the ring. The hold timer writes `SWITCH SIDES` into its phase line and the
+player writes the line into `#plCoach` — v307's own reason: *a phone on silent
+in a gym hears nothing and the athlete is looking at the ring.* Silent plus
+voice off, the ▶ Guided reps had no switch signal whatever.
+
+### Done was Stop under a different label
+
+Both timer sheets carried a ghost **Stop** and a green **Done**, and both ran
+the identical `stopTimer();closeSheet()`. So an athlete who finished the hold
+early and tapped the green button recorded **nothing** and the chain ended —
+which is the *"you have to press hold timer again"* report by another door,
+one version after v485 fixed the first one. A button that says the work
+happened and records none of it is v260's rule facing a control.
+
+Done now runs **the clock's own completion path** — one `complete()` per
+runner, reached by the clock running out and by `timerFinish()` — so it marks
+the set through the same `onDone` and hands on to the same chained rest. On a
+REST the same button is the player's own *Skip rest*, and is labelled so.
+**Stop is still the abandon**, pinned as the floor on both runners, and the
+standalone ⏱ Rest button's Skip rest marks nothing, because that rest was
+never a set.
+
+**Every case clicks the button.** The defect WAS the button's wiring, and a
+check that called `finish()` itself could not have seen it — *calling the
+helper is not driving the route*, for the thirteenth time in this file.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
