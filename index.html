@@ -1471,7 +1471,7 @@ const EX = {
     why:'A loaded carry that builds a crushing grip, a braced anti-tilt core and total-body strength — one of the most transferable drills there is.',
     steps:['Stand tall with a kettlebell in each hand at your sides.','Brace the core and pull the shoulders down and back.','Walk with short, controlled steps for the time.','Keep the torso upright — do not lean or tilt.'],
     cues:['Chest up, shoulders back','Squeeze the handles hard','Steady, even steps'],mistakes:['Leaning or tilting to one side','Shuffling / rushing the steps']},
-  kbhalo:{side:'switch',name:'Kettlebell Halo',region:'oblique',unit:'time',img:'ex-kbhalo.jpg',vid:'ex-kbhalo.mp4',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
+  kbhalo:{side:'switch',swLine:'Reverse direction now.',swTag:'REVERSE',name:'Kettlebell Halo',region:'oblique',unit:'time',img:'ex-kbhalo.jpg',vid:'ex-kbhalo.mp4',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
     why:'The bell circles AROUND YOUR HEAD, held upside-down close to you — builds shoulder mobility and a braced, anti-rotation core.',
     steps:['Hold: grip the kettlebell upside-down by the horns (handle down, bell pointing up) with both hands, tucked close to your chest and head.','Path: circle it slowly around your head — past one ear, behind the head, past the other ear, and back to the front — keeping it hugging you the whole way.','Only your arms move: keep the hips, torso and legs locked and still — this is the difference from the Helicopter.','Reverse direction halfway through the time.'],
     cues:['Bell inverted (horns down), hugging the head','Ribs down, core braced, hips still','Slow, tight circles'],mistakes:['Swaying the hips or leaning back','Letting the bell drift wide away from the head']},
@@ -8164,7 +8164,7 @@ function plTickHold(){
   const halfSec=Math.floor(PLAYER.total/2);
   if(PLAYER.remain===halfSec&&sideSwitch(plCur().exId)&&PLAYER.total>=8){
     beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);
-    plS('#plCoach',SIDE_LINE);plSay(SIDE_LINE);
+    const _sw=switchLine(EX[plCur().exId]);plS('#plCoach',_sw);plSay(_sw);
   }
   else if(PLAYER.remain===10&&PLAYER.total>16){plHype('push','Ten seconds. Hold strong.');}
   else if(!PLAYER.grindSaid&&el===grindAt(PLAYER.total)){PLAYER.grindSaid=true;const g=grindLine();if(g)plSay(g);}
@@ -8198,11 +8198,11 @@ function plTickRep(){
     /* The switch call OUTRANKS the coaching and the hype: a form cue you miss
        costs one rep of quality, a missed switch costs the whole other side. */
     const swap=(PLAYER.repN===half&&sideSwitch(m.exId)&&m.target>1);
-    const extra=swap?SIDE_LINE
+    const extra=swap?switchLine(EX[m.exId])
       :((PLAYER.repN>1&&PLAYER.repN%4===0&&PLAYER.repN<m.target)?plNextCue()
       :((m.target>=8&&PLAYER.repN===half)?(motivateLine('during')||''):''));
     plSay(extra?(num+'. '+extra):num);
-    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);plS('#plCoach',SIDE_LINE);}
+    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);plS('#plCoach',switchLine(EX[m.exId]));}
   }
   if(PLAYER.repMs>=PLAYER.repDurMs){
     if(PLAYER.repN>=m.target){haptic(30);plClear();plAfterSet();return;}
@@ -13434,6 +13434,13 @@ function itemSets(exId,n,pos){
   return sidePerSet(exId)?evenSets(v,easingOn(pos)):v;
 }
 const SIDE_LINE='Switch sides now.';
+/* A `switch` movement may carry its own halfway call. The halo is flagged
+   switch because its step says "reverse direction halfway" — it has no sides,
+   so "Switch sides now." over it was a cue for a movement it is not. Every
+   surface asks these two rather than the constant, so the line and the tag on
+   the ring cannot disagree about what the movement does at the halfway point. */
+function switchLine(ex){return (ex&&typeof ex.swLine==='string'&&ex.swLine)||SIDE_LINE;}
+function switchTag(ex){return (ex&&typeof ex.swTag==='string'&&ex.swTag)||'SWITCH SIDES';}
 function plSay(text){
   if(!text)return;
   setTimeout(()=>{try{coachSpeak(text);}catch(e){}},0);
@@ -13680,7 +13687,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
          the guided player had it; the ▶ Hold timer ran the whole set on one
          side and said nothing. */
       if(ex&&ex.side==='switch'&&total>=8&&remain===Math.floor(total/2)){
-        beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setPhase('SWITCH SIDES');plSay(SIDE_LINE);
+        beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setPhase(switchTag(ex));plSay(switchLine(ex));
       }
       else if(remain===10&&total>16){plHype('push','Ten seconds. Hold strong.');}
       else if(!_grindSaid&&el===grindAt(total)){_grindSaid=true;const g=grindLine();if(g)plSay(g);}
@@ -13807,12 +13814,12 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
     /* The switch call OUTRANKS the hype, as it does in plTickRep(): a missed
        hype line costs nothing, a missed switch costs the whole other side. */
     const swap=(n===half&&ex&&ex.side==='switch'&&total>1);
-    const h=swap?SIDE_LINE:((total>=8&&n===half)?motivateLine('during'):'');
+    const h=swap?switchLine(ex):((total>=8&&n===half)?motivateLine('during'):'');
     plSay(String(n)+(h?'. '+h:''));
     /* And on the GLASS, as the ▶ Hold timer (setPhase) and the player (#plCoach)
        both do: a phone on silent with the voice off hears neither the tones nor
        the line, and the ring is what the athlete is looking at. */
-    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setP('SWITCH SIDES');}
+    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setP(switchTag(ex));}
     paint();
     if(n>=total)complete();
   }
@@ -25390,6 +25397,8 @@ function validateData(){
     /* Both directions, and both kinds. A per-side movement whose steps never
        mention a side is a set the athlete has no way to run correctly. */
     if(e.side==='perSet'&&!says)errs.push('EX.'+k+' is flagged side:"perSet" but its steps never say to switch sides');
+    /* a custom halfway call belongs only to a movement that HAS a halfway call */
+    if((e.swLine!==undefined||e.swTag!==undefined)&&e.side!=='switch')errs.push('EX.'+k+' carries swLine/swTag but is not side:"switch"');
 
     if(e.side!==undefined&&SIDE_MODES.indexOf(e.side)<0)errs.push('EX.'+k+' has an unknown side value "'+e.side+'"');
   });

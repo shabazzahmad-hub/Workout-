@@ -13711,7 +13711,7 @@ export default async function () {
       o.restSide = sideInLabel(o.set1 + ' — rest');
       /* a one-sided hold on the ▶ Hold timer, pumped through its own tick */
       tones.length = 0;
-      runTimer('hold', 20, 'Kettlebell Halo', 0, null, false, EX.kbhalo); await wait(20);
+      runTimer('hold', 20, 'Kettlebell Suitcase Carry', 0, null, false, EX.kbsuitcase); await wait(20);
       let phaseAtSwitch = '';
       for (let i = 0; i < 30; i++) {
         if (timer && timer.tick) timer.tick();
@@ -13728,7 +13728,7 @@ export default async function () {
       o.plankTone = tones.includes(660);
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
       /* and on the rep cadence */
-      runRepCadence(10, 'Kettlebell Halo', 0, null, EX.kbhalo); await wait(20);
+      runRepCadence(10, 'Kettlebell Bent-Over Row', 0, null, EX.kbrow); await wait(20);
       o.repPhase = '';
       for (let i = 0; i < 20; i++) {
         if (timer && timer.tick) timer.tick();
@@ -13736,6 +13736,19 @@ export default async function () {
       }
       o.repSwitch = spoken.find(x => /Switch sides now/.test(x)) || '';
       o.repTone = tones.includes(660);
+      closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
+      /* v489: a switch movement may carry its OWN halfway call — the halo reverses
+         direction and has no sides, so "Switch sides now." over it was a cue for
+         a movement it is not. The line and the ring tag both come off the entry. */
+      runTimer('hold', 20, 'Kettlebell Halo', 0, null, false, EX.kbhalo); await wait(20);
+      o.haloTag = '';
+      for (let i = 0; i < 30; i++) {
+        if (timer && timer.tick) timer.tick();
+        const ph = (document.querySelector('#tphase') || {}).textContent || '';
+        if (/REVERSE/.test(ph)) o.haloTag = ph;
+      }
+      o.haloLine = spoken.filter(x => x === 'Reverse direction now.').length;
+      o.haloSideLine = spoken.filter(x => x === SIDE_LINE).length;
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
       runRepCadence(10, 'Crunch', 0, null, EX.crunch); await wait(20);
       for (let i = 0; i < 20; i++) { if (timer && timer.tick) timer.tick(); }
@@ -13798,6 +13811,9 @@ export default async function () {
        with the voice off had no switch signal at all on ▶ Guided reps. */
     t.eq('and names it on the ring, as the hold timer does (v488)', r.repPhase, 'SWITCH SIDES');
     t.eq('FLOOR: a two-sided rep movement is never told to switch', r.crunchSwitch, 0);
+    t.eq('the halo hears its own halfway call — it reverses, it has no sides (v489)', r.haloLine, 1);
+    t.eq('and never the shared side line', r.haloSideLine, 0);
+    t.eq('and the ring says REVERSE', r.haloTag, 'REVERSE');
     t.ok('GUARD: a Quick workout carries the side plank', r.quickFound, JSON.stringify(r));
     t.ok('Quick names the side too, through the same builder', /Left side$/.test(r.quick1 || '') && /Right side$/.test(r.quick2 || ''), JSON.stringify(r));
     t.ok('GUARD: the Today runner shows the movement in its ring', !!r.todayMedia, JSON.stringify({ todayMedia: r.todayMedia }));
@@ -14159,6 +14175,37 @@ export default async function () {
     t.ok('GUARD: the grinder opened', r.hiitOpened === true, JSON.stringify(r));
     t.ok('HIIT hands to work with one line, "Work! <name>", and no Go for it to cancel', Array.isArray(r.hiit) && r.hiit.length === 1 && /^Work! /.test(r.hiit[0]), JSON.stringify(r.hiit));
     t.ok('FLOOR: the ▶ Hold timer still says Go on its own, with nothing after it', Array.isArray(r.timerGo) && r.timerGo.length === 1 && r.timerGo[0] === 'Go!', JSON.stringify(r.timerGo));
+  }
+
+  /* v489: a custom halfway call belongs only to a movement that has one. A
+     clean validator proves nothing about a validator rule, so the rule is
+     broken in front of it — swLine on a two-sided movement — and restored. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      try {
+        o.cleanBefore = validateData().length;
+        EX.plank.swLine = 'x';
+        o.complaint = validateData().filter(x => /plank.*swLine\/swTag.*not side/.test(x)).length;
+        delete EX.plank.swLine;
+        EX.crunch.swTag = 'X';
+        o.complaintTag = validateData().filter(x => /crunch.*swLine\/swTag.*not side/.test(x)).length;
+        delete EX.crunch.swTag;
+        o.cleanAfter = validateData().length;
+        o.haloOwn = switchLine(EX.kbhalo) + ' | ' + switchTag(EX.kbhalo);
+        o.rowShared = switchLine(EX.kbrow) + ' | ' + switchTag(EX.kbrow);
+        o.junk = switchLine({ swLine: 42 }) + ' | ' + switchTag({ swTag: {} });
+      } catch (e) { o.err = String(e); }
+      console.error = realErr;
+      return o;
+    });
+    t.ok('GUARD: the validator was clean before the break', !r.err && r.cleanBefore === 0, JSON.stringify(r));
+    t.eq('a swLine on a movement that is not side:switch is a validator problem (v489)', r.complaint, 1);
+    t.eq('and so is a swTag', r.complaintTag, 1);
+    t.eq('and the validator is clean again once restored', r.cleanAfter, 0);
+    t.eq('the halo carries its own call and tag', r.haloOwn, 'Reverse direction now. | REVERSE');
+    t.eq('FLOOR: a switch movement with no call of its own gets the shared one', r.rowShared, 'Switch sides now. | SWITCH SIDES');
+    t.eq('and a junk shape on the entry falls back to the shared one', r.junk, 'Switch sides now. | SWITCH SIDES');
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

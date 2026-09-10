@@ -19983,6 +19983,17 @@ rep"*), which v351 read and deliberately left. It is `perSet` now, and its
 step says *"switch sides for the next set"* so the validator's both-ways
 rule holds.
 
+### The halo was told to switch sides, and it has none
+
+Read while comparing every flagged movement's own wording against its side
+model. The Kettlebell Halo is `switch` because its step says *"reverse
+direction halfway"* — and at the halfway point every surface spoke *"Switch
+sides now."* and wrote `SWITCH SIDES` on the ring. A cue for a movement it is
+not. A `switch` movement may now carry its own call (`swLine`, `swTag`), read
+through `switchLine()`/`switchTag()` at all five surfaces so the line and the
+ring cannot disagree; the validator refuses the fields on anything that is
+not `side:'switch'`, and that rule is broken in front of it in the check.
+
 **The six `side:'switch'` movements stay at three sets on purpose.** A halo,
 a suitcase carry or a windmill switches at the halfway call inside every set,
 so each set already works both sides equally; a fourth set there would add
