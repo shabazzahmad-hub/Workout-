@@ -13711,7 +13711,7 @@ export default async function () {
       o.restSide = sideInLabel(o.set1 + ' — rest');
       /* a one-sided hold on the ▶ Hold timer, pumped through its own tick */
       tones.length = 0;
-      runTimer('hold', 20, 'Kettlebell Halo', 0, null, false, EX.kbhalo); await wait(20);
+      runTimer('hold', 20, 'Kettlebell Suitcase Carry', 0, null, false, EX.kbsuitcase); await wait(20);
       let phaseAtSwitch = '';
       for (let i = 0; i < 30; i++) {
         if (timer && timer.tick) timer.tick();
@@ -13728,7 +13728,7 @@ export default async function () {
       o.plankTone = tones.includes(660);
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
       /* and on the rep cadence */
-      runRepCadence(10, 'Kettlebell Halo', 0, null, EX.kbhalo); await wait(20);
+      runRepCadence(10, 'Kettlebell Bent-Over Row', 0, null, EX.kbrow); await wait(20);
       o.repPhase = '';
       for (let i = 0; i < 20; i++) {
         if (timer && timer.tick) timer.tick();
@@ -13737,8 +13737,28 @@ export default async function () {
       o.repSwitch = spoken.find(x => /Switch sides now/.test(x)) || '';
       o.repTone = tones.includes(660);
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
+      /* v489: a switch movement may carry its OWN halfway call — the halo reverses
+         direction and has no sides, so "Switch sides now." over it was a cue for
+         a movement it is not. The line and the ring tag both come off the entry. */
+      runTimer('hold', 20, 'Kettlebell Halo', 0, null, false, EX.kbhalo); await wait(20);
+      o.haloTag = '';
+      for (let i = 0; i < 30; i++) {
+        if (timer && timer.tick) timer.tick();
+        const ph = (document.querySelector('#tphase') || {}).textContent || '';
+        if (/REVERSE/.test(ph)) o.haloTag = ph;
+      }
+      o.haloLine = spoken.filter(x => x === 'Reverse direction now.').length;
+      o.haloSideLine = spoken.filter(x => x === SIDE_LINE).length;
+      closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
       runRepCadence(10, 'Crunch', 0, null, EX.crunch); await wait(20);
-      for (let i = 0; i < 20; i++) { if (timer && timer.tick) timer.tick(); }
+      /* the GLASS as well as the voice: the over-eager mutant that wrote
+         SWITCH SIDES on the ring for every movement at the halfway rep escaped
+         a floor that only counted spoken lines */
+      o.crunchPhaseSwitch = false;
+      for (let i = 0; i < 20; i++) {
+        if (timer && timer.tick) timer.tick();
+        if (/SWITCH|REVERSE/.test((document.querySelector('#rcphase') || {}).textContent || '')) o.crunchPhaseSwitch = true;
+      }
       o.crunchSwitch = spoken.filter(x => /Switch sides now/.test(x)).length;
       closeSheet(); await wait(400); spoken.length = 0;
       /* Quick's label goes through the same builder */
@@ -13798,6 +13818,10 @@ export default async function () {
        with the voice off had no switch signal at all on ▶ Guided reps. */
     t.eq('and names it on the ring, as the hold timer does (v488)', r.repPhase, 'SWITCH SIDES');
     t.eq('FLOOR: a two-sided rep movement is never told to switch', r.crunchSwitch, 0);
+    t.ok('FLOOR: and its ring never says SWITCH either', r.crunchPhaseSwitch === false, JSON.stringify({ crunchPhaseSwitch: r.crunchPhaseSwitch }));
+    t.eq('the halo hears its own halfway call — it reverses, it has no sides (v489)', r.haloLine, 1);
+    t.eq('and never the shared side line', r.haloSideLine, 0);
+    t.eq('and the ring says REVERSE', r.haloTag, 'REVERSE');
     t.ok('GUARD: a Quick workout carries the side plank', r.quickFound, JSON.stringify(r));
     t.ok('Quick names the side too, through the same builder', /Left side$/.test(r.quick1 || '') && /Right side$/.test(r.quick2 || ''), JSON.stringify(r));
     t.ok('GUARD: the Today runner shows the movement in its ring', !!r.todayMedia, JSON.stringify({ todayMedia: r.todayMedia }));
@@ -14030,6 +14054,294 @@ export default async function () {
     t.ok('FLOOR: the month list counts none of it', r.monthDone === 0 && r.monthTotal > 0, JSON.stringify({ monthDone: r.monthDone, monthTotal: r.monthTotal }));
     t.ok('FLOOR: resetting the month list keeps the grocery tick and drops the month one', r.afterClear.length === 1 && r.afterClear[0] === r.storedKeys[0], JSON.stringify(r));
     t.ok('a tick from another day\'s plan is pruned on the next write, and the untick is real', Array.isArray(r.afterPrune) && r.afterPrune.length === 0, JSON.stringify(r));
+  }
+
+  /* v489: THE REST CANCELLED THE SET-COMPLETE LINE. _deviceSpeak() calls
+     synth.cancel() on every utterance, and the rep chain's hand-off spoke
+     "Set complete. Strong work." (or a hype line) and then, in the SAME tick,
+     opened its rest with quiet=false — which spoke "Rest. 45 seconds." and cut
+     the first line off mid-word, on every set of every rep chain. The hold
+     chain toasts and opens its rest quiet; the rep chain now does the same.
+     The floor is the standalone ⏱ Rest, which has nothing before it and must
+     still announce its length. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const real = { speak: window.coachSpeak, hype: window.hypeSpeak, say: window.plSay, plHype: window.plHype, beep: window.beep, toast: window.toast };
+      const spoken = [], toasts = [];
+      window.coachSpeak = t => { spoken.push(String(t)); };
+      window.hypeSpeak = t => { spoken.push(String(t)); return true; };
+      /* the MID-effort coaching (plSay / plHype, both deferred a tick) is not the
+         hand-off, and on CI four deferred hype lines landed inside the window
+         that was meant to hold the one completion line */
+      window.plSay = () => {}; window.plHype = () => {}; window.beep = () => {};
+      window.toast = (t) => { toasts.push(String(t)); };
+      try {
+        let rp = null, ptr = -1;
+        for (let p = 0; p < 80 && !rp; p++) {
+          const s = buildSession(p);
+          rp = s.main.find(m => EX[m.exId] && EX[m.exId].unit === 'reps' && m.sets > 1) || null;
+          if (rp) ptr = p;
+        }
+        if (!rp) { out.notFound = true; return out; }
+        STATE.progressPtr = ptr; save();
+        const clear = id => { const log = ensureLog(); if (log.ex) delete log.ex[id]; save(); };
+        clear(rp.exId);
+        exSetChain(rp.exId); await wait(20);
+        for (let i = 0; i < 400 && timer; i++) timer.tick();
+        const before = spoken.length;
+        await wait(Math.max(400, repTempoSetting() * 450) + 700);
+        out.restLabel = ($('#sheet .tt') || {}).textContent || '';
+        out.atHandoff = spoken.slice(before);
+        out.toastsAtHandoff = toasts.slice();
+        stopTimer(); closeSheet(); await wait(400); clear(rp.exId);
+        /* FLOOR: the standalone ⏱ Rest still announces its length */
+        spoken.length = 0;
+        openExerciseTimer(rp.exId); await wait(20);
+        out.standalone = spoken.slice();
+        stopTimer(); closeSheet(); await wait(400);
+        /* and the hold chain's own hand-off, which was already right, is unchanged */
+        let per = null;
+        for (let p = 0; p < 80 && !per; p++) { const s = buildSession(p); per = s.main.find(m => EX[m.exId] && EX[m.exId].unit === 'time' && m.sets > 1) || null; if (per) STATE.progressPtr = p; }
+        if (per) {
+          save(); clear(per.exId); spoken.length = 0;
+          exSetChain(per.exId); await wait(20);
+          /* past the 5-second get-ready first — its "Go!" is not the hand-off —
+             and the mark is taken BEFORE the hold runs out, because the
+             completion line is spoken synchronously inside the last tick */
+          for (let i = 0; i < 6 && timer; i++) timer.tick();
+          const b2 = spoken.length;
+          for (let i = 0; i < 400 && timer; i++) timer.tick();
+          await wait(950);
+          out.holdHandoff = spoken.slice(b2);
+          out.holdRestLabel = ($('#sheet .tt') || {}).textContent || '';
+          stopTimer(); closeSheet(); await wait(400); clear(per.exId);
+        }
+      } catch (e) { out.err = String(e); }
+      try { stopTimer(); closeSheet(); } catch (e) {}
+      window.coachSpeak = real.speak; window.hypeSpeak = real.hype; window.plSay = real.say; window.plHype = real.plHype; window.beep = real.beep; window.toast = real.toast;
+      return out;
+    });
+    t.ok('GUARD: the rep chain reached its rest', !r.err && !r.notFound && /— rest$/.test(r.restLabel), JSON.stringify(r));
+    t.ok('GUARD: the hand-off spoke its set-complete line', r.atHandoff.length >= 1, JSON.stringify(r.atHandoff));
+    t.ok('the rep chain speaks ONE line at the hand-off — no rest announcement cancels it (v489)',
+      r.atHandoff.length === 1 && !/^Rest\. \d+ seconds/.test(r.atHandoff[0]), JSON.stringify(r.atHandoff));
+    t.ok('and the rest length goes on the toast instead', r.toastsAtHandoff.some(x => /^Set done! Resting \d+s$/.test(x)), JSON.stringify(r.toastsAtHandoff));
+    t.ok('FLOOR: the standalone ⏱ Rest still announces its length', r.standalone.some(x => /^Rest\. \d+ seconds\.$/.test(x)), JSON.stringify(r.standalone));
+    t.ok('FLOOR: the hold chain still speaks one line at its hand-off', Array.isArray(r.holdHandoff) && r.holdHandoff.length === 1 && /— rest$/.test(r.holdRestLabel || ''), JSON.stringify({ holdHandoff: r.holdHandoff, holdRestLabel: r.holdRestLabel }));
+  }
+
+  /* v489: "GO!" WAS CANCELLED ON EVERY SET. plTickReady() said "Go!" and then,
+     in the same tick, plEnterWork() spoke the form cue — and _deviceSpeak()
+     cancels the previous utterance on every new one, so the athlete heard a
+     clipped syllable before the cue on every set of every session. HIIT's
+     lead-in did the same before "Work! <name>". The Go is now the first
+     word of the work line. Driven through the real ticks with the speaker
+     recorded; the floor is the ▶ Hold timer, whose own "Go!" has nothing
+     after it and must stay a line of its own. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const real = { speak: window.coachSpeak, hype: window.hypeSpeak, beep: window.beep };
+      const spoken = [];
+      window.coachSpeak = t => { spoken.push(String(t)); };
+      window.hypeSpeak = t => { spoken.push(String(t)); return true; };
+      window.beep = () => {};
+      try {
+        const drive = async (sess) => {
+          openPlayer(sess); await wait(250);
+          if (!PLAYER) return null;
+          spoken.length = 0;
+          PLAYER.ready = 1; plTickReady(); await wait(60);
+          const got = spoken.slice();
+          try { playerQuit(); } catch (e) {}
+          await wait(500);
+          return got;
+        };
+        out.hold = await drive({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 2 }], free: true, title: 'probe' });
+        out.reps = await drive({ items: [{ exId: 'pushup', unit: 'reps', target: 10, rest: 30, sets: 2 }], free: true, title: 'probe' });
+        /* HIIT's lead-in */
+        go('today'); spoken.length = 0;
+        startGrinder('grind6'); await wait(50);
+        out.hiitOpened = !!INTV;
+        if (INTV) {
+          spoken.length = 0; INTV.lead = 1; ivTickLead(); await wait(60);
+          out.hiit = spoken.slice();
+          try { hiitQuit(); } catch (e) {}
+          await wait(500);
+        }
+        /* FLOOR: the ▶ Hold timer's own Go stands alone */
+        spoken.length = 0;
+        runTimer('hold', 20, 'Plank', 0, null, false, EX.plank); await wait(20);
+        spoken.length = 0;
+        for (let i = 0; i < 5 && timer; i++) timer.tick();
+        await wait(60);
+        out.timerGo = spoken.slice();
+        stopTimer(); closeSheet(); await wait(400);
+      } catch (e) { out.err = String(e); }
+      window.coachSpeak = real.speak; window.hypeSpeak = real.hype; window.beep = real.beep;
+      return out;
+    });
+    t.ok('GUARD: the player opened for both a hold and a rep set', !r.err && Array.isArray(r.hold) && Array.isArray(r.reps), JSON.stringify(r));
+    t.ok('the hold set hands to work with ONE line, and it opens with Go (v489)', r.hold.length === 1 && /^Go! /.test(r.hold[0]), JSON.stringify(r.hold));
+    t.ok('the rep set too', r.reps.length === 1 && /^Go! /.test(r.reps[0]), JSON.stringify(r.reps));
+    t.ok('GUARD: the grinder opened', r.hiitOpened === true, JSON.stringify(r));
+    t.ok('HIIT hands to work with one line, "Work! <name>", and no Go for it to cancel', Array.isArray(r.hiit) && r.hiit.length === 1 && /^Work! /.test(r.hiit[0]), JSON.stringify(r.hiit));
+    t.ok('FLOOR: the ▶ Hold timer still says Go on its own, with nothing after it', Array.isArray(r.timerGo) && r.timerGo.length === 1 && r.timerGo[0] === 'Go!', JSON.stringify(r.timerGo));
+  }
+
+  /* v489: a custom halfway call belongs only to a movement that has one. A
+     clean validator proves nothing about a validator rule, so the rule is
+     broken in front of it — swLine on a two-sided movement — and restored. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}; const realErr = console.error; console.error = () => {};
+      try {
+        o.cleanBefore = validateData().length;
+        EX.plank.swLine = 'x';
+        o.complaint = validateData().filter(x => /plank.*swLine\/swTag.*not side/.test(x)).length;
+        delete EX.plank.swLine;
+        EX.crunch.swTag = 'X';
+        o.complaintTag = validateData().filter(x => /crunch.*swLine\/swTag.*not side/.test(x)).length;
+        delete EX.crunch.swTag;
+        o.cleanAfter = validateData().length;
+        o.haloOwn = switchLine(EX.kbhalo) + ' | ' + switchTag(EX.kbhalo);
+        o.rowShared = switchLine(EX.kbrow) + ' | ' + switchTag(EX.kbrow);
+        o.junk = switchLine({ swLine: 42 }) + ' | ' + switchTag({ swTag: {} });
+      } catch (e) { o.err = String(e); }
+      console.error = realErr;
+      return o;
+    });
+    t.ok('GUARD: the validator was clean before the break', !r.err && r.cleanBefore === 0, JSON.stringify(r));
+    t.eq('a swLine on a movement that is not side:switch is a validator problem (v489)', r.complaint, 1);
+    t.eq('and so is a swTag', r.complaintTag, 1);
+    t.eq('and the validator is clean again once restored', r.cleanAfter, 0);
+    t.eq('the halo carries its own call and tag', r.haloOwn, 'Reverse direction now. | REVERSE');
+    t.eq('FLOOR: a switch movement with no call of its own gets the shared one', r.rowShared, 'Switch sides now. | SWITCH SIDES');
+    t.eq('and a junk shape on the entry falls back to the shared one', r.junk, 'Switch sides now. | SWITCH SIDES');
+  }
+
+  /* v489: DONE TWICE IS ONE SET. Found by auditing v488's own Done wiring: a
+     second tap on the hold sheet ran complete() again and marked a SECOND set
+     off one gesture; a second tap on the rep sheet landed inside the pending
+     completion (max(400, tempo*450) ms), closed the sheet, bumped _sheetGen and
+     cancelled the set it had just marked. Both are driven as real double-clicks. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const real = { speak: window.coachSpeak, say: window.plSay, beep: window.beep };
+      window.coachSpeak = () => {}; window.plSay = () => {}; window.beep = () => {};
+      try {
+        let per = null, rp = null, ptr = -1;
+        for (let p = 0; p < 80 && !(per && rp); p++) {
+          const s = buildSession(p); per = null; rp = null;
+          for (const m of s.main) { const e = EX[m.exId]; if (!per && e && e.unit === 'time' && m.sets > 1) per = m; if (!rp && e && e.unit === 'reps' && m.sets > 1) rp = m; }
+          if (per && rp) ptr = p;
+        }
+        if (!(per && rp)) { out.notFound = true; return out; }
+        STATE.progressPtr = ptr; save();
+        const marked = id => { const log = ensureLog(); const st = (log.ex && log.ex[id]) || { sets: [] }; return (st.sets || []).filter(Boolean).length; };
+        const clear = id => { const log = ensureLog(); if (log.ex) delete log.ex[id]; save(); };
+        const green = () => document.querySelector('#sheet .btn.green');
+        const pump = k => { for (let i = 0; i < k && timer; i++) timer.tick(); };
+        clear(per.exId); exSetChain(per.exId); await wait(20); pump(7);
+        green().click(); green().click(); await wait(950);
+        out.holdMarked = marked(per.exId);
+        out.holdRest = /— rest$/.test(($('#sheet .tt') || {}).textContent || '');
+        stopTimer(); closeSheet(); await wait(400); clear(per.exId);
+        clear(rp.exId); exSetChain(rp.exId); await wait(20); pump(6);
+        green().click(); await wait(30); green().click();
+        await wait(Math.max(400, repTempoSetting() * 450) + 900);
+        out.repMarked = marked(rp.exId);
+        out.repRest = /— rest$/.test(($('#sheet .tt') || {}).textContent || '');
+        out.repSheetOpen = $('#scrim').classList.contains('open');
+        stopTimer(); closeSheet(); await wait(400); clear(rp.exId);
+      } catch (e) { out.err = String(e); }
+      try { stopTimer(); closeSheet(); } catch (e) {}
+      window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
+      return out;
+    });
+    t.ok('GUARD: the double-tap probe ran', !r.err && !r.notFound, JSON.stringify(r));
+    t.eq('Done tapped twice on a hold marks ONE set (v489)', r.holdMarked, 1);
+    t.ok('and still opens the chained rest', r.holdRest === true, JSON.stringify(r));
+    t.eq('Done tapped twice on the rep cadence still marks the set', r.repMarked, 1);
+    t.ok('and the second tap does not close the sheet under the pending completion', r.repSheetOpen === true && r.repRest === true, JSON.stringify(r));
+  }
+
+  /* v489: "1 REPS". Eighteen sites pluralised a rep count by hand, and a count
+     of one is a real athlete state — a beginner's first pull-up is a personal
+     best of 1, a baseline push-up result can be 1, and the day-90 board and
+     the strength standards print those figures. Every one goes through
+     plural() now, including the two lines the coach SPEAKS (the ready
+     announcement and the guided-reps intro). */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const real = { speak: window.coachSpeak, say: window.plSay, beep: window.beep };
+      const spoken = [];
+      window.coachSpeak = t => { spoken.push(String(t)); }; window.plSay = t => { spoken.push(String(t)); }; window.beep = () => {};
+      const snap = JSON.stringify(STATE);
+      try {
+        STATE.prs = STATE.prs || {}; STATE.prs.pullup = 1; STATE.prs.pushup = 12;
+        const ex = EX.pullup; out.pullupIsReps = ex && ex.unit === 'reps';
+        go('progress'); setProgressTab('strength');
+        /* Read the ROW, not the pane's text. textContent runs the rows
+           together ("Pull-Up1 repPush-Up12 repsAssessment history"), so a
+           \b after "rep" finds no boundary before the next row's name and a
+           correct screen read as a failure on CI. The figure is the <b> of
+           the .kv row whose name is the movement's. */
+        const prVal = name => { const row = [...document.querySelectorAll('#v-progress .kv')].find(k => (k.querySelector('span') || {}).textContent === name); return row ? (row.querySelector('b') || {}).textContent : null; };
+        out.prOneText = prVal(EX.pullup.name); out.prTwelveText = prVal(EX.pushup.name);
+        out.prOne = out.prOneText === '1 rep';
+        out.prTwelve = out.prTwelveText === '12 reps';
+        out.helper1 = plural(1, 'rep'); out.helper12 = plural(12, 'rep');
+        out.brief1 = _briefTarget({ unit: 'reps', target: 1 }); out.brief12 = _briefTarget({ unit: 'reps', target: 12 });
+        out.card1 = exCardHTML({ exId: 'pushup', unit: 'reps', target: 1, sets: 3, rest: 45 }, { ex: {} }, 0);
+        out.card1ok = /\b1 rep\b/.test(out.card1) && !/\b1 reps\b/.test(out.card1);
+        /* the breakdown reads the RESULTS off the record, which the computation
+           alone does not carry — shape it the way finishAssessment() writes it */
+        const R = { plank: 30, push: 1, side: 20, squat: 10, hollow: 20, pull: 5, lower: 8, dyn: 20, power: 8, stamina: 10 };
+        const a = Object.assign({}, computeAssessment(R), { results: R, subs: {} });
+        /* the breakdown reads the LIVE battery's results (assessState), not the
+           record it is handed — that is the state the finish screen is drawn in */
+        const prevAS = typeof assessState !== 'undefined' ? assessState : null;
+        assessState = { results: R, idx: TESTS.length };
+        const bd = testBreakdownHTML(a) || '';
+        assessState = prevAS;
+        out.bdHasRows = /Test by test/.test(bd);
+        out.breakdown1 = /\b1 rep\b/.test(bd) && !/\b1 reps\b/.test(bd);
+        /* the runner's spoken intro */
+        spoken.length = 0;
+        runRepCadence(1, 'Pull-Up', 0, null, EX.pullup); await wait(30);
+        out.runnerLine = spoken.find(x => /Guided set/.test(x)) || '';
+        stopTimer(); closeSheet(); await wait(400);
+        /* the player's ready announcement */
+        spoken.length = 0;
+        openPlayer({ items: [{ exId: 'pullup', unit: 'reps', target: 1, rest: 30, sets: 1 }], free: true, title: 'probe' }); await wait(250);
+        out.readyLine = spoken.find(x => /Pull-?Up/i.test(x)) || '';
+        try { playerQuit(); } catch (e) {}
+        await wait(500);
+      } catch (e) { out.err = String(e); }
+      window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
+      Object.assign(STATE, JSON.parse(snap)); save();
+      return out;
+    });
+    t.ok('GUARD: the probe ran and the pull-up is a rep movement', !r.err && r.pullupIsReps, JSON.stringify(r));
+    t.eq('plural() says 1 rep', r.helper1, '1 rep');
+    t.eq('and 12 reps', r.helper12, '12 reps');
+    t.ok('a personal best of ONE prints "1 rep" on Progress ▸ Strength (v489)', r.prOne === true, JSON.stringify({ prOne: r.prOne, text: r.prOneText }));
+    t.ok('FLOOR: and a best of twelve still prints "12 reps"', r.prTwelve === true, JSON.stringify({ prTwelve: r.prTwelve, text: r.prTwelveText }));
+    t.eq('the spoken brief says "1 rep"', r.brief1, '1 rep');
+    t.eq('FLOOR: and "12 reps"', r.brief12, '12 reps');
+    t.ok('the session card says "1 rep"', r.card1ok === true, JSON.stringify({ card1: (r.card1 || '').slice(0, 200) }));
+    t.ok('GUARD: the breakdown rendered its rows', r.bdHasRows === true, JSON.stringify({ bdHasRows: r.bdHasRows }));
+    t.ok('the baseline breakdown says "1 rep" for a single push-up', r.breakdown1 === true, JSON.stringify({ breakdown1: r.breakdown1 }));
+    t.ok('the ▶ Guided reps intro says "1 rep"', /Guided set\. 1 rep\. Get ready/.test(r.runnerLine), JSON.stringify({ runnerLine: r.runnerLine }));
+    t.ok('and the player\'s ready announcement says "1 rep"', /\b1 rep\./.test(r.readyLine) && !/1 reps/.test(r.readyLine), JSON.stringify({ readyLine: r.readyLine }));
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

@@ -609,7 +609,13 @@ export default async function run() {
     const readySrc = await page.evaluate(() => plTickReady.toString());
     t.ok('the ready countdown speaks no digits', !/coachSay\(String/.test(readySrc), readySrc);
     t.ok('but still beeps every second', /beep\(/.test(readySrc), readySrc);
-    t.ok("and still says 'Go!'", /coachSay\('Go!'\)/.test(readySrc), readySrc);
+    /* v489: the Go is the FIRST WORD of the work line, not a separate
+       utterance — plEnterWork() speaks the form cue in the same tick, and
+       _deviceSpeak() cancels the previous utterance on every new one, so a
+       separate "Go!" was cut a few milliseconds in on every set. */
+    const workSrc = await page.evaluate(() => plEnterWork.toString());
+    t.ok("and the Go opens the work line rather than being a separate utterance the work line cancels (v489)",
+      !/coachSay\('Go!'\)/.test(readySrc) && /coachSpeak\('Go! '\+/.test(workSrc), readySrc);
 
     /* 5. THE SAME DEFECT ON THE SURFACES v307 DID NOT TOUCH. Fixing one
           instance is not fixing the class — `if(!motivate(...))X` makes the

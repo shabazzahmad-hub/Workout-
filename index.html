@@ -1424,9 +1424,9 @@ const EX = {
     why:'Adds load to the classic sit-up for a stronger, more defined upper core.',
     steps:['Lie back holding the ball at the chest.','Sit all the way up, curling the spine.','Lower under control to the floor.'],
     cues:['Chin tucked','Curl, do not yank','Control the way down'],mistakes:['Throwing the neck','Dropping back down']},
-  mbchop:{name:'Medicine Ball Woodchopper',region:'oblique',unit:'reps',img:'ex-mbchop.jpg',anchor:null,hardness:1,base:16,rest:40,equip:['medball'],pattern:'core',
+  mbchop:{side:'perSet',name:'Medicine Ball Woodchopper',region:'oblique',unit:'reps',img:'ex-mbchop.jpg',anchor:null,hardness:1,base:16,rest:40,equip:['medball'],pattern:'core',
     why:'Loaded rotational power, high to low — trains the diagonal, hip-driven twisting strength nothing else here builds quite this way.',
-    steps:['Stand with the feet wide, holding the ball with both hands above one shoulder.','Rotate through the hips and core, driving the ball diagonally down to the opposite hip.','Control it back up to the start. That is one rep on this side.','Finish all reps on one side before switching.'],
+    steps:['Stand with the feet wide, holding the ball with both hands above one shoulder.','Rotate through the hips and core, driving the ball diagonally down to the opposite hip.','Control it back up to the start. That is one rep on this side.','Finish all reps on one side, then switch sides for the next set.'],
     cues:['Power comes from the hips, not the arms','Pivot the back foot as you turn','Control the ball on the way up too'],
     mistakes:['Rotating only the arms while the hips stay square',"Letting the ball's momentum throw the finish"]},
   kbswing:{name:'Kettlebell Swing',region:'strength',unit:'time',img:'ex-kbswing.jpg',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'hinge',
@@ -1471,7 +1471,7 @@ const EX = {
     why:'A loaded carry that builds a crushing grip, a braced anti-tilt core and total-body strength — one of the most transferable drills there is.',
     steps:['Stand tall with a kettlebell in each hand at your sides.','Brace the core and pull the shoulders down and back.','Walk with short, controlled steps for the time.','Keep the torso upright — do not lean or tilt.'],
     cues:['Chest up, shoulders back','Squeeze the handles hard','Steady, even steps'],mistakes:['Leaning or tilting to one side','Shuffling / rushing the steps']},
-  kbhalo:{side:'switch',name:'Kettlebell Halo',region:'oblique',unit:'time',img:'ex-kbhalo.jpg',vid:'ex-kbhalo.mp4',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
+  kbhalo:{side:'switch',swLine:'Reverse direction now.',swTag:'REVERSE',name:'Kettlebell Halo',region:'oblique',unit:'time',img:'ex-kbhalo.jpg',vid:'ex-kbhalo.mp4',anchor:null,hardness:1,base:30,rest:45,equip:['kettlebell'],pattern:'core',
     why:'The bell circles AROUND YOUR HEAD, held upside-down close to you — builds shoulder mobility and a braced, anti-rotation core.',
     steps:['Hold: grip the kettlebell upside-down by the horns (handle down, bell pointing up) with both hands, tucked close to your chest and head.','Path: circle it slowly around your head — past one ear, behind the head, past the other ear, and back to the front — keeping it hugging you the whole way.','Only your arms move: keep the hips, torso and legs locked and still — this is the difference from the Helicopter.','Reverse direction halfway through the time.'],
     cues:['Bell inverted (horns down), hugging the head','Ribs down, core braced, hips still','Slow, tight circles'],mistakes:['Swaying the hips or leaning back','Letting the bell drift wide away from the head']},
@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='488';
+const APP_VERSION='489';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -6484,7 +6484,7 @@ function day90Rows(){
    const scaled=!!anchorRescale('push',subs);
    const noRuler=!!subName&&!scaled;
    out.push({k:'push', label:'Push-ups', target:'35-45+ strict, continuous',
-     got:v?String(Math.round(v))+' reps':null,
+     got:v?plural(Math.round(v),'rep'):null,
      gotLabel:v?(noRuler?('your baseline '+subName):(scaled?('scaled from your '+subName):'your baseline max')):null,
      scored:!noRuler, ok:v!==null&&v>=35, near:v!==null&&v>=28,
      why:!hasBase?NO_BASE
@@ -6496,7 +6496,7 @@ function day90Rows(){
   {const pr=(()=>{try{return num(bestFor('pullup'));}catch(e){return null;}})();
    const row=hasBase?num(mx.pull):null;
    out.push({k:'pull', label:'Pull-ups', target:'6-10+ strict',
-     got:pr?String(Math.round(pr))+' reps':(row?String(Math.round(row))+' inverted rows':null),
+     got:pr?plural(Math.round(pr),'rep'):(row?plural(Math.round(row),'inverted row'):null),
      gotLabel:pr?'your pull-up record':(row?'your baseline Inverted Rows':null),
      scored:!!pr, ok:pr!==null&&pr>=6, near:pr!==null&&pr>=4,
      why:pr?null:(row?'The baseline battery tests Inverted Rows, not pull-ups. Different movement, so it is not scored against this.'
@@ -6853,7 +6853,7 @@ function _overloadNoteInner(sess){
 }
 function exCardHTML(m,log,idx){
   const ex=EX[m.exId];const st=log.ex[m.exId]||{sets:[],done:false};
-  const targetStr=m.unit==='time'?fmtTime(m.target):m.target+' reps';
+  const targetStr=m.unit==='time'?fmtTime(m.target):plural(m.target,'rep');
   const setsArr=Array.from({length:m.sets},(_,i)=>Array.isArray(st.sets)&&!!st.sets[i]);
   return `
   <div class="ex ${st.done?'done':''}" data-ex="${m.exId}">
@@ -8061,7 +8061,7 @@ function plEnterReady(first){
   const perSide=sidePerSet(m.exId)?sideForSet(PLAYER.s):'';
   if(perSide)plS('#plSub',perSide.toUpperCase());
   plSay(ex.name+'. '+(perSide?perSide+'. ':'')
-    +(m.unit==='time'?(fmtTime(m.target)+'.'):(m.target+' reps.'))
+    +(m.unit==='time'?(fmtTime(m.target)+'.'):(plural(m.target,'rep')+'.'))
     +(sideSwitch(m.exId)?' One side at a time — switch halfway.':''));
   if(!PLAYER.running){plS('#plToggle','Resume');return;}
   PLAYER.tid=setInterval(plTickReady,1000);
@@ -8072,7 +8072,12 @@ function plTickReady(){
   /* No spoken digits. The beep already marks every second, and a digit spoken
      one second after the announcement cancels it mid-word. */
   if(PLAYER.ready>0){beep(1000,.18,0.9);plS('#plNum',PLAYER.ready);return;}
-  beepGo();haptic(30);coachSay('Go!');plEnterWork();
+  /* NO SEPARATE "Go!". plEnterWork() speaks the form cue in the same tick,
+     and _deviceSpeak() cancels the previous utterance on every new one — so
+     the word was cut a few milliseconds in, on every set of every session,
+     and the athlete heard a clipped syllable before the cue. The Go is now
+     the first word of the work line, where nothing can cancel it. */
+  beepGo();haptic(30);plEnterWork();
 }
 // Rotate to the next spoken/shown form cue for the current exercise.
 function plNextCue(){const c=PLAYER.cues||[];if(!c.length)return'';PLAYER.cueIdx=((PLAYER.cueIdx||0)+1)%c.length;const cue=c[PLAYER.cueIdx];plS('#plCoach',cue);return cue;}
@@ -8114,7 +8119,7 @@ function plEnterWork(){
     PLAYER.remain=m.target;PLAYER.total=Math.max(1,m.target);
     PLAYER.deadline=monoNow()+PLAYER.remain*1000;   // same wall-clock floor plTickRest already relies on
     plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','HOLD');plRingSet(1);
-    coachSpeak(intro+PLAYER.cues[0]);
+    coachSpeak('Go! '+intro+PLAYER.cues[0]);
     if(PLAYER.running)PLAYER.tid=setInterval(plTickHold,1000);
   }else{
     const ecc=eccOf(ex);
@@ -8132,7 +8137,7 @@ function plEnterWork(){
     PLAYER.repN=0;PLAYER.repMs=0;PLAYER.repCounted=false;PLAYER.total=Math.max(1,m.target);
     plS('#plNum','0');plS('#plSub','OF '+m.target+' REPS');plRingSet(0);
     const tempoLine=ecc>=2?('Controlled tempo. Lower for '+ecc+' seconds, then drive up. '+PLAYER.cues[0]):('Fast and explosive. '+PLAYER.cues[0]);
-    coachSpeak(intro+tempoLine);
+    coachSpeak('Go! '+intro+tempoLine);
     if(!firstSet||!ex.why)plS('#plCoach',ecc>=2?'Lower slow…':'Go!');
     if(PLAYER.running)PLAYER.tid=setInterval(plTickRep,100);
   }
@@ -8159,7 +8164,7 @@ function plTickHold(){
   const halfSec=Math.floor(PLAYER.total/2);
   if(PLAYER.remain===halfSec&&sideSwitch(plCur().exId)&&PLAYER.total>=8){
     beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);
-    plS('#plCoach',SIDE_LINE);plSay(SIDE_LINE);
+    const _sw=switchLine(EX[plCur().exId]);plS('#plCoach',_sw);plSay(_sw);
   }
   else if(PLAYER.remain===10&&PLAYER.total>16){plHype('push','Ten seconds. Hold strong.');}
   else if(!PLAYER.grindSaid&&el===grindAt(PLAYER.total)){PLAYER.grindSaid=true;const g=grindLine();if(g)plSay(g);}
@@ -8193,11 +8198,11 @@ function plTickRep(){
     /* The switch call OUTRANKS the coaching and the hype: a form cue you miss
        costs one rep of quality, a missed switch costs the whole other side. */
     const swap=(PLAYER.repN===half&&sideSwitch(m.exId)&&m.target>1);
-    const extra=swap?SIDE_LINE
+    const extra=swap?switchLine(EX[m.exId])
       :((PLAYER.repN>1&&PLAYER.repN%4===0&&PLAYER.repN<m.target)?plNextCue()
       :((m.target>=8&&PLAYER.repN===half)?(motivateLine('during')||''):''));
     plSay(extra?(num+'. '+extra):num);
-    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);plS('#plCoach',SIDE_LINE);}
+    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);plS('#plCoach',switchLine(EX[m.exId]));}
   }
   if(PLAYER.repMs>=PLAYER.repDurMs){
     if(PLAYER.repN>=m.target){haptic(30);plClear();plAfterSet();return;}
@@ -8273,8 +8278,8 @@ function plEnterRest(dur,type){
   plClear();PLAYER.phase='rest';PLAYER.phaseAt=monoNow();PLAYER.remain=Math.max(1,dur|0);PLAYER.total=PLAYER.remain;
   PLAYER.deadline=monoNow()+PLAYER.remain*1000;
   const m=plCur();let lead,rx,nextEx;
-  if(type==='set'){const ex=EX[m.exId];nextEx=ex;lead='Next set';rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
-  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];nextEx=nex;lead='Up next';rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
+  if(type==='set'){const ex=EX[m.exId];nextEx=ex;lead='Next set';rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):plural(m.target,'rep'));}
+  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];nextEx=nex;lead='Up next';rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):plural(nm.target,'rep'));}
   const rate=(type==='ex'&&!PLAYER.free)?ratingChipsHTML(m.exId):'';
   $('#plBody').innerHTML=`
     <div class="pl-region"><span class="tag cardio">REST</span>
@@ -10179,7 +10184,9 @@ function ivTickLead(){
      effort and the v307 call for the guided player's own get-ready — this is
      the same rule reaching the four sibling countdowns that never got it. */
     if(INTV.lead>0){beep(1000,.18,0.9);ivS('#ivNum',INTV.lead);return;}
-  beepGo();haptic(30);coachSay('Go!');ivClear();ivStep(0);
+  /* No separate "Go!" here either: ivStep() speaks "Work! <name>" a tick
+     later and cancelled it — the work line IS the go word. */
+  beepGo();haptic(30);ivClear();ivStep(0);
 }
 /* THE LABEL IS DERIVED, NEVER HARDCODED. ivRenderStep() rebuilds the whole
    body, and hiitSkip() reaches it while paused — INTV.running false, no
@@ -11024,7 +11031,7 @@ function testBreakdownHTML(a){
     const nowSubs=assessSubs();
     const nowRec={subs:nowSubs};
     let heldDelta=false;   // a delta withheld because the ruler changed, or is unknown
-    const fmt=(t,v)=>t.unit==='time'?fmtTime(Math.round(v)):Math.round(v)+' reps';
+    const fmt=(t,v)=>t.unit==='time'?fmtTime(Math.round(v)):plural(Math.round(v),'rep');
     const rows=TESTS.map(t=>{
       const v=+res[t.id];
       if(!isFinite(v))return '';
@@ -11564,7 +11571,7 @@ function _briefGreet(){let h=9;try{h=new Date().getHours();}catch(e){}return h<1
    is a different shape and correctly keeps the plural. */
 function plural(n,word){return n+' '+word+(Math.abs(n)===1?'':'s');}
 function _briefList(a){a=(a||[]).filter(Boolean);if(a.length<=1)return a[0]||'';if(a.length===2)return a[0]+' and '+a[1];return a.slice(0,-1).join(', ')+', and '+a[a.length-1];}
-function _briefTarget(m){return m.unit==='time'?(m.target>=60?fmtTime(m.target):m.target+' seconds'):m.target+' reps';}
+function _briefTarget(m){return m.unit==='time'?(m.target>=60?fmtTime(m.target):plural(m.target,'second')):plural(m.target,'rep');}
 
 /* Build the ordered brief: each segment has an on-screen card (icon/title/text) and a
    spoken line (say). The screen text and the audio stay in lock-step. */
@@ -13427,6 +13434,13 @@ function itemSets(exId,n,pos){
   return sidePerSet(exId)?evenSets(v,easingOn(pos)):v;
 }
 const SIDE_LINE='Switch sides now.';
+/* A `switch` movement may carry its own halfway call. The halo is flagged
+   switch because its step says "reverse direction halfway" — it has no sides,
+   so "Switch sides now." over it was a cue for a movement it is not. Every
+   surface asks these two rather than the constant, so the line and the tag on
+   the ring cannot disagree about what the movement does at the halfway point. */
+function switchLine(ex){return (ex&&typeof ex.swLine==='string'&&ex.swLine)||SIDE_LINE;}
+function switchTag(ex){return (ex&&typeof ex.swTag==='string'&&ex.swTag)||'SWITCH SIDES';}
 function plSay(text){
   if(!text)return;
   setTimeout(()=>{try{coachSpeak(text);}catch(e){}},0);
@@ -13673,7 +13687,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
          the guided player had it; the ▶ Hold timer ran the whole set on one
          side and said nothing. */
       if(ex&&ex.side==='switch'&&total>=8&&remain===Math.floor(total/2)){
-        beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setPhase('SWITCH SIDES');plSay(SIDE_LINE);
+        beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setPhase(switchTag(ex));plSay(switchLine(ex));
       }
       else if(remain===10&&total>16){plHype('push','Ten seconds. Hold strong.');}
       else if(!_grindSaid&&el===grindAt(total)){_grindSaid=true;const g=grindLine();if(g)plSay(g);}
@@ -13693,7 +13707,11 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
      finished the hold and tapped the green button recorded nothing. It marks
      the set (onDone) and hands on exactly as the clock does; on a chained REST
      it is the player's own "Skip rest". Stop is still the abandon. */
+  let finished=false;
   function complete(){
+    /* ONCE. A second Done inside the 700 ms before the chained rest opens would
+       run the completion again and mark a SECOND set off one gesture. */
+    if(finished)return;finished=true;
     beepGo();haptic(30);if(timer)clearInterval(timer.iv);
     if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,restLabel(label),0,onAfterRest||null,true,ex);},700))(_sheetGen);if(onDone)onDone();return;}
     if(onDone)onDone();
@@ -13754,12 +13772,18 @@ function markSetFromTimer(exId){
    between-sets rest timer. Reuses the `timer` global (mode 'reps'). */
 let _repTok=0;
 function startGuidedReps(exId){exSetChain(exId);}
-function cancelReps(){_repTok++;stopTimer();closeSheet();}
+function cancelReps(){_repTok++;_repPending=false;stopTimer();closeSheet();}
 /* Done on a timer sheet means "this set is done" — mark it and hand on the way
    the clock would — never merely "close". A sheet with no live clock behind
    it (already finished, or torn down) just closes, which is what Done used to
    do everywhere. */
-function timerFinish(){if(timer&&typeof timer.finish==='function'){timer.finish();return;}stopTimer();closeSheet();}
+let _repPending=false;
+function timerFinish(){if(timer&&typeof timer.finish==='function'){timer.finish();return;}
+  /* the rep cadence's completion is a timer of its own (max(400, tempo*450) ms)
+     and stopTimer() has already run — a second Done in that window must not
+     close the sheet, which bumps _sheetGen and cancels the set it just marked */
+  if(_repPending)return;
+  stopTimer();closeSheet();}
 function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
   const total=Math.max(1,reps);let n=0;
   const tempo=repTempoSetting();
@@ -13771,7 +13795,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
   const half=Math.ceil(total/2);
   // 5-second loud GET READY before the reps begin
   let ready=5;const rn=$('#rcNum');if(rn){rn.textContent='5';rn.className='tnum rest';}setP('GET READY');
-  beep(1000,.15,0.7);coachSpeak(sidePrefix(label)+'Guided set. '+total+' reps. Get ready.');
+  beep(1000,.15,0.7);coachSpeak(sidePrefix(label)+'Guided set. '+plural(total,'rep')+'. Get ready.');
   function readyTick(){
     if(timer)timer.lastTick=monoNow();
     ready--;
@@ -13800,12 +13824,12 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
     /* The switch call OUTRANKS the hype, as it does in plTickRep(): a missed
        hype line costs nothing, a missed switch costs the whole other side. */
     const swap=(n===half&&ex&&ex.side==='switch'&&total>1);
-    const h=swap?SIDE_LINE:((total>=8&&n===half)?motivateLine('during'):'');
+    const h=swap?switchLine(ex):((total>=8&&n===half)?motivateLine('during'):'');
     plSay(String(n)+(h?'. '+h:''));
     /* And on the GLASS, as the ▶ Hold timer (setPhase) and the player (#plCoach)
        both do: a phone on silent with the voice off hears neither the tones nor
        the line, and the ring is what the athlete is looking at. */
-    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setP('SWITCH SIDES');}
+    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setP(switchTag(ex));}
     paint();
     if(n>=total)complete();
   }
@@ -13813,15 +13837,20 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
      Done used to be cancelReps() under a green label: the set unmarked and the
      chain ended. */
   function complete(){
-    stopTimer();
+    stopTimer();_repPending=true;
     const tok=++_repTok,rest=restAfter,done=onDone,lbl=label,gen=_sheetGen,nxt=onAfterRest;
     setTimeout(()=>{
+      _repPending=false;
       if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
       if(!motivate('done'))coachSpeak('Set complete. Strong work.');
       if(done)done();
-      /* the exercise rides along so the rest ring keeps the photograph, as the
-         player's rest does (v290) and the standalone Rest button already did */
-      if(rest>0)runTimer('rest',rest,restLabel(lbl),0,nxt||null,false,ex);
+      /* THE REST OPENS QUIET, as the hold chain's does. _deviceSpeak() cancels
+         the previous utterance on every new one, so a rest announcing "Rest.
+         45 seconds." in the same tick cut "Set complete. Strong work." — and
+         every hype line — off mid-word, on every set of every rep chain. The
+         duration goes on the toast instead, which is the hold chain's shape.
+         The exercise rides along so the rest ring keeps the photograph (v290). */
+      if(rest>0){toast('Set done! Resting '+rest+'s');runTimer('rest',rest,restLabel(lbl),0,nxt||null,true,ex);}
       else{const nn=$('#rcNum');if(nn)nn.textContent='✓';autoClose(700,closeSheet);}
     },Math.max(400,tempo*450));
   }
@@ -14410,7 +14439,7 @@ function _renderProgressPaint(){
        showing `0 reps` for a real movement would be a different lie. */
     const prRows=prKeys.filter(k=>EX[k]&&bestFor(k)>0);
     h+=prRows.length
-      ? `<div class="card pad">${prRows.map(k=>{const ex=EX[k],b=bestFor(k);return `<div class="kv"><span>${ex.name}</span><b>${ex.unit==='time'?fmtTime(b):b+' reps'}</b></div>`;}).join('')}</div>`
+      ? `<div class="card pad">${prRows.map(k=>{const ex=EX[k],b=bestFor(k);return `<div class="kv"><span>${ex.name}</span><b>${ex.unit==='time'?fmtTime(b):plural(b,'rep')}</b></div>`;}).join('')}</div>`
       : `<div class="note info">Complete workouts to bank personal bests here.</div>`;
   }else{h+=`<div class="note info">Complete workouts to bank personal bests here.</div>`;}
   // score history
@@ -15064,7 +15093,7 @@ function precacheSession(items){
 function bestFor(exId){const v=STATE.prs&&STATE.prs[exId];return (typeof v==='number'&&v>0)?v:0;}
 function climbNote(m){
   const b=bestFor(m.exId);if(!b)return '';
-  return `<span class="tiny" style="color:var(--fire-l)">· best ${m.unit==='time'?fmtTime(b):(b+' reps')}</span>`;
+  return `<span class="tiny" style="color:var(--fire-l)">· best ${m.unit==='time'?fmtTime(b):plural(b,'rep')}</span>`;
 }
 /* The mid-set cue for a ladder-maxed movement. climbNote() shows the
    BODYWEIGHT best, which stops moving once a ladder is topped out — this is
@@ -17931,7 +17960,7 @@ function strengthLevel(val,t){let i=0;for(;i<t.length;i++){if(val<t[i])break;}re
 function openStandards(){
   const rows=Object.keys(STANDARDS).map(k=>{
     const st=STANDARDS[k];const pr=bestFor(k);const lvl=pr?strengthLevel(pr,st.t):-1;
-    const val=pr?(st.unit==='time'?fmtTime(pr):pr+' reps'):'—';
+    const val=pr?(st.unit==='time'?fmtTime(pr):plural(pr,'rep')):'—';
     const badge=lvl>=0?LEVELS[lvl]:'Not tested';
     const color=lvl>=4?'var(--gold)':(lvl>=3?'var(--green)':(lvl>=2?'var(--fire-l)':(lvl>=1?'var(--teal)':'var(--muted)')));
     const pct=pr?clamp((lvl/4)*100,5,100):0;
@@ -18765,7 +18794,7 @@ function assessSeries(){
 function strengthTrendHTML(){
   const series=assessSeries();if(!series.length)return '';
   const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
-  const disp=v=>m.unit==='time'?fmtTime(v):v+' reps';
+  const disp=v=>m.unit==='time'?fmtTime(v):plural(v,'rep');
   const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}"${pressed(x.k===strengthSel)} onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
   /* THROUGH THE PREDICATE, NOT AROUND IT. This read was raw, so '99999' > 0
      coerced to true and a figure estimateMaxes() refuses was drawn on the
@@ -18785,7 +18814,7 @@ function strengthTrendHTML(){
     body=lineChart(vals,dates,'var(--fire)',m.unit==='time'?'s':'')+
       `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span>${_mixed
         ? `<span class="tiny" style="font-weight:800;color:var(--gold)">— not comparable</span>`
-        : `<span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):Math.abs(d)+' reps'}</span>`}<span class="tiny muted">${disp(last)}</span></div>`
+        : `<span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):plural(Math.abs(d),'rep')}</span>`}<span class="tiny muted">${disp(last)}</span></div>`
       +(_mixed?`<div class="tiny muted" style="margin-top:6px;color:var(--gold)">A flagged joint meant this test used a <b>different movement</b> in one of these records, so the change is not a like-for-like comparison.</div>`:'');
   }else if(!pts.length){
     // an imported backup can carry baseline.maxes as {} — pts[0] then threw and
@@ -22891,7 +22920,7 @@ function renderQuick(){
     const exId=quickExId(it.exId);
     const ex=EX[exId]||EX[it.exId];const unit=ex.unit;const done=!!(quickState.done&&quickState.done[idx]);
     const target=quickTarget(it,ex);
-    const rx=unit==='time'?fmtTime(target):target+' reps';
+    const rx=unit==='time'?fmtTime(target):plural(target,'rep');
     h+=`<div class="ex ${done?'done':''}">
       <div class="ex-top">
         <button class="ex-check" onclick="quickMark(${idx})" aria-pressed="${done?'true':'false'}" aria-label="${done?'Unmark':'Mark'} ${_ve(ex.name)} as done"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
@@ -23213,12 +23242,12 @@ function openSessionDetail(p){
   const prs=STATE.prs||{};
   const rows=st.items.map(m=>{
     const e=l.ex&&l.ex[m.exId];const done=e&&e.done===true;const sd=setsDoneFor(e,m);
-    const rx=m.unit==='time'?fmtTime(m.target):m.target+' reps';
+    const rx=m.unit==='time'?fmtTime(m.target):plural(m.target,'rep');
     const isPR=prs[m.exId]&&prs[m.exId]===m.target;
     const setTxt=`<span class="tiny ${done?'':'muted'}">${sd}/${m.sets} sets</span>`;
     return `<div class="kv" style="align-items:flex-start"><span>${done?'✅':(sd>0?'🟡':'⚪️')} ${EX[m.exId].name}${isPR?' <span class="tag" style="font-size:10px;background:var(--gold);color:#2a1f00">PR</span>':''}<div class="tiny muted">${m.sets}×${rx} · rest ${m.rest}s</div></span>${setTxt}</div>`;
   }).join('');
-  const volTxt=st.totalReps?`${st.totalReps} reps`:'';
+  const volTxt=st.totalReps?plural(st.totalReps,'rep'):'';
   const holdTxt=st.totalHold?fmtTime(st.totalHold)+' hold':'';
   const workTxt=[volTxt,holdTxt].filter(Boolean).join(' · ')||'—';
   const mins=sessionMinutes(l,st);
@@ -25379,6 +25408,8 @@ function validateData(){
     /* Both directions, and both kinds. A per-side movement whose steps never
        mention a side is a set the athlete has no way to run correctly. */
     if(e.side==='perSet'&&!says)errs.push('EX.'+k+' is flagged side:"perSet" but its steps never say to switch sides');
+    /* a custom halfway call belongs only to a movement that HAS a halfway call */
+    if((e.swLine!==undefined||e.swTag!==undefined)&&e.side!=='switch')errs.push('EX.'+k+' carries swLine/swTag but is not side:"switch"');
 
     if(e.side!==undefined&&SIDE_MODES.indexOf(e.side)<0)errs.push('EX.'+k+' has an unknown side value "'+e.side+'"');
   });

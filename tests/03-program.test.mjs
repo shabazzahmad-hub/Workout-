@@ -376,9 +376,11 @@ export default async function run() {
     t.eq('the validator has no complaint about any side flag', sd.validatorClean, [], sd);
     t.ok('but it does reject a side value outside the legal set', sd.validatorCatchesJunk, sd);
     t.eq('and that legal set lives in one place', sd.modes, ['switch', 'perSet'], sd);
-    t.ok('the twelve per-side movements are the side planks and the single-leg work',
-      sd.perSide.length === 12 && sd.perSide.includes('sideplank') && sd.perSide.includes('pistol')
-      && sd.perSide.includes('warriorthree'), sd);
+    /* v489 added the woodchopper — "finish all reps on one side" is one side
+       per SET, and it had carried no flag at all */
+    t.ok('the thirteen per-side movements are the side planks, the single-leg work and the woodchopper',
+      sd.perSide.length === 13 && sd.perSide.includes('sideplank') && sd.perSide.includes('pistol')
+      && sd.perSide.includes('warriorthree') && sd.perSide.includes('mbchop'), sd);
     t.ok('and the mid-set switchers are a separate, smaller set',
       sd.switching.includes('kbrow') && sd.switching.includes('kbsuitcase')
       && !sd.switching.includes('sideplank'), sd);

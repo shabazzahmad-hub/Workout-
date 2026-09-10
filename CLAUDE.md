@@ -19909,6 +19909,137 @@ own prefix, and **the month list's reset leaves it alone**: a reset on one
 screen that empties a list on another is the "erase one thing, another goes"
 defect.
 
+## The rest cancelled the line that announced it (v489)
+
+Found by reading the v488 rep chain's hand-off — for the seventeenth round
+running the best finding was in the round immediately before.
+
+`_deviceSpeak()` calls `synth.cancel()` on every utterance, and the rep
+chain's `complete()` spoke *"Set complete. Strong work."* (or a hype line)
+and then, **in the same tick**, opened its rest with `quiet=false` — which
+spoke *"Rest. 45 seconds."* and cut the first line off mid-word. On every set
+of every rep chain, and on Quick, the set-complete line and every hype line
+never once played to the end.
+
+**The hold chain had it right**, which is what made it findable: it toasts
+*"Hold done! Resting 45s"* and opens its rest 700 ms later with `quiet=true`.
+The rep chain now takes the same shape — the length goes on the toast, the
+rest opens quiet. v302's rule, on a hand-off rather than a countdown: **a
+voice line and a per-second job cannot share the same second**, and neither
+can two voice lines.
+
+**A line scan could not see it.** The two utterances live in different
+functions — `complete()` and the `runTimer()` it calls — so a sweep for two
+speak calls on adjacent lines reports nine either/or shapes and misses the
+one real member. The class question is *which function speaks and then calls
+a function that speaks*, and the rep chain was the only one.
+
+**The floor is the standalone ⏱ Rest**, which has nothing before it and must
+still announce its length — a fix that made every rest quiet passes every
+assertion about the chain.
+
+### "Go!" was cancelled on every set, in the player and in HIIT
+
+The class question — *which function speaks and then calls a function that
+speaks* — has two more members, and they are the two oldest surfaces in the
+app. `plTickReady()` said *"Go!"* and then, in the same tick, `plEnterWork()`
+spoke the form cue; `ivTickLead()` said *"Go!"* and `ivStep()` spoke *"Work!
+<name>"* a tick later. So the word was cut a few milliseconds in, on every set
+of every session, and the athlete heard a clipped syllable before the cue.
+
+**The Go is now the first word of the work line**, where nothing can cancel
+it — the same call v307 made for the rep count, with the flavour after the
+information. HIIT's *"Work!"* is its own go word, so the separate one simply
+goes.
+
+**The floor is the ▶ Hold timer**, whose *"Go!"* has nothing after it and
+must stay a line of its own. And **suite 14 had pinned the defect** —
+*"and still says 'Go!'"* asserted the separate utterance in the source. It
+was re-aimed at the requirement: the Go opens the work line. The eighth time
+a check has held a defect in place rather than caught it.
+
+**A brace-matching scanner reported 144 such pairs and was broken** — it
+attributed every speaker to `_ve()` and `intakeHTML()`, which is the v388
+trap verbatim. The six pairs worth reading were the phase hand-offs, and two
+of the six were real.
+
+## A one-sided movement with no flag, found by asking for four sets (v489)
+
+*"Make it all 4 sets for exercises that are focusing on one side of the
+body."* Measured first: **the rule already exists.** `evenSets()` has given
+every `side:'perSet'` movement an even count since v351 (up, 3 → 4; down to 2
+only under safe mode, a deload, a slump or a comeback), v481 carried it into
+the weights circuit, the custom builder and Quick, and v481's own sweep found
+**zero odd per-side sets across 378 athlete configurations.** The athlete's
+phone is on v396, which predates all of it — so the request is the report of
+a defect that shipped fixed 85 versions ago, and the answer is the update.
+
+**What the sweep could not see was a movement carrying no flag at all.**
+Reading every entry whose steps use one-sided wording — 44 of them — against
+its flag found one: the **Medicine Ball Woodchopper**, whose own steps say
+*"finish all reps on one side"* (one side per SET) and which carried no
+`side` at all. The other 43 alternate inside the set (*"count each side as a
+rep"*), which v351 read and deliberately left. It is `perSet` now, and its
+step says *"switch sides for the next set"* so the validator's both-ways
+rule holds.
+
+### "1 reps", at eighteen sites
+
+v459 closed the plural class for every count the app writes as a LITERAL —
+its scan forbids `1 sets`, `1 reps` and the rest in the source. **A count
+built by concatenation is invisible to that scan**, and `x+' reps'` was
+written eighteen times: the personal-best rows, the strength standards, the
+day-90 board, the baseline breakdown, the session card, the custom builder,
+the session detail, the player's next-set line — and the two lines the coach
+SPEAKS, the ready announcement and the guided-reps intro.
+
+**A count of one is a real athlete state.** A beginner's first pull-up is a
+personal best of 1, and a baseline push-up result can be 1; both printed
+*"1 reps"* and one of them was read aloud. Every site asks `plural()` now,
+and the check drives the two spoken ones and the four rendered ones with a
+count of one, with twelve pinned beside each as the floor.
+
+**And the v488 driver's one escape was a weak floor.** The over-eager
+mutant that wrote `SWITCH SIDES` on the ring for every movement at the
+halfway rep walked through a two-sided floor that only counted spoken lines
+— *measure the payload, not the container*, where the payload was the
+glass. It reads the ring now.
+
+**And the plural check failed on CI, on a screen that was right.** It read the
+whole pane's `textContent`, which runs the rows together —
+`Pull-Up1 repPush-Up12 repsAssessment history` — so `\b` after `rep` found no
+boundary before the next row's name. It reads the `<b>` of the row whose name is
+the movement's now. *Scope the assertion to where the change was made*, and a
+word boundary is not a boundary when the next element starts with a letter.
+
+### Done twice was two sets, or none
+
+Found by auditing v488's own Done wiring. A second tap on the hold sheet's
+Done ran `complete()` again inside the 700 ms before the chained rest opened
+and **marked a second set off one gesture**; a second tap on the rep sheet
+landed inside the pending completion, closed the sheet, bumped `_sheetGen`
+and **cancelled the set it had just marked**. Two sheets, two opposite
+failures, one gesture — v405's double-tap class, on the button that round
+had not yet created. `complete()` runs once, and `timerFinish()` is a no-op
+while a rep completion is pending.
+
+### The halo was told to switch sides, and it has none
+
+Read while comparing every flagged movement's own wording against its side
+model. The Kettlebell Halo is `switch` because its step says *"reverse
+direction halfway"* — and at the halfway point every surface spoke *"Switch
+sides now."* and wrote `SWITCH SIDES` on the ring. A cue for a movement it is
+not. A `switch` movement may now carry its own call (`swLine`, `swTag`), read
+through `switchLine()`/`switchTag()` at all five surfaces so the line and the
+ring cannot disagree; the validator refuses the fields on anything that is
+not `side:'switch'`, and that rule is broken in front of it in the check.
+
+**The six `side:'switch'` movements stay at three sets on purpose.** A halo,
+a suitcase carry or a windmill switches at the halfway call inside every set,
+so each set already works both sides equally; a fourth set there would add
+volume without a balance reason, which is the v310 rule that a request never
+buys volume by accident.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
