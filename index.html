@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='486';
+const APP_VERSION='487';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11136,7 +11136,12 @@ function englishVoicePool(){
    to go on, and most Android names carry nothing to read. Kept SEPARATE from
    the female test so a name matching neither can be reported as unknown
    rather than guessed at. */
-const _MALE_RE=/\bmale\b|\balex\b|\btom\b|daniel|arthur|brian|guy|david|mark|george|james|thomas|oliver|ryan|eric|steffan|christopher|roger|andrew|tony|jason|davis|aaron|gordon|rishi|fred|junior|ralph|reed|william|matthew|nathan|liam|ravi|richard/i;
+/* BOUNDARIES on the short names that sit inside a female one: "Erica",
+   "Frederica", "Winifred", "Antonia" and "Marketa" all read as MALE on a bare
+   substring — and so did "English (America)". A wrong label is worse than
+   none (v486), and the female test running first cannot save a name the
+   female list has never heard of. */
+const _MALE_RE=/\bmale\b|\balex\b|\btom\b|daniel|arthur|brian|\bguy\b|david|\bmark\b|george|james|thomas|oliver|ryan|\beric\b|steffan|christopher|roger|andrew|\btony\b|jason|davis|aaron|gordon|rishi|\bfred\b|junior|ralph|reed|william|matthew|nathan|liam|ravi|richard/i;
 const _FEMALE_RE=/female|samantha|victoria|karen|moira|tessa|fiona|serena|zira|susan|allison|ava|zoe|catherine|amelie|anna|nicky|kate|hazel|linda|heera|veena|salli|joanna|kendra|kimberly|aria|jenny|michelle|sonia|clara|isha|neerja|libby|maisie/i;
 /* Give every coach the most distinct device voice we can. Coaches usually
    outnumber the phone's installed voices, so we round-robin through the pool
@@ -11422,6 +11427,12 @@ function neuralSpeak(text,persona,onFail){
   if(cached){_neuralPlay(cached);return true;}
   _sdkSynthesize(neuralSSML(text,cfg),cfg)
     .then(buf=>{const u=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));_neuralCacheSet(key,u);
+      /* A SUCCESS RESETS THE STRIKES. Three transient failures in a whole
+         session — a short signal drop on the drive in — would otherwise leave
+         "the premium voice is not answering" on Settings for the rest of the
+         day while every line since had played: a note about a state that is
+         no longer true. The count is consecutive failures, not lifetime ones. */
+      _neuralFails=0;_neuralFailMsg='';
       if(tok===_neuralTok)_neuralPlay(u);})   // only play if not superseded
     .catch(err=>{const m=String((err&&(err.message||err.errorDetails))||err||'');
       try{console.warn('neural TTS failed, using device voice',m);}catch(e){}
@@ -13554,6 +13565,29 @@ function beatStep(s,t){
    rule, because Quick has no per-set boxes); rest runs BETWEEN sets and never
    after the last one; and the label says WHICH set it is, because "3 sets" tells
    an athlete mid-session nothing about where they are in them. */
+/* THE LABEL NAMES THE SIDE. v351 gave a per-side movement an even set count
+   and had the guided player say LEFT / RIGHT on every set, because "an even
+   count balances nothing if the athlete does not know to alternate". The
+   Today runners and Quick built their own label and never learned it, so
+   "Side Plank · set 1 of 4" sat on the sheet with no side at all. One builder
+   for every runner-shaped surface, so a fourth cannot be written without it.
+   `n` is 1-based here; sideForSet() counts sets from 0 like the player. */
+function setChainLabel(ex,exId,n,sets){
+  return ex.name+(sets>1?` · set ${n} of ${sets}`:'')+(sidePerSet(exId)?' · '+sideForSet(n-1):'');
+}
+/* The side a runner should SPEAK before its own announcement, read off the
+   label the chain built — the label is the contract, and a runner has no id. */
+function sideInLabel(label){
+  const l=String(label||'');
+  if(l.endsWith(' · '+SIDE_FIRST))return SIDE_FIRST;
+  if(l.endsWith(' · '+SIDE_SECOND))return SIDE_SECOND;
+  return '';
+}
+function sidePrefix(label){const s=sideInLabel(label);return s?(s+'. '):'';}
+/* The REST between two sides carries no side: "Side Plank · set 1 of 4 · Left
+   side — rest" would name the side just finished over a clock whose whole job
+   is the side about to start. */
+function restLabel(label){const s=sideInLabel(label);const l=String(label||'');return (s?l.slice(0,l.length-(' · '+s).length):l)+' — rest';}
 function exSetChain(exId,setNo){
   const sess=buildSession(STATE.progressPtr);
   const m=[...sess.main,sess.finisher].find(x=>x&&x.exId===exId);
@@ -13570,7 +13604,7 @@ function exSetChain(exId,setNo){
     n=Math.min(setsDoneFor(st,m)+1,sets);
   }
   const last=n>=sets;
-  const label=ex.name+(sets>1?` · set ${n} of ${sets}`:'');
+  const label=setChainLabel(ex,exId,n,sets);
   const done=()=>markSetFromTimer(exId);
   const next=last?null:(()=>exSetChain(exId,n+1));
   if(m.unit==='time')runTimer('hold',m.target,label,last?0:m.rest,done,false,ex,next);
@@ -13603,7 +13637,9 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
     tRing(true);
     const n=$('#tnum');if(n){n.textContent='5';n.className='tnum rest';}setPhase('GET READY');
     beep(1000,.15,0.7);
-    if(!quiet&&!motivate('start'))coachSpeak('Get ready.');
+    /* The side goes FIRST so the next line's cancel() can only clip the
+       filler, never the half of the movement the athlete is about to do. */
+    if(!quiet){const sp=sidePrefix(label);if(sp)coachSpeak(sp+'Get ready.');else if(!motivate('start'))coachSpeak('Get ready.');}
   }else if(!quiet){coachSpeak('Rest. '+seconds+' seconds.');}
   function tick(){
     if(timer)timer.lastTick=monoNow();
@@ -13632,7 +13668,14 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
     /* Deferred for the same reason plTickHold() defers — an utterance started
        inside the tick can stall the main thread past the next one. */
     if(isHold){
-      if(remain===10&&total>16){plHype('push','Ten seconds. Hold strong.');}
+      /* A one-sided hold switches halfway, exactly as plTickHold() does: the
+         same falling-then-rising pair (660 -> 880) and the same line. Only
+         the guided player had it; the ▶ Hold timer ran the whole set on one
+         side and said nothing. */
+      if(ex&&ex.side==='switch'&&total>=8&&remain===Math.floor(total/2)){
+        beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setPhase('SWITCH SIDES');plSay(SIDE_LINE);
+      }
+      else if(remain===10&&total>16){plHype('push','Ten seconds. Hold strong.');}
       else if(!_grindSaid&&el===grindAt(total)){_grindSaid=true;const g=grindLine();if(g)plSay(g);}
       else if(el>0&&el%10===0&&remain>4&&!nearGrind(el,total))plHype('during');   // periodic push through the hold
     }else{
@@ -13643,7 +13686,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
     if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0){beepDuck(300);beep(920,.17,0.92);}
     if(remain<=0){
       beepGo();haptic(30);clearInterval(timer.iv);
-      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,label+' — rest',0,onAfterRest||null,true);},700))(_sheetGen);if(onDone)onDone();return;}
+      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,restLabel(label),0,onAfterRest||null,true);},700))(_sheetGen);if(onDone)onDone();return;}
       if(onDone)onDone();
       /* A CHAINED REST HANDS STRAIGHT TO THE NEXT SET, which has already opened
          its own sheet — so writing "Done" into it and queueing a close would
@@ -13715,7 +13758,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
   const half=Math.ceil(total/2);
   // 5-second loud GET READY before the reps begin
   let ready=5;const rn=$('#rcNum');if(rn){rn.textContent='5';rn.className='tnum rest';}setP('GET READY');
-  beep(1000,.15,0.7);coachSpeak('Guided set. '+total+' reps. Get ready.');
+  beep(1000,.15,0.7);coachSpeak(sidePrefix(label)+'Guided set. '+total+' reps. Get ready.');
   function readyTick(){
     if(timer)timer.lastTick=monoNow();
     ready--;
@@ -13741,8 +13784,12 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
     /* The count is never dropped here either — plTickRep()'s twin, and it had
        the identical defect: a hype line at the halfway rep REPLACED the number
        rather than following it. */
-    const h=(total>=8&&n===half)?motivateLine('during'):'';
+    /* The switch call OUTRANKS the hype, as it does in plTickRep(): a missed
+       hype line costs nothing, a missed switch costs the whole other side. */
+    const swap=(n===half&&ex&&ex.side==='switch'&&total>1);
+    const h=swap?SIDE_LINE:((total>=8&&n===half)?motivateLine('during'):'');
     plSay(String(n)+(h?'. '+h:''));
+    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);}
     paint();
     if(n>=total){
       stopTimer();
@@ -13751,7 +13798,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
         if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
         if(!motivate('done'))coachSpeak('Set complete. Strong work.');
         if(done)done();
-        if(rest>0)runTimer('rest',rest,lbl+' — rest',0,nxt||null);
+        if(rest>0)runTimer('rest',rest,restLabel(lbl),0,nxt||null);
         else{const nn=$('#rcNum');if(nn)nn.textContent='✓';autoClose(700,closeSheet);}
       },Math.max(400,tempo*450));
     }
@@ -22827,12 +22874,12 @@ function quickTarget(it,ex){
 }
 function quickPlay(idx,setNo){
   const q=QUICKIES.find(x=>x.id===QUICK_ID);if(!q)return;const it=q.items[idx];if(!it)return;
-  const ex=EX[quickExId(it.exId)]||EX[it.exId];if(!ex)return;
+  const xid=quickExId(it.exId),exId=EX[xid]?xid:it.exId,ex=EX[exId];if(!ex)return;
   const rest=it.rest||ex.rest||25;autoRoll();
   const sets=quickSets(it),n=Math.min(sets,Math.max(1,+setNo||1)),last=n>=sets;
   /* Which set it is, not how many there are. "2 sets" told the athlete nothing
      about where they were in them, and the chain makes that answerable. */
-  const label=ex.name+(sets>1?` · set ${n} of ${sets}`:'');
+  const label=setChainLabel(ex,exId,n,sets);
   const target=quickTarget(it,ex);   // same number the card shows
   /* Only the LAST set ticks the movement off. Everything before it hands to a
      rest and then to the next set, so the check means what the row promised. */
