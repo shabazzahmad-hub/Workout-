@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='495';
+const APP_VERSION='496';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7650,6 +7650,10 @@ function hurtStop(){
     plClearResume();playerClose();
     if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
     try{render();}catch(e){}
+    /* The pointer just moved, so a block boundary can fall here - and the OTHER
+       branch of this same function hands to playerFeel(), which checks. One of
+       a pair guarded and its twin not, inside one function. */
+    try{checkAchievements();}catch(e){}
     toast('Stopped — moving you on. Rest that joint.');
     if(dayflowActive())dayflowAdvance('workout');
     return;
@@ -14562,7 +14566,7 @@ function _renderProgressPaint(){
   if(P==='strength'){
   h+=`<div class="section-label">Strength test</div><div class="card pad">
     <div class="row" style="justify-content:space-between;align-items:center">
-      <div style="min-width:0"><b>${STATE.baseline?(STATE.baseline.estimated?'Estimated, never tested':(latestTestDate()?('Last tested '+_ve(latestTestDate())):'Tested — date not recorded')):'Not tested yet'}</b>
+      <div style="min-width:0"><b>${STATE.baseline?(!baselineTested()?'Estimated, never tested':(latestTestDate()?('Last tested '+_ve(latestTestDate())):'Tested — date not recorded')):'Not tested yet'}</b>
         <div class="tiny muted" style="margin-top:2px">Every target for the block is scaled off this. Tested tired? Do it again — the newest result wins.</div></div>
       <button class="btn sm primary" style="flex:0 0 auto" onclick="retestNow()">Re-test</button></div></div>`;
   // strength trend charts (baseline + re-tests)
@@ -15130,9 +15134,25 @@ function bestSkipWeek(){const by={};skipLog().forEach(x=>{const k=_weekKeyOf(x.d
    goes through here — three of them, and a fourth that forgot would print
    "() => ..." onto the glass. */
 function achDesc(a){try{return typeof a.desc==='function'?a.desc():(a.desc||'');}catch(e){return '';}}
+/* A BADGE IS A CLAIM ABOUT WHAT THE ATHLETE DID, and two of them fired for
+   DECLINING the thing they name. Both records carry a flag saying so, and the
+   app already reads those flags in three other places - latestTestDate() and
+   assessSeries() both skip a deferred re-test, and Progress > Strength renders
+   "Estimated, never tested" off the same field the badge was calling finished.
+   So the cabinet said "Know Your Numbers" on the pane beside the one saying the
+   athlete never tested. One definition each, asked by every consumer. */
+function baselineTested(){
+  try{return !!(STATE.baseline&&!STATE.baseline.estimated);}catch(e){return false;}
+}
+function isRealRetest(r){
+  try{return !!(r&&r.maxes&&!r.deferred);}catch(e){return false;}
+}
+function retestDoneCount(){
+  try{return Object.values(STATE.reassess||{}).filter(isRealRetest).length;}catch(e){return 0;}
+}
 const ACHIEVEMENTS=[
   {id:'first',emoji:'🎬',name:'First Rep',desc:'Complete your first workout',check:()=>sessionsDoneCount()>=1},
-  {id:'baseline',emoji:'📋',name:'Know Your Numbers',desc:'Finish the baseline assessment',check:()=>!!STATE.baseline},
+  {id:'baseline',emoji:'📋',name:'Know Your Numbers',desc:'Finish the baseline assessment',check:()=>baselineTested()},
   {id:'streak3',emoji:'🔥',name:'On a Roll',desc:'3-day training streak',check:()=>computeStreak()>=3},
   {id:'streak7',emoji:'⚡',name:'Week Warrior',desc:'7-day training streak',check:()=>computeStreak()>=7},
   {id:'streak14',emoji:'🌟',name:'Unstoppable',desc:'14-day training streak',check:()=>computeStreak()>=14},
@@ -15153,7 +15173,7 @@ const ACHIEVEMENTS=[
      re-test screen, which derived TESTS.length in one half of a sentence and
      hardcoded the block length in the other. */
   {id:'block',emoji:'✅',name:'Block Complete',desc:'Finish a '+WEEKS_PER_CYCLE+'-week block',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE},
-  {id:'retest',emoji:'📈',name:'Levelled Up',desc:'Complete a re-test',check:()=>Object.keys(STATE.reassess||{}).length>=1},
+  {id:'retest',emoji:'📈',name:'Levelled Up',desc:'Complete a re-test',check:()=>retestDoneCount()>=1},
   {id:'score10',emoji:'🚀',name:'Stronger Core',desc:'Core Score up 10+ from baseline',check:()=>scoreGain()>=10},
   {id:'waist2',emoji:'📏',name:'Inches Down',desc:'Waist down 5 cm (2 in) from start',check:()=>waistDrop()>=5},
   {id:'waist5',emoji:'🎯',name:'Waist Winner',desc:'Waist down 12 cm (5 in) from start',check:()=>waistDrop()>=12},
@@ -16079,7 +16099,7 @@ function latestTestDate(){
   /* A record written before v177 can carry maxes and no date at all —
      String(undefined).slice(0,10) is the string "undefined", which is precisely
      the placeholder the state suite scans this tab for. */
-  for(const k of ks){const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred&&r.date)return String(r.date).slice(0,10);}
+  for(const k of ks){const r=STATE.reassess[k];if(isRealRetest(r)&&r.date)return String(r.date).slice(0,10);}
   return (STATE.baseline&&STATE.baseline.date)?String(STATE.baseline.date).slice(0,10):null;
 }
 /* finishAssessment() already overwrites STATE.reassess[n] and calls
@@ -19008,7 +19028,7 @@ function assessSeries(){
      precedes its own block's re-tests, so the list is chronological by
      construction — and a record whose junk date the boot repair dropped has no
      key to sort on, which a date sort would silently put first. */
-  const _push=r=>{if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes,subs:r.subs});};
+  const _push=r=>{if(isRealRetest(r))list.push({date:r.date,maxes:r.maxes,subs:r.subs});};
   (Array.isArray(STATE.runs)?STATE.runs:[]).forEach(run=>{
     if(!run||typeof run!=='object')return;
     _push(run.baseline);
@@ -19026,7 +19046,7 @@ function assessSeries(){
      today's date and flagged deferred. Plotting those drew a dead-flat strength
      trend from tests that never happened — which reads as a plateau, which is
      exactly the signal that makes someone abandon a program that was working. */
-  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(r&&r.maxes&&!r.deferred)list.push({date:r.date,maxes:r.maxes,subs:r.subs});});
+  Object.keys(STATE.reassess||{}).map(Number).sort((a,b)=>a-b).forEach(k=>{const r=STATE.reassess[k];if(isRealRetest(r))list.push({date:r.date,maxes:r.maxes,subs:r.subs});});
   return list;
 }
 function strengthTrendHTML(){
@@ -23225,6 +23245,13 @@ function quickFinish(){
     STATE.quickLog[todayISO()]=(STATE.quickLog[todayISO()]||0)+1;
   }catch(e){}
   save();
+  /* THE ROUND THAT MADE A QUICK SESSION COUNT FOR THE STREAK DID NOT TELL THE
+     BADGES. computeStreak() reads quickLog, so a 14th consecutive quick day
+     really does earn Unstoppable - and nothing here asked, so the cabinet sat
+     at three while the condition was true. It self-heals only when some
+     unrelated action checks (a sip of water, a habit tick), which the athlete
+     this feature exists for may not take for days. */
+  try{checkAchievements();}catch(e){}
   if(!motivate('done'))coachSay&&coachSay('Nice work. Quick session done.');
   toast('Quick workout complete 💪');
   try{history.back();}catch(e){go('today');}
