@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='487';
+const APP_VERSION='488';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13686,7 +13686,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
     if(isHold)countdownCue(remain,total); else if(remain<=3&&remain>0){beepDuck(300);beep(920,.17,0.92);}
     if(remain<=0){
       beepGo();haptic(30);clearInterval(timer.iv);
-      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,restLabel(label),0,onAfterRest||null,true);},700))(_sheetGen);if(onDone)onDone();return;}
+      if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,restLabel(label),0,onAfterRest||null,true,ex);},700))(_sheetGen);if(onDone)onDone();return;}
       if(onDone)onDone();
       /* A CHAINED REST HANDS STRAIGHT TO THE NEXT SET, which has already opened
          its own sheet — so writing "Done" into it and queueing a close would
@@ -13789,7 +13789,10 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
     const swap=(n===half&&ex&&ex.side==='switch'&&total>1);
     const h=swap?SIDE_LINE:((total>=8&&n===half)?motivateLine('during'):'');
     plSay(String(n)+(h?'. '+h:''));
-    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);}
+    /* And on the GLASS, as the ▶ Hold timer (setPhase) and the player (#plCoach)
+       both do: a phone on silent with the voice off hears neither the tones nor
+       the line, and the ring is what the athlete is looking at. */
+    if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);setP('SWITCH SIDES');}
     paint();
     if(n>=total){
       stopTimer();
@@ -13798,7 +13801,9 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
         if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
         if(!motivate('done'))coachSpeak('Set complete. Strong work.');
         if(done)done();
-        if(rest>0)runTimer('rest',rest,restLabel(lbl),0,nxt||null);
+        /* the exercise rides along so the rest ring keeps the photograph, as the
+           player's rest does (v290) and the standalone Rest button already did */
+        if(rest>0)runTimer('rest',rest,restLabel(lbl),0,nxt||null,false,ex);
         else{const nn=$('#rcNum');if(nn)nn.textContent='✓';autoClose(700,closeSheet);}
       },Math.max(400,tempo*450));
     }
@@ -22885,8 +22890,12 @@ function quickPlay(idx,setNo){
      rest and then to the next set, so the check means what the row promised. */
   const done=last?(()=>quickSetDone(idx)):null;
   const next=last?null:(()=>quickPlay(idx,n+1));
-  if(ex.unit==='time') runTimer('hold',target,label,last?0:rest,done,false,null,next);
-  else runRepCadence(target,label,last?0:rest,done,null,next);
+  /* The EXERCISE goes with it, as the Today runners pass it. A null here left
+     the Quick ring with no photograph — plRingMediaHTML(null) renders nothing —
+     and a one-sided move with no switch cue, on a sheet whose twin one function
+     away had both. */
+  if(ex.unit==='time') runTimer('hold',target,label,last?0:rest,done,false,ex,next);
+  else runRepCadence(target,label,last?0:rest,done,ex,next);
 }
 function quickSetDone(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=true;haptic(10);if(TAB==='quick')renderQuick();}
 /* THE BUTTON SAID "Unmark" AND COULD NOT UNMARK. quickMark() only ever wrote

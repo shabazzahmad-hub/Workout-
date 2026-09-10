@@ -13729,7 +13729,11 @@ export default async function () {
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
       /* and on the rep cadence */
       runRepCadence(10, 'Kettlebell Halo', 0, null, EX.kbhalo); await wait(20);
-      for (let i = 0; i < 20; i++) { if (timer && timer.tick) timer.tick(); }
+      o.repPhase = '';
+      for (let i = 0; i < 20; i++) {
+        if (timer && timer.tick) timer.tick();
+        if (/SWITCH/.test((document.querySelector('#rcphase') || {}).textContent || '')) o.repPhase = 'SWITCH SIDES';
+      }
       o.repSwitch = spoken.find(x => /Switch sides now/.test(x)) || '';
       o.repTone = tones.includes(660);
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
@@ -13742,8 +13746,34 @@ export default async function () {
       o.quickFound = !!q;
       if (q) {
         QUICK_ID = q.id; const idx = q.items.findIndex(i => i.exId === 'sideplank');
-        quickPlay(idx); await wait(20); o.quick1 = label(); closeSheet(); await wait(400);
+        quickPlay(idx); await wait(20); o.quick1 = label();
+        /* v488: quickPlay() handed the runners NULL for the exercise, so the
+           Quick ring carried no photograph at all — plRingMediaHTML(null) is
+           '' — while the Today runners one function away showed one. The
+           payload is the media element inside the ring, with the movement's
+           own picture on it. */
+        const qm = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+        o.quickMedia = qm ? (qm.getAttribute('src') || '') : '';
+        /* a video the headless browser cannot decode is replaced by its own
+           image on error, so either of the movement's two files is honest */
+        o.quickOk = !!o.quickMedia && [EX.sideplank.vid, EX.sideplank.img].includes(o.quickMedia);
+        closeSheet(); await wait(400);
         quickPlay(idx, 2); await wait(20); o.quick2 = label(); closeSheet(); await wait(400);
+        /* the rep runner too — a Quick rep movement */
+        const qr = QUICKIES.find(x => x.items.some(i => EX[quickExId(i.exId)] && EX[quickExId(i.exId)].unit === 'reps'));
+        if (qr) {
+          QUICK_ID = qr.id; const ri = qr.items.findIndex(i => EX[quickExId(i.exId)] && EX[quickExId(i.exId)].unit === 'reps');
+          quickPlay(ri); await wait(20);
+          const rm = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+          o.quickRepMedia = rm ? (rm.getAttribute('src') || '') : '';
+          const rex = EX[quickExId(qr.items[ri].exId)]; o.quickRepOk = !!o.quickRepMedia && [rex.vid, rex.img].includes(o.quickRepMedia);
+          closeSheet(); await wait(400);
+        }
+        /* and the Today ▶ Hold timer is the floor the Quick sheet is measured against */
+        exSetChain(per.exId); await wait(20);
+        const tm = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+        o.todayMedia = tm ? (tm.getAttribute('src') || '') : '';
+        closeSheet(); await wait(400);
       }
       window.coachSpeak = oc; window.plSay = os; window.beep = ob;
       STATE.progressPtr = savePtr; save();
@@ -13763,9 +13793,16 @@ export default async function () {
     t.ok('FLOOR: and hears no switch tone', !r.plankTone, JSON.stringify(r));
     t.ok('the ▶ Guided reps cadence calls the switch WITH the count, at the halfway rep', /^5\. Switch sides now\./.test(r.repSwitch), JSON.stringify(r));
     t.ok('with the tone pair', r.repTone, JSON.stringify(r));
+    /* v488: the rep cadence spoke and beeped the switch and wrote NOTHING on
+       the glass — the hold timer and the player both do. A phone on silent
+       with the voice off had no switch signal at all on ▶ Guided reps. */
+    t.eq('and names it on the ring, as the hold timer does (v488)', r.repPhase, 'SWITCH SIDES');
     t.eq('FLOOR: a two-sided rep movement is never told to switch', r.crunchSwitch, 0);
     t.ok('GUARD: a Quick workout carries the side plank', r.quickFound, JSON.stringify(r));
     t.ok('Quick names the side too, through the same builder', /Left side$/.test(r.quick1 || '') && /Right side$/.test(r.quick2 || ''), JSON.stringify(r));
+    t.ok('GUARD: the Today runner shows the movement in its ring', !!r.todayMedia, JSON.stringify({ todayMedia: r.todayMedia }));
+    t.ok('the Quick hold ring shows the movement too (v488)', r.quickOk === true, JSON.stringify({ quickMedia: r.quickMedia }));
+    t.ok('and so does the Quick rep ring', r.quickRepOk === true, JSON.stringify({ quickRepMedia: r.quickRepMedia }));
   }
 
   /* v487 — THE REST BETWEEN TWO SIDES NAMES NO SIDE. The chain's label ends in
@@ -13797,8 +13834,33 @@ export default async function () {
         for (let i = 0; i < 400 && timer; i++) timer.tick();
         await new Promise(r => setTimeout(r, 900));
         out.restLabel = ($('#sheet .tt') || {}).textContent || '';
+        /* v488: the chained rest opened with NO exercise, so its ring was blank
+           while the player's rest (v290) and the standalone Rest button both
+           show the photograph. Either of the movement's two files is honest —
+           a video the headless browser cannot decode is replaced by its image. */
+        const rm = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+        out.restMedia = rm ? (rm.getAttribute('src') || '') : '';
+        out.restMediaOk = !!out.restMedia && [ex.vid, ex.img].includes(out.restMedia);
         out.restPhase = ($('#tphase') || {}).textContent || '';
         stopTimer(); closeSheet();
+        await new Promise(r => setTimeout(r, 400));
+        /* the REP chain's rest is a second call site and needs its own case:
+           a rep movement with more than one set, pumped through the cadence
+           to the end of set 1, then the rest it hands to */
+        const s1 = buildSession(per.ptr);
+        const rp = s1.main.find(m => EX[m.exId] && EX[m.exId].unit === 'reps' && m.sets > 1);
+        out.repFound = !!rp;
+        if (rp) {
+          exSetChain(rp.exId);
+          for (let i = 0; i < 400 && timer; i++) timer.tick();
+          await new Promise(r => setTimeout(r, 900));
+          const rex = EX[rp.exId];
+          out.repRestLabel = ($('#sheet .tt') || {}).textContent || '';
+          const rm2 = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
+          out.repRestMedia = rm2 ? (rm2.getAttribute('src') || '') : '';
+          out.repRestMediaOk = !!out.repRestMedia && [rex.vid, rex.img].includes(out.repRestMedia);
+          stopTimer(); closeSheet();
+        }
         window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
       } catch (e) { out.err = String(e); }
       return out;
@@ -13809,6 +13871,9 @@ export default async function () {
     t.eq('FLOOR: a two-sided label is left alone', r.helperTwo, 'Plank · set 1 of 3 — rest');
     t.ok('GUARD: the set label named a side', /Left side/i.test(r.setLabel || ''), JSON.stringify(r));
     t.ok('the rest clock after a per-side set names no side', /rest/i.test(r.restLabel || '') && !/Left side|Right side/i.test(r.restLabel || ''), JSON.stringify(r));
+    t.ok('and the chained rest ring keeps the photograph (v488)', r.restMediaOk === true, JSON.stringify({ restMedia: r.restMedia }));
+    t.ok('GUARD: a rep movement with more than one set was found, and its chain reached the rest', r.repFound && /rest/i.test(r.repRestLabel || ''), JSON.stringify({ repFound: r.repFound, repRestLabel: r.repRestLabel }));
+    t.ok('the rep chain\'s rest ring keeps the photograph too (v488)', r.repRestMediaOk === true, JSON.stringify({ repRestMedia: r.repRestMedia }));
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
