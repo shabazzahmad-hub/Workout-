@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='493';
+const APP_VERSION='494';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4035,6 +4035,33 @@ function onPop(e){
   const st=e.state||{};
   if(st.cf==='tab'){go(st.tab||'today');return;}
   if(st.cf==='home'){go('today');return;}
+  /* A FRAGMENT NAVIGATION IS NOT A BACK PRESS, and this could not tell them
+     apart. Assigning location.hash creates an entry whose state is null, so a
+     #tab deep link into a RUNNING app fell straight through to the root branch
+     below — the one that means "the athlete is trying to leave". Measured on a
+     fresh app, which is what a home-screen shortcut does:
+
+       1st #fuel      opens Fuel, and toasts "Press Back again to exit"
+       2nd #progress  does NOTHING, and latches _exiting
+       every Back press after that            swallowed, for the session
+
+     The root entry is stamped {cf:'root'} by initBackButton(), so it still
+     reaches the exit branch; only an entry with NO state of its own is a
+     fragment navigation. It is stamped here so the stack carries no unstamped
+     entry — an unstamped one would be read as a fresh navigation the next time
+     it is popped, and a Back press would re-navigate instead of going back.
+
+     A hash naming no tab leaves the view exactly where it is: it is still a
+     navigation, so it must not toast about leaving either. */
+  if(e.state==null){
+    const h=(location.hash||'').replace('#','');
+    if(h){
+      const t=(STATE.onboarded&&hashTab(h))?h:TAB;
+      try{history.replaceState({cf:'tab',tab:t},'');}catch(e4){}
+      if(t!==TAB)go(t);
+      return;
+    }
+  }
   // Reached the root: user is trying to leave from the home tab.
   const now=(typeof Date!=='undefined')?Date.now():0;
   if(now-_homeBackAt<2000){_exiting=true;try{history.back();}catch(e2){}return;}
@@ -18423,7 +18450,26 @@ function achievementsHTML(){
    it's past your set time, CoreForge nudges you when the app opens (and fires a
    local notification if you've granted permission). Reliable background push
    would need a server; this keeps everything on-device. */
-function trainedToday(){return !!(STATE.quickLog&&STATE.quickLog[todayISO()])||Object.values(STATE.logs||{}).some(l=>l.done&&l.completedAt===todayISO());}
+/* A DATE QUESTION IS A LIFETIME QUESTION; A SLOT QUESTION IS NOT. This walked
+   STATE.logs alone, and restartProgram() archives the whole run into
+   STATE.runs — so finishing the programme and tapping "Start a fresh block"
+   the same day, which is the natural flow because that button only renders on
+   the completion screen, made the app forget the session it had just watched
+   the athlete finish. Measured across that exact sequence:
+
+     trainedToday()   true -> FALSE        holdFreshNow()   false -> TRUE
+     minimumDayMet()  true -> FALSE        trainedDaysSet() true (correct)
+
+   holdFreshNow() is the one that costs a measurement: v361 keeps a fresh hold
+   and a fatigued hold apart precisely so a tired effort cannot set a personal
+   best, and a hold done that evening would have recorded as FRESH and set one.
+
+   Its three archive-aware siblings — trainedDaysSet(), computeStreak() and
+   painDaysSet() — all read allDoneLogs(). One of a pair guarded and its twin
+   not, with the twin being the one that answers "today". It asks the same
+   function they do rather than a fourth copy of the walk, so they cannot
+   disagree again; trainedDaysSet() already folds quickLog in. */
+function trainedToday(){try{return trainedDaysSet().has(todayISO());}catch(e){return false;}}
 /* How many sessions the athlete actually signed up for. The tile used to compare
    against a hardcoded 7 regardless of the days they picked. */
 function weeklyTarget(){

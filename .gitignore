@@ -29,6 +29,12 @@ package-lock.json
 # instead of the class. `p_` is the other name people reach for.
 /p_*.mjs
 /p_*.png
+# ...and a third time, with p494.mjs / p494b.mjs — the name you reach for when
+# a round has a version number. Same shape as the two above: a glob written for
+# the last name, not for the class. A probe script's name is p + a digit, p_ or
+# probe; all three are covered now.
+/p[0-9]*.mjs
+/p[0-9]*.png
 # Screenshots a probe takes while investigating are the same kind of scratch.
 /*probe*.png
 /probe*.jpg

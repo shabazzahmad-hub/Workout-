@@ -20453,6 +20453,163 @@ defect behind it is the v386 call. The check went red with `{"c":""}`: an empty
 card, which is the app being right and the check building a screen that does
 not exist.
 
+## A date question is a lifetime question; a slot question is not (v494)
+
+Found by sweeping the axis v418 and v471 each fixed one instance of: **every
+walk over the session logs, and whether it spans the archived runs.**
+`restartProgram()` moves the whole run into `STATE.runs`, so any reader that
+walks `STATE.logs` alone forgets it.
+
+**Three of the four "did I train" readers already span it** — `trainedDaysSet()`,
+`computeStreak()` and v493's own `painDaysSet()` all read `allDoneLogs()`.
+`trainedToday()` did not, and it is the one that answers *today*. Measured
+across the natural sequence, which is the only one there is: `restartProgram()`
+is reachable from **exactly one call site**, the "Start a fresh block" button on
+the programme-complete screen — so finishing the programme and restarting the
+same day is the ordinary flow, not an obscure one.
+
+| | before the restart | after |
+|---|---|---|
+| `trainedToday()` | true | **false** |
+| **`holdFreshNow()`** | false | **true** |
+| `minimumDayMet()` | true | **false** |
+| `trainedDaysSet().has(today)` | true | true — the sibling is right |
+| `computeStreak()` | 1 | 1 — correct |
+
+**`holdFreshNow()` is the one that costs a measurement.** v361 keeps a fresh
+hold and a fatigued hold apart precisely so a tired effort cannot set a personal
+best, and after the restart a hold taken that evening recorded as **fresh** and
+could set one. *One of a pair guarded and its twin not*, with the twin being the
+one that answers "today".
+
+**It asks `trainedDaysSet()` rather than a fourth copy of the walk**, so the four
+cannot disagree again — and that helper already folds `quickLog` in, so the
+quick-session arm is preserved rather than restated. Cost, measured on 600 logs:
+**0.066 ms a call**.
+
+**The rule the class states**, and the reason `todayStoppedForPain()` is
+correctly live-only: **a POINTER or SLOT question belongs to the current run; a
+DATE question is a lifetime question.** `todayPtr()`, `weekFeel` and the Program
+calendar are all keyed by a pointer, which means nothing outside its own block.
+
+**Seven floors, and each catches a different over-eager twin**: an athlete who
+has not trained today still reads untrained (a fix that always answered true
+would kill the evening reminder outright), their hold really is fresh, a quick
+session today still counts, an ordinary session today still counts, one finished
+yesterday does not, a restart on a day nothing was trained does not, and an
+unfinished session today is not training.
+
+### The second candidate was measured and NOT fixed
+
+`_setsByDateIndex()` is live-only too, so `acwr()` — the objective load-spike
+deload trigger — returns **null for four weeks after a restart**. Measured: the
+four trailing weekly buckets go `[60,60,60,60]` to `[0,0,0,0]` and `acwr()` goes
+`1` to `null`.
+
+**And a spike cannot occur in that window, which was measured rather than
+argued.** Sets prescribed per week across a block:
+
+| week | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| sets | 97 | 97 | 102 | 102 | 116 | **69** |
+
+A restart lands the athlete on week 1 — **97 sets** — against a trailing
+four-week average of **97.25** if the archive were spanned. That is a ratio of
+**1.00**, and `loadSpike()` fires at **1.5**. So spanning the archive would
+change no decision the app makes, and a fix with no defect behind it does not
+ship: the v386 call, with the numbers beside it.
+
+## A fragment navigation is not a Back press (v494)
+
+Found by chasing a mutation verdict rather than the app. The v493 run's first
+mutant reported **11 failures** and the two it named were the v428 hash-tab
+checks — nothing to do with `gapSince()`. M2 and M3 then reported 2 and 5
+failures with no hash checks in them, so those two were riding along.
+
+**The check was marginal because the app was genuinely bouncing the tab back.**
+`onPop()` reads `e.state` and dispatches on `st.cf`; assigning `location.hash`
+creates an entry whose state is **null**, so a `#tab` deep link fell straight
+through to the branch that means *"the athlete reached the root and is trying to
+leave"*. Measured on a fresh app, which is exactly what a home-screen shortcut
+does to a running one:
+
+| | before | after |
+|---|---|---|
+| 1st `#fuel` | opens Fuel — **and toasts "Press Back again to exit"** | opens Fuel, silent |
+| 2nd `#progress` | **nothing at all** | opens Progress |
+| `_exiting` | **latches true** | false |
+| every Back press after that | **swallowed, for the session** | works |
+
+**That is the door v411 recorded as an open question**, measured. That round
+found `_exiting` is set by the second home Back press and never reset, and could
+not establish whether an athlete could reach it — a standalone PWA on its own
+root entry was the case the sandbox could not produce. A `#tab` deep link is a
+second door onto the same branch, and it is one an athlete takes deliberately.
+
+**Only an entry with NO state of its own is a fragment navigation.**
+`initBackButton()` stamps the bottom entry `{cf:'root'}`, so the exit warning
+still reaches it; `e.state==null` is what discriminates, and a truthiness test
+on `st.cf` would not.
+
+**The entry is stamped on the way through**, so the stack carries no unstamped
+entry — an unstamped one is read as a fresh navigation the next time it is
+popped, so a Back press onto an earlier deep link would re-navigate instead of
+going back. Same discipline `pushOverlayState()`'s own comment states: the entry
+belongs to something, not to whatever `history.state` happens to say.
+
+**A hash naming no tab leaves the view where it is, silently.** It is still a
+navigation, so it must neither move the athlete nor toast about leaving — and
+the old code's answer there depended on whether a root pop had happened in the
+last two seconds, which is the flakiness itself.
+
+### The old check measured the container and not the payload
+
+`t.eq('a #hash for a real tab opens it in an app that is already running', …)`
+read `TAB` after a **fixed 120 ms**, and the bounce landed on that boundary —
+measured at 5 ms it read `fuel`, at 120 ms `today`. So it asserted that the tab
+**MOVED** and never that it was **still there**. The new block waits again and
+pins that it stuck, which is the assertion the bounce could not survive.
+
+**A racing check is a check whose verdict cannot be trusted**, and here it was
+corrupting a mutation run: a flaky failure makes a mutant read as CAUGHT when it
+escaped, which is the dangerous direction.
+
+### And the block did not build the three flags this file names
+
+Suite 23 came back with **4 failures on an app that was right**, and the payload
+said so in one field: `exiting: true` **before the block had pressed anything**.
+`onPop()` returns on its own first line when `_exiting` is set, so the whole
+branch under test never ran — no stamp, a dead Back press, a sheet that would
+not close.
+
+Every other Back-driving block in that file clears `_backGuard` and `_exiting`
+first, in **eight** places, and this file already states the rule from v422: *a
+block that drives a Back press builds all three of those flags.* The new block
+did not, and the probes could not see it because a probe runs on a clean page.
+
+**The tell was which assertions survived.** Both deep links still opened their
+tabs, because the `hashchange` handler navigates on its own — so the failures
+named the stamp and the Back press rather than the branch that never ran. A
+guard now pins the flags clear, so the next failure names the setup.
+
+### And the same shape is the one equivalent mutant
+
+`hashchange` calling `go(h)` is why the branch's own `go(t)` cannot be caught:
+popstate runs first and stamps, and if it does not navigate, the hashchange a
+tick later does — `hashTab(h)` is true and `h!==TAB`, so the tab opens either
+way. Measured on the unknown-hash side too, where `t` is `TAB` and neither
+version navigates. Kept because the branch should not depend on a second
+handler to finish its own job, and recorded as uncatchable rather than papered
+over with a check that cannot fail.
+
+### And the floor had to build its own history stack
+
+The nav-tap floor first read `backSteps` as `fuel` where `today` was expected,
+and it was the check: after the deep-link cases the entry below `progress` was
+whichever tab the earlier steps had left. **What the block before you left on the
+stack is not a contract** — the floor rebases onto Today with its own deep link
+first, and a guard pins that it did.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
@@ -20793,6 +20950,15 @@ exactly once, so a bad anchor is a clean no-op — the driver-editing script use
 a bare `str.replace()`, which is a silent no-op, and the run then failed
 minutes later on a `TypeError` in a half-edited file. **Assert in the scripts
 that edit the harness too**, or read the result back before running it.
+
+**Killing a mutation driver does not kill the suite it launched.**
+`subprocess.run()`'s child is not in the parent's process group for a plain
+`kill`, so SIGTERM to the driver leaves `node tests/run.mjs NN` running against
+the mutation copy. Measured: five minutes of **two suites at once** — the one
+thing this file forbids — starting the moment the driver was stopped so that a
+push could use the browser. And the tell was not in any log: the driver's own
+log simply stopped. `ps -eo pid,etime,args | grep run.mjs` is what showed it.
+**After killing a driver, kill its orphaned `run.mjs` too**, by PID.
 
 **Check the wall clock before calling something slow.** A CI job was reported
 as "seven minutes and needs explaining" when it had run for 88 seconds; the
