@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='494';
+const APP_VERSION='495';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -18581,23 +18581,56 @@ function testReminderNotif(){
   else if(Notification.permission==='denied'){alert("Notifications are BLOCKED for CoreForge. Enable them: phone Settings ▸ Apps ▸ CoreForge ▸ Notifications ▸ Allow (or Chrome ▸ site settings for this page ▸ Notifications).");}
   else{Notification.requestPermission().then(p=>{p==='granted'?send():alert('Permission was not granted ("'+p+'"). Tap Allow when the prompt appears, then try again.');});}
 }
+/* A NUDGE MUST NOT ASK FOR WORK THE ATHLETE HAS ALREADY DECLARED THEY ARE NOT
+   DOING TODAY. The evening reminder asked two questions — is today scheduled,
+   and did they train — and the screens ask two more. Measured, with every day
+   scheduled and nothing else changed:
+
+     nothing logged        fires, correctly
+     trained today         quiet, correctly
+     LOGGED A REST DAY     "⏰ Time to train — keep your streak!" + a push
+     STOPPED FOR PAIN      "⏰ Time to train — keep your streak!" + a push
+
+   Both are already answered on screen. v347 taught gapSince() and
+   driftingDays() that a rest day the athlete chose is not a debt; v493 taught
+   the same pair that a pain stop is not a missed session. Neither round reached
+   the notification, which is the one surface that reaches the athlete when they
+   are NOT looking at the app.
+
+   The pain one is the worse of the two, for the reason v493 gives: the button
+   that costs you a scolding is the button that does not get pressed, and that
+   button is this app's oldest safety control. The app says "Right call. That is
+   what the button is for" in the afternoon and pushes "Time to train — keep
+   your streak" in the evening.
+
+   And both messages name the STREAK, which survives a rest day (v347) and a
+   pain stop (v493) — so the nudge implied it was at risk when it was not.
+
+   It asks todayClosed() rather than restating todayStoppedForPain(): v491 made
+   that the one predicate for "today's slot is closed" and v492 pins the
+   disjunction at exactly one site. trainedToday() is kept beside it because it
+   also folds in a quick session, which closes no slot. */
+function trainingNudgeDue(){
+  try{return isTrainingDay()&&!trainedToday()&&!todayClosed()&&!restedTodayFlag();}
+  catch(e){return false;}
+}
 function checkReminder(){
   const s=STATE.settings;if(!s)return;
   // Weekly progress check-in push: a Friday "tomorrow" heads-up + the Saturday
   // weigh-in reminder (each once per week). Fires when the app is opened/visible.
   if(s.weeklyOn!==false && 'Notification'in window && Notification.permission==='granted'){
-    const wk=weekKey(), dow=new Date().getDay();
-    if(dow===6 && STATE._weeklyRemindedWeek!==wk){
+    const wk=weekKey(), dow=new Date().getDay(), left=weeklyCheckinLeft();
+    if(dow===6 && left.any && STATE._weeklyRemindedWeek!==wk){
       STATE._weeklyRemindedWeek=wk;save();
-      try{fireProgressNotif('📏 Weekly weigh-in day — step on the scale, measure your waist, and log them on the Progress tab, under Body.','coreforge-weekly');}catch(e){}
-    }else if(dow===5 && STATE._weeklyPrepWeek!==wk){
+      try{fireProgressNotif('📏 Weekly check-in — still to do: '+weeklyCheckinWords(left)+'. Log it on the Progress tab, under Body.','coreforge-weekly');}catch(e){}
+    }else if(dow===5 && left.kit && STATE._weeklyPrepWeek!==wk){
       STATE._weeklyPrepWeek=wk;save();
       try{fireProgressNotif('📏 Tomorrow is your weekly weigh-in — have your scale and a tape measure ready.','coreforge-weekly-prep');}catch(e){}
     }
   }
   if(!s.reminderOn)return;
   if(!('Notification'in window)||Notification.permission!=='granted')return;
-  if(!isTrainingDay()||trainedToday())return;
+  if(!trainingNudgeDue())return;
   const [hh,mm]=(s.reminderTime||'18:00').split(':').map(Number);const now=new Date();
   const past=now.getHours()>hh||(now.getHours()===hh&&now.getMinutes()>=mm);
   if(!past)return;
@@ -23511,10 +23544,53 @@ function isSaturday(){return new Date().getDay()===6;}
    actually missed. It is unified anyway: one algorithm, so a future consumer
    cannot inherit the defect the other copy already had. */
 function weekKey(){return _weekKeyOf(localISO(new Date()));}
+/* A NUDGE MUST NOT ASK FOR WORK THAT IS ALREADY DONE. The check-in asks for
+   three things and the app can see all three, and it asked for every one of
+   them every Saturday whatever the athlete had already logged. Measured on a
+   Saturday with a weight AND a waist recorded that morning: the banner still
+   read "Take a progress photo, measure your waist, and weigh in", and the
+   Saturday push still said "step on the scale, measure your waist, and log
+   them". A note that always fires is a note nobody reads.
+
+   Outstanding, never done — the caller wants to know what is LEFT, and a
+   photo with no usable date (v374 blanks one rather than inventing it) reads
+   as not taken this week, which prompts rather than silently skipping. */
+function weeklyCheckinLeft(){
+  const out={photo:true,waist:true,weight:true,any:true,kit:true};
+  try{
+    const wk=weekKey();
+    (STATE.measurements||[]).forEach(m=>{
+      if(!m||_weekKeyOf(m.date)!==wk)return;
+      if(typeof m.weight==='number'&&m.weight>0)out.weight=false;
+      if(typeof m.waist==='number'&&m.waist>0)out.waist=false;
+    });
+    (STATE.photos||[]).forEach(p=>{
+      if(p&&_weekKeyOf(p.date)===wk)out.photo=false;
+    });
+  }catch(e){}
+  out.any=out.photo||out.waist||out.weight;
+  /* Only the tape and the scale need fetching; a photo needs neither, so the
+     Friday heads-up is about these two alone. */
+  out.kit=out.waist||out.weight;
+  return out;
+}
+/* The list the athlete still has to do, in the order the buttons sit in. */
+function weeklyCheckinWords(left){
+  const w=[];
+  if(left.photo)w.push('take a progress photo');
+  if(left.waist)w.push('measure your waist');
+  if(left.weight)w.push('weigh in');
+  return w.length<2?(w[0]||''):w.slice(0,-1).join(', ')+' and '+w[w.length-1];
+}
 function weeklyBannerHTML(){
   if(STATE.settings.weeklyOn===false||!isSaturday())return '';
-  return `<div class="note warn"><b>📸 Saturday check-in.</b> Take a progress photo, measure your waist, and weigh in — same day each week is the most accurate way to track change.
-    <div class="btnrow" style="margin-top:8px"><button class="btn sm ghost" onclick="logMeasure()">Waist &amp; weight</button><button class="btn sm ghost" onclick="go('progress')">Add photo</button></div></div>`;
+  const left=weeklyCheckinLeft();
+  if(!left.any)return '';
+  const btns=[];
+  if(left.waist||left.weight)btns.push('<button class="btn sm ghost" onclick="logMeasure()">Waist &amp; weight</button>');
+  if(left.photo)btns.push('<button class="btn sm ghost" onclick="go(\'progress\')">Add photo</button>');
+  return `<div class="note warn"><b>📸 Saturday check-in.</b> Still to do: ${_ve(weeklyCheckinWords(left))} — same day each week is the most accurate way to track change.
+    <div class="btnrow" style="margin-top:8px">${btns.join('')}</div></div>`;
 }
 // Saturday/Friday check-in uses the exact same sender + photo treatment as the reminder.
 function fireProgressNotif(body,tag){sendCoreNotif(body,tag||'coreforge-weekly');}

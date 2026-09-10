@@ -20610,6 +20610,135 @@ whichever tab the earlier steps had left. **What the block before you left on th
 stack is not a contract** — the floor rebases onto Today with its own deep link
 first, and a guard pins that it did.
 
+### Both v494 escapes were equivalent, and the second was measured
+
+Seven of nine caught. M9 was recorded as equivalent when the round shipped.
+**M7 — `if(e.state==null)` widened to `if(true)` — also escaped**, and it is the
+over-eager twin, so it read as a serious weak check: every pop taken as a
+fragment navigation should have destroyed the exit warning.
+
+It cannot, and the reason is the DISPATCH ORDER above it. The branch only acts
+when `location.hash` is non-empty, and everything else returns first:
+
+| reaches the branch with a hash? | |
+|---|---|
+| `OP` / `INTV` / `PLAYER` / an open scrim | no — returned above |
+| `st.cf==='tab'` / `'home'` | no — returned above |
+| **`st.cf==='root'`** | **yes — and its entry never carries a hash** |
+
+A hash only ever lives on the entry pushed FOR it, and that entry is always
+ABOVE root. Measured at the two pops of a real deep link:
+
+```
+POP {"state":{"cf":"home","tab":"today"},"hash":""}
+POP {"state":{"cf":"root"},"hash":""}      <- the exit branch, no hash
+```
+
+Swept across **seven reachable sequences** — loaded at a hash, a hash set in a
+running app, two hash links, a hash then a nav tap, a hash then a sheet, an
+unknown hash, and no hash at all — comparing tab, hash, state, toast, scrim and
+`_exiting` each time: **0 differences of 7**.
+
+Kept as intent, and recorded as uncatchable rather than papered over with a
+check that cannot fail — the same call as v287's `wantAnchor`.
+
+**The over-eager twin being equivalent is worth its own note.** Every other
+round's over-eager twin fails a floor, and that is a floor's job. This one is
+defanged by the ORDER of the dispatch above it, not by any floor — so no floor
+could have caught it, and writing one would have been a check that cannot fail.
+
+## A nudge asked for work that was already done (v495)
+
+Found by sweeping an axis nobody had driven: **the notification surface, and
+whether it asks the same questions the screens ask.** It does not. Four members,
+all measured before anything was changed.
+
+### The evening reminder scolded an athlete who had stopped for pain
+
+`checkReminder()` asked two questions — is today scheduled, and did they train.
+The screens ask two more. Measured with every day scheduled and nothing else
+changed:
+
+| the day | the reminder |
+|---|---|
+| nothing logged | fires, correctly |
+| trained today | quiet, correctly |
+| **logged a REST day** | **"⏰ Time to train — keep your streak!" + a push** |
+| **STOPPED FOR PAIN** | **the same** |
+
+v347 taught `gapSince()` and `driftingDays()` that a rest day the athlete chose
+is not a debt; v493 taught the same pair that a pain stop is not a missed
+session. **Neither round reached the notification** — which is the one surface
+that reaches the athlete when they are NOT looking at the app.
+
+**The pain one is the worse of the two**, for the reason v493 gives: *the button
+that costs you a scolding is the button that does not get pressed, and that
+button is this app's oldest safety control.* The app says *"Right call. That is
+what the button is for"* in the afternoon and pushes *"Time to train"* in the
+evening.
+
+`trainingNudgeDue()` is the one predicate. It asks `todayClosed()` rather than
+restating `todayStoppedForPain()` — v491 made that the single predicate for
+"today's slot is closed" and v492 pins the disjunction at exactly one site — and
+keeps `trainedToday()` beside it, because that also folds in a quick session,
+which closes no slot.
+
+### The weekly check-in asked for all three things every Saturday, always
+
+It asks for a progress photo, a waist and a weight, and **the app can see all
+three**. Measured on a Saturday with a weight AND a waist recorded that morning:
+the Today banner still read *"Take a progress photo, measure your waist, and
+weigh in"*, and the push still said *"step on the scale, measure your waist, and
+log them"*.
+
+`weeklyCheckinLeft()` returns what is OUTSTANDING, and the banner and the push
+both ask it, so the two cannot disagree about what is left. Nothing outstanding
+means no banner and no push at all; a photo done means only the measurements are
+named, and the *Waist & weight* button goes with the words. **A photo with no
+usable date reads as not taken this week** — v374 blanks a junk date rather than
+inventing one — which prompts rather than silently skipping.
+
+**The Friday heads-up asks a narrower question**, and that is deliberate: only
+the tape and the scale need fetching, so it fires on `kit` (waist or weight)
+rather than on the whole check-in. A photo needs neither.
+
+### The guard is the whole block, twice
+
+Without pinning that an ordinary untrained evening **still** nudges, every
+assertion about the two silenced days is satisfied by a reminder that never
+fires — which would delete the feature. The same holds for the check-in: with
+nothing logged, all three must still be named.
+
+**And the weekday is part of the state the block asserts on.** The Saturday
+block runs on its own page with the clock pinned, and a guard asserts it really
+is a Saturday. The unscheduled-day floor computes its schedule from the weekday
+the suite actually runs on, rather than hardcoding one — v347's lesson, and
+v494's.
+
+### Three things measured and deliberately NOT changed
+
+- **An empty `profile.days` falls back to the whole week**, so it is not "no
+  training day" — my first floor asserted the opposite and was wrong about the
+  app, not the other way round. `scheduledDays()` treats an empty list as no
+  answer, which is the same call every other repair in this file makes.
+- **"Keep your streak alive" over-states the urgency.** Measured on a six-day
+  streak with a five-day schedule: skipping today leaves it at **6**, because
+  `computeStreak()` tolerates `max(3, the schedule's own gap)`. It is an
+  exhortation rather than a claim the code contradicts — unlike v298's
+  *"stalled"*, which said the opposite of what it meant — so it is recorded with
+  the number rather than rewritten. A fix with no defect behind it does not ship.
+- **`testReminderNotif()` correctly always fires.** It is the manual "does this
+  work?" button, so every one of these gates would defeat its purpose.
+
+### And the block was appended after the server had closed
+
+Suite 13 calls `srv.close()` at line 634 and runs on for another 500 lines
+against the page it already loaded. A block appended at the bottom that opens a
+FRESH page gets `ERR_CONNECTION_REFUSED`. v398 recorded this for suite 23; the
+wrinkle here is that the teardown is **mid-file** rather than at the end, so
+"append before the teardown" is not the fix — the block starts its own server
+and closes it, which is what a self-contained block should do anyway.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
@@ -20883,6 +21012,20 @@ Probe scripts must live in the repo root to resolve `playwright`. Delete them
 afterwards and leave `git status` clean.
 
 ## Sandbox and tooling
+
+**A mutation copy is only as fresh as the tree you last copied.** v439 records
+that a mutation ANCHOR is verbatim as of the moment you RUN, not the moment you
+wrote the driver. The whole COPY has the same property, and the file that goes
+stale is the one nobody thinks of: the **test file**.
+
+The v494 driver stopped on a red baseline naming four checks. The app code in
+`mut-i/index.clean.html` was byte-identical to the tree; the copy carried
+`23-hardening.test.mjs` from before the commit that fixed those four checks, so
+it was measuring a suite that no longer exists. **The baseline check is what
+saved it** — 8 minutes lost instead of 75, and every verdict in that run would
+have been meaningless. Refresh the copy after ANY edit in the round, `tests/`
+included, and re-verify the anchors against the refreshed file before starting.
+
 
 **`pgrep NAME` matches the executable NAME, not the command line — only
 `pgrep -f` reads the arguments.** A driver runs as `python3 /tmp/.../mut425.py`,
