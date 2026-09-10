@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='489';
+const APP_VERSION='490';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4772,7 +4772,8 @@ function sessionDoneCardHTML(sess,log,doneSets){
        produced this report. */
     return `<div class="note warn"><b>🩹 Session ${sess.ptr!=null?sess.ptr+1:''} — you stopped for pain.</b>
       Right call. That is what the button is for, and it is <b>not</b> logged as a completed session.
-      Your program still moved on, so the next one is below — and tell me where it hurt and I will work around it.</div>`;
+      Your program still moved on, so the next one is below.${(()=>{const j=painJustNow();return j?`
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="adoptPainLimit('${j.joint}')">Work around my ${_ve(j.joint)}</button><button class="btn sm ghost" onclick="dismissPain('${j.region}')">It is fine</button></div>`:'';})()}</div>`;
   }
   return `<div class="note ok">
     <div style="font-size:17px;font-weight:900">✅ ${partial?'Session done — partial':'Session done'}</div>
@@ -4834,7 +4835,21 @@ function todayPtr(){
     if(prev<0)return p;
     if(trainAgainAsked())return p;   // they asked for the next one, on THIS pointer
     const l=(STATE.logs||{})[prev];
-    if(l&&l.completedAt===todayISO()&&(l.done||l.stoppedForPain))return prev;
+    /* TWO WAYS A SLOT CLOSES, EACH TESTED THE WAY ITS OWN WRITER WRITES IT.
+       This read completedAt===todayISO() && (done || stoppedForPain), and
+       commitSession() is the ONLY writer of completedAt — hurtStop() writes
+       stoppedForPain and done:false and no completedAt at all. A suite comment
+       already states that as fact ("in real data completedAt is only ever set
+       alongside done:true"), so the codebase knew the shape and this reader
+       asked for the other one. The pain arm could therefore never decide
+       anything: measured, a stop before any set left this on the NEW pointer,
+       todayStoppedForPain() read false, and Today rendered the NEXT session's
+       exercise list under the word TODAY with a Mark Session Complete button —
+       the v313 defect the pain card exists to prevent, with the card itself
+       unreachable, and the spoken brief describing the next session as today's.
+       The exact-date test is the one todayStoppedForPain() already uses, so the
+       two readers of one fact now agree. */
+    if(l&&((l.done&&l.completedAt===todayISO())||l.stoppedForPain===todayISO()))return prev;
     return p;
   }catch(e){return STATE.progressPtr;}
 }
@@ -7551,6 +7566,25 @@ function hurtStop(){
   if(!PLAYER)return;
   noteHurt(plCur().exId);
   hurtCloseMenu();
+  /* A BONUS SESSION HAS NO PROGRAM SLOT TO CLOSE, and this was the one path in
+     the player that did not ask. Every other one does — plSaveResume(),
+     markSetFromTimer(), the set advance, the rating chips, the finish screen —
+     so the pain button on a custom workout, a saved favourite or a quick
+     workout wrote stoppedForPain onto the program session at progressPtr and
+     ADVANCED the pointer, consuming a session the athlete never started. With
+     program work already logged today it went further: the branch below hands
+     to playerFeel(), which commits that session as done. "Bonus only; won't
+     affect your program" is a promise the builder screen makes.
+     The pain is still recorded — noteHurt() above runs for every session and
+     saves — and the player still closes; there is simply nothing to log. */
+  if(PLAYER.free){
+    const _hadHistF=!!PLAYER.hist;
+    playerClose();
+    if(_hadHistF){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
+    try{render();}catch(e){}
+    toast('Stopped — bonus session, so nothing was logged. Rest that joint.');
+    return;
+  }
   const p=STATE.progressPtr;
   const noWork=sessionWork(p).setsDone===0;
   if(noWork){
@@ -7604,6 +7638,47 @@ function painPattern(){
     return hits.length?hits.sort((a,b)=>b.n-a.n)[0]:null;
   }catch(e){return null;}
 }
+/* WHAT THE CARD PROMISES, IT HAS TO OFFER. The pain card said "tell me where
+   it hurt and I will work around it" and carried no control at all — while
+   noteHurt(), one line above the stop, had just recorded the exercise AND its
+   region. The one tap that acts on it (adoptPainLimit) existed and was wired
+   only to painPromptHTML(), which fires on a PATTERN — "twice is a pattern" —
+   so on the FIRST stop the athlete was told to tell the app something it
+   already knew, with no way to say it.
+
+   IT READS THE SAME REGION MAP painPattern() READS, so the two offers cannot
+   disagree about what "the joint that hurt" means. Measured, 123 of the 200
+   movements carry a region that maps; the rest name a joint only in
+   JOINT_RISK, which would be a second definition, so they get no button and
+   the card promises them nothing.
+
+   It stands down when the pattern prompt is already offering the same joint:
+   both render on Today's workout tab, and two notes telling the athlete to
+   close one gap is the defect v393 removed. */
+/* MEMBERSHIP, not a bracket read. PAIN_JOINT['constructor'] is TRUTHY — an
+   inherited key — and STATE.pain[].region is stored data importData() accepts
+   with no shape check on that field, so a bracket read hands back
+   Object.prototype's own constructor as "the joint that hurt" and interpolates
+   a FUNCTION into an onclick attribute. After this the region is one of the
+   nine literal keys, which is what makes the attribute below safe by
+   construction rather than by escaping. */
+function painJoint(region){
+  try{return Object.prototype.hasOwnProperty.call(PAIN_JOINT,region)?PAIN_JOINT[region]:null;}catch(e){return null;}
+}
+function painJustNow(){
+  try{
+    const rows=Array.isArray(STATE.pain)?STATE.pain:[];
+    const last=rows[rows.length-1];
+    if(!last||last.date!==todayISO())return null;
+    const joint=painJoint(last.region);
+    if(!joint)return null;
+    const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+    if(lims.includes(joint))return null;          // already training around it
+    const pat=painPattern();
+    if(pat&&pat.joint===joint)return null;        // the prompt above already offers this one
+    return {joint,region:last.region};
+  }catch(e){return null;}
+}
 function painPromptHTML(){
   try{
     const h=painPattern();
@@ -7619,7 +7694,7 @@ function adoptPainLimit(joint){
     if(!Array.isArray(P.limitations))P.limitations=[];
     if(!P.limitations.includes(joint))P.limitations.push(joint);
     // the reports have done their job; clearing them stops the prompt repeating
-    STATE.pain=(STATE.pain||[]).filter(x=>PAIN_JOINT[x&&x.region]!==joint);
+    STATE.pain=(STATE.pain||[]).filter(x=>painJoint(x&&x.region)!==joint);
     save();render();
     toast('Working around your '+joint+' from now on');
   }catch(e){}
@@ -25328,7 +25403,12 @@ function normalizeState(){
     }
   }catch(e){}
   if(!Array.isArray(STATE.pain))STATE.pain=[];
-  STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string');
+  /* AND ITS REGION, which reaches an onclick through the pain card's offer.
+     Same shape as the exId test beside it: a report with no usable region can
+     be neither counted nor offered, so the row goes rather than being coerced
+     — every row noteHurt() writes carries a string, so a settled state is left
+     alone and no athlete is told their data needed repairing. */
+  STATE.pain=STATE.pain.filter(x=>x&&typeof x==='object'&&typeof x.exId==='string'&&typeof x.region==='string');
   if(!Array.isArray(STATE.photos))STATE.photos=[];
   if(!STATE.achievements||typeof STATE.achievements!=='object'||Array.isArray(STATE.achievements))STATE.achievements={};
   /* THE SAME CLASS, one map over. The Badges tile on Progress > Summary is

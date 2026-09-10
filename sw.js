@@ -10,7 +10,7 @@
    tiers are parsed by pulling every quoted asset name out of this file, comments
    included, so an illustrative path in a comment breaks CI by declaring
    an asset that does not exist. */
-const CACHE = 'coreforge-v489';
+const CACHE = 'coreforge-v490';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -47,7 +47,7 @@ const CORE = ['./', './index.html'];
 /* Everything the first screen needs. Cached during install but not atomically:
    a missing font must never cost the athlete the whole offline cache. */
 const SHELL_MIN = [
-  './manifest.webmanifest','./archivo.woff2','./icon-192-v2.png',
+  './manifest.webmanifest','./archivo.woff2',
   './hero.jpg','./coach-sarge.jpg',
   './privacy.html','./terms.html'
 ];
@@ -80,7 +80,7 @@ const SHELL_MIN = [
 const FIRST_RUN = [
   './icon-512-maskable.png',   // the OS launcher wants it after install, not for the first paint
   './icon-192-maskable.png','./icon-180-apple.png',   // same reasoning: home-screen icons, not first-paint
-  './icon-512-v2.png',
+  './icon-512-v2.png','./icon-192-v2.png',   // the tab icon and the notification badge; neither is first paint
   './cd-breathing.jpg','./cd-catcow.jpg','./cd-childs.jpg','./cd-cobra.jpg',
   './cd-knees.jpg','./cd-twistleft.jpg','./cd-twistright.jpg','./ex-bicycle.jpg',
   './ex-burpee.jpg','./ex-buttkick.jpg','./ex-crunch.jpg','./ex-deadbug.jpg',

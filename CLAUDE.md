@@ -20040,6 +20040,171 @@ so each set already works both sides equally; a fourth set there would add
 volume without a balance reason, which is the v310 rule that a request never
 buys volume by accident.
 
+## The card that could not render, and the writer nobody asked (v490)
+
+Found by asking which pointer the Today runners build from — `exSetChain()`
+uses `STATE.progressPtr` while the card offering it is built from `todayPtr()`
+— and then asking when those two can differ. They differ after a session is
+closed, and chasing that found the closing itself was broken.
+
+`todayPtr()` decided a slot was closed today with
+
+```js
+if(l&&l.completedAt===todayISO()&&(l.done||l.stoppedForPain))return prev;
+```
+
+**`commitSession()` is the ONLY writer of `completedAt`.** `hurtStop()` writes
+`stoppedForPain` and `done:false` and nothing else — so the `||l.stoppedForPain`
+arm could never decide anything. Measured on a real pain stop before any set:
+
+| | before | after |
+|---|---|---|
+| `todayPtr()` | **the NEW pointer** | the session that was stopped |
+| `todayStoppedForPain()` | **false** | true |
+| what Today rendered | **the NEXT session's exercise list, under TODAY, with a Mark Session Complete button** | the pain card, and the next session as NEXT |
+| the spoken brief | **prescribed the next session as today's** | says what happened and prescribes nothing |
+
+So v313's whole pain branch — *"the card says so, claims no completion, and
+states out loud that the program moved on — because that surprise is exactly
+what produced this report"* — was **unreachable**, and the defect it was
+written to prevent was live on the one button this app most needs pressed.
+
+**THE FIXTURES ARE WHY IT SURVIVED, and they said so.** Every check of that
+card hand-wrote `completedAt` beside `stoppedForPain`, so the card was only
+ever exercised on a shape the app cannot produce. A third fixture's own comment
+states the truth outright — *"in real data completedAt is only ever set
+alongside `done:true` — an abandoned/stoppedForPain log never gets one"* — and
+that fixture is CORRECT to stamp it, because it deliberately builds an
+impossible shape to exercise a `done` guard. **The codebase knew the shape and
+one reader asked for the other one**, which is v284's sentence on a predicate
+rather than a repair.
+
+**Complete the record; do not weaken the rule — pointed the other way.** Five
+times this file has recorded a fixture that was too THIN. This is the first
+where the fixture was too COMPLETE: it carried a field the writer never writes,
+so the check passed on a shape no athlete can reach. **Check what the WRITER
+writes before believing a fixture, in both directions.**
+
+The fix is the predicate, not the stored data: `completedAt` keeps meaning
+*completed*, which is what every other reader assumes (all five pair it with
+`done`), and the pain arm now tests `stoppedForPain===todayISO()` — the exact
+test `todayStoppedForPain()` already uses, so the two readers of one fact
+agree. Nothing stored changes, so no athlete's existing logs move.
+
+**Four floors, and each catches a different over-eager twin**: a finished
+session still hands back the previous pointer, a pain stop YESTERDAY leaves
+today on the live session with its button, an untrained day is unchanged, and
+`trainAgainAsked()` still wins.
+
+### And the pain button on a bonus session ate a program session
+
+Found in the same read. **Every other path in the player asks `PLAYER.free`
+before it touches the program** — `plSaveResume()`, `markSetFromTimer()`, the
+set advance, the rating chips, the finish screen. `hurtStop()` did not, and the
+pain menu renders in every player session. So the pain button on a custom
+workout, a saved favourite or a quick workout wrote `stoppedForPain` onto the
+program session at `progressPtr` and **advanced the pointer**, consuming a
+session the athlete never started — and with program work already logged today
+it went further, handing to `playerFeel()`, which **commits that session as
+done**. *"Bonus only; won't affect your program"* is a promise the builder
+screen makes, and v355's sweep confirmed it for `plEnterDone()`'s free branch;
+this was the door that sweep could not see.
+
+**The pain is still recorded** — `noteHurt()` runs above the branch for every
+session and saves — and the player still closes. There is simply no slot to
+close, so nothing is logged and the toast says so.
+
+**The class is one member wide, and that was swept rather than assumed.**
+`playerSwap()` persists only when `PLAYER.sess.ptr===STATE.progressPtr`, which
+a free session's own `sess` object cannot satisfy; `playerSkip()` and
+`hurtSkip()` write no stored state; the rating chips are already gated.
+
+**The guard is what makes the whole block mean anything**: the check asserts
+that `hurtStop()` really does leave `completedAt` absent. Without it, a future
+writer that stamped the field would make every assertion below pass for the
+wrong reason — which is exactly how this survived for many versions.
+
+### And the card promised a conversation it could not have
+
+Reading the card that had just been made reachable, its last clause was:
+
+> …and **tell me where it hurt and I will work around it**.
+
+There was **no control on the card at all** — while `noteHurt()`, one line
+above the stop, had already recorded the exercise AND its region. The one tap
+that acts on it, `adoptPainLimit()`, existed and was wired only to
+`painPromptHTML()`, which fires on a **pattern** — *"twice is a pattern, not a
+bad day"*. So on the FIRST stop the athlete was told to tell the app something
+it already knew, with no way to say it. A promise in UI text with no code
+behind it, on the button this app most needs pressed.
+
+**It reads the same region map `painPattern()` reads**, so the two offers
+cannot disagree about what "the joint that hurt" means. Measured, **123 of the
+200 movements** carry a region that maps; the other 77 name a joint only in
+`JOINT_RISK` — 60 of them do — and reading THAT would be a second definition of
+one fact, which is the class this round exists to close. So they get no button,
+and the card promises them nothing. Recorded as measured and deferred rather
+than closed by inventing a second rule.
+
+**Three floors, and each catches a different over-eager twin**: a joint already
+being worked around is not offered again, the card **defers to the pattern
+prompt** when that is already offering the same joint (two notes closing one
+gap is the v393 defect, and both render on this tab), and an unmapped region is
+offered nothing and promised nothing.
+
+**And the button is CLICKED, not the helper called** — the twelfth time this
+file has recorded that the route is the thing to drive.
+
+### An inherited key is not a region, and the offer put it in an onclick
+
+Found by re-reading the fix an hour after writing it. `PAIN_JOINT['constructor']`
+is **truthy** — an inherited key — and `STATE.pain[].region` is stored data the
+boot repair checked only for `exId`. So a bracket read hands back
+`Object.prototype.constructor` as *"the joint that hurt"* and interpolates a
+**function** into an `onclick` attribute. That is v328's `CARDIO_INFO` lesson and
+v400's `EX[id] &&` lesson, arriving in code written the same hour.
+
+`painJoint(region)` is a real membership test, asked by the card AND by
+`adoptPainLimit()`'s own filter, so there is one definition. **After it the
+region is one of nine literal keys, which is what makes the attribute safe by
+construction rather than by escaping.**
+
+**Two guards, two doors**: the boot repair now keeps a row only if its region is
+a string — the same shape as the `exId` test beside it — because a cross-tab
+adopt replaces `STATE` with no boot behind it, and because junk otherwise
+travels in every backup. The row is **dropped rather than coerced**: a report
+with no usable region can be neither counted nor offered, and every row
+`noteHurt()` writes carries a string, so a settled state is left alone and no
+athlete is told their data needed repairing.
+
+**The guard is what makes the block mean anything**: it asserts the inherited
+key really is truthy on the map before asserting the card refuses it.
+
+### The guard caught a floor asserting on a pattern that was never built
+
+`painCount()` counts **DISTINCT sessions** — it de-duplicates on `date|ptr`, and
+its own comment says so — so the two pain rows the floor seeded from one session
+were **one report, not a pattern**. `painPattern()` returned null, the card
+correctly kept offering, and the floor read that as the card failing to defer.
+
+The GUARD is what said so: *"two reports on one region really do make a
+pattern"* went red beside it, so the failure named the setup rather than the
+code. Without it the floor would have been rewritten to match a state it had
+never built. **Assert that the state you are about to test actually exists**,
+and read the counter's own definition before seeding it.
+
+### And the 2 MB install budget fired again
+
+`index.html` is now **1,809 KB of the 2,048 KB install tier** and grows every
+version, so this gate trips periodically by design — v352, v410 and v465 each
+hit it. `icon-192-v2.png` (39 KB) moved to `FIRST_RUN` behind the four icons
+already there: it is the browser tab icon and the notification badge, neither of
+which is first paint, and `icon-180-apple.png` — also referenced in the head —
+was moved for exactly that reason. **Moving a file between tiers costs no
+download.** Install tier now 2,012 KB, and the edit asserts the file appears in
+**exactly one** tier afterwards, which is the check v410's own half-applied move
+lacked.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

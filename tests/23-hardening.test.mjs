@@ -14344,6 +14344,263 @@ export default async function () {
     t.ok('and the player\'s ready announcement says "1 rep"', /\b1 rep\./.test(r.readyLine) && !/1 reps/.test(r.readyLine), JSON.stringify({ readyLine: r.readyLine }));
   }
 
+  /* ============ A PAIN STOP CLOSED NOTHING, AND THE CARD WAS UNREACHABLE ====
+     v313 built sessionDoneCardHTML()'s pain branch so a stop is never
+     congratulated and the pointer move is said out loud, "because that
+     surprise is exactly what produced this report". It could not render.
+
+     todayPtr() asked `completedAt===todayISO() && (done || stoppedForPain)`,
+     and commitSession() is the ONLY writer of completedAt — hurtStop() writes
+     stoppedForPain and done:false and nothing else. So after a stop before any
+     set, todayPtr() stayed on the NEW pointer, todayStoppedForPain() read
+     false, and Today rendered the NEXT session's exercise list under the word
+     TODAY with a Mark Session Complete button: the v313 defect the card exists
+     to prevent. The spoken brief went with it.
+
+     EVERY EXISTING CHECK HAND-WROTE completedAt BESIDE stoppedForPain, so the
+     card was only ever exercised on a shape the app cannot produce — which is
+     why the guard below (the writer really does leave completedAt absent) is
+     what makes this block mean anything. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const settle = () => new Promise(z => setTimeout(z, 700));
+      /* seedAthlete starts at pointer 0 and todayPtr() needs a previous slot to
+         hand back, so this runs from a pointer past the first. */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save();
+      R.gNoWork = sessionWork(3).setsDone === 0;   // guard: the no-work branch
+
+      openPlayer();
+      await new Promise(z => setTimeout(z, 250));
+      R.gOpenedProgram = !!PLAYER && !PLAYER.free;
+      hurtStop();
+      await settle();
+
+      const l = STATE.logs[3] || {};
+      R.gWriterLeavesCompletedAtAbsent = l.completedAt === undefined;
+      R.gWriterStampsPain = l.stoppedForPain === todayISO();
+      R.gPtrMoved = STATE.progressPtr === 4;
+
+      R.ptr = todayPtr(); R.pain = todayStoppedForPain(); R.done = todayDone();
+      setTodayTab('workout'); renderToday();
+      const txt = document.querySelector('#v-today').innerText;
+      R.saysStopped = /stopped for pain/i.test(txt);
+      R.neverCongratulates = !/Session done/i.test(txt);
+      R.noCompleteButton = !document.querySelector('#finishSession');
+      R.exCards = document.querySelectorAll('#v-today .ex').length;
+      R.nextAsNext = /not today/i.test(txt);
+      R.brief = briefSegments().map(x => x.say).join(' | ');
+
+      /* FLOOR: an untrained day still offers a live, startable session */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save();
+      renderToday();
+      R.liveCards = document.querySelectorAll('#v-today .ex').length;
+      R.liveButton = !!document.querySelector('#finishSession');
+
+      /* FLOOR: a pain stop on an EARLIER day is not today's business */
+      const d = new Date(); d.setDate(d.getDate() - 1);
+      const y = localISO(d);
+      STATE.logs = { 3: { date: y, ex: {}, done: false, stoppedForPain: y } };
+      STATE.progressPtr = 4; save(); renderToday();
+      R.ydayPtr = todayPtr();
+      R.ydayCards = document.querySelector('#v-today').querySelectorAll('.ex').length;
+      R.ydayButton = !!document.querySelector('#finishSession');
+      return R;
+    });
+    t.ok('GUARD: the session carried no logged sets, so the no-work branch ran', r.gNoWork === true, JSON.stringify(r));
+    t.ok('GUARD: the player opened on a PROGRAM session', r.gOpenedProgram === true, JSON.stringify(r));
+    t.ok('GUARD: hurtStop() writes stoppedForPain and leaves completedAt ABSENT', r.gWriterStampsPain === true && r.gWriterLeavesCompletedAtAbsent === true, JSON.stringify(r));
+    t.ok('GUARD: and the pointer moved on, as the pain stop promises', r.gPtrMoved === true, JSON.stringify(r));
+    t.eq('todayPtr() stays on the session that was stopped (v490)', r.ptr, 3, JSON.stringify(r));
+    t.ok('so todayStoppedForPain() is true and todayDone() is not', r.pain === true && r.done === false, JSON.stringify(r));
+    t.ok('Today says the athlete stopped for pain', r.saysStopped === true, JSON.stringify({ pain: r.pain, says: r.saysStopped }));
+    t.ok('and never congratulates it as a completed session', r.neverCongratulates === true, JSON.stringify({ n: r.neverCongratulates }));
+    t.ok('and offers no Mark Session Complete button', r.noCompleteButton === true, JSON.stringify({ btn: r.noCompleteButton }));
+    t.eq('and no exercise list to burn the next session on', r.exCards, 0, JSON.stringify({ cards: r.exCards }));
+    t.ok('and shows the next session as NEXT, not as today’s', r.nextAsNext === true, JSON.stringify({ next: r.nextAsNext }));
+    t.ok('the spoken brief says it too, and prescribes nothing', /hurt|pain/i.test(r.brief) && !/Then the main work/.test(r.brief), JSON.stringify({ brief: (r.brief || '').slice(0, 300) }));
+    t.ok('FLOOR: an untrained day still shows a live session and its button', r.liveCards > 0 && r.liveButton === true, JSON.stringify({ cards: r.liveCards, btn: r.liveButton }));
+    t.eq('FLOOR: a pain stop YESTERDAY leaves today on the live pointer', r.ydayPtr, 4, JSON.stringify(r));
+    t.ok('FLOOR: and today offers a real session again', r.ydayCards > 0 && r.ydayButton === true, JSON.stringify({ cards: r.ydayCards, btn: r.ydayButton }));
+  }
+
+  /* ============ THE PAIN BUTTON ON A BONUS SESSION ATE A PROGRAM SESSION ====
+     Every other path in the player asks PLAYER.free before it touches the
+     program — plSaveResume(), markSetFromTimer(), the set advance, the rating
+     chips, the finish screen. hurtStop() did not. So the pain button on a
+     custom workout, a saved favourite or a quick workout wrote stoppedForPain
+     onto the program session at progressPtr and ADVANCED the pointer, and with
+     program work already logged today it handed to playerFeel(), which COMMITS
+     that session as done. "Bonus only; won't affect your program" is a promise
+     the builder screen makes. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const settle = () => new Promise(z => setTimeout(z, 700));
+      const bonus = () => ({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 1 }],
+                             free: true, title: 'probe' });
+
+      /* nothing logged on the program today */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; STATE.pain = []; save();
+      R.gNoProgramWork = sessionWork(3).setsDone === 0;
+      openPlayer(bonus());
+      await new Promise(z => setTimeout(z, 250));
+      R.gFree = !!PLAYER && PLAYER.free === true;
+      hurtStop();
+      await settle();
+      R.ptrAfter = STATE.progressPtr;
+      R.painStamped = !!(STATE.logs[3] || {}).stoppedForPain;
+      R.painRecorded = (STATE.pain || []).some(x => x.date === todayISO());
+      R.playerClosed = !PLAYER && !document.querySelector('#player').classList.contains('open');
+
+      /* and with program work already logged today */
+      STATE.logs = {}; STATE.progressPtr = 3; save();
+      const m0 = buildSession(3).main[0];
+      markSetFromTimer(m0.exId);
+      R.gHasWork = sessionWork(3).setsDone > 0;
+      openPlayer(bonus());
+      await new Promise(z => setTimeout(z, 250));
+      R.gFree2 = !!PLAYER && PLAYER.free === true;
+      hurtStop();
+      await settle();
+      R.ptrAfter2 = STATE.progressPtr;
+      R.doneAfter2 = !!(STATE.logs[3] || {}).done;
+      return R;
+    });
+    t.ok('GUARD: the program had no logged sets, and the player was FREE', r.gNoProgramWork === true && r.gFree === true, JSON.stringify(r));
+    t.eq('a bonus session’s pain stop leaves the program pointer alone (v490)', r.ptrAfter, 3, JSON.stringify(r));
+    t.ok('and stamps no stoppedForPain on a session never started', r.painStamped === false, JSON.stringify(r));
+    t.ok('while the pain itself is still recorded', r.painRecorded === true, JSON.stringify(r));
+    t.ok('and the player still closes', r.playerClosed === true, JSON.stringify(r));
+    t.ok('GUARD: the second case really had program work logged, in a FREE player', r.gHasWork === true && r.gFree2 === true, JSON.stringify(r));
+    t.eq('and with program work logged today it still leaves the pointer alone', r.ptrAfter2, 3, JSON.stringify(r));
+    t.ok('and never commits that program session as done', r.doneAfter2 === false, JSON.stringify(r));
+  }
+
+  /* ============ THE CARD PROMISED A CONVERSATION IT COULD NOT HAVE =========
+     "tell me where it hurt and I will work around it" — on a card with no
+     control on it at all, while noteHurt() had just recorded the exercise and
+     its region. adoptPainLimit() existed and was wired only to
+     painPromptHTML(), which fires on a PATTERN, so the FIRST stop offered
+     nothing. The card now offers the same one tap, reading the same region map
+     painPattern() reads so the two cannot disagree about what the joint is. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const settle = () => new Promise(z => setTimeout(z, 700));
+      const card = () => [...document.querySelectorAll('#v-today .note.warn')]
+        .find(n => /stopped for pain/i.test(n.innerText)) || null;
+      const paint = () => { setTodayTab('workout'); renderToday(); };
+
+      /* Build the state this asserts on: a pointer whose first movement has a
+         region the map knows, so the driven stop can produce a button at all. */
+      let p = 3;
+      for (let i = 3; i < 40; i++) {
+        const m0 = buildSession(i).main[0];
+        if (m0 && EX[m0.exId] && PAIN_JOINT[EX[m0.exId].region]) { p = i; break; }
+      }
+      R.gPtr = p;
+      R.gRegionMaps = !!PAIN_JOINT[EX[buildSession(p).main[0].exId].region];
+
+      STATE.logs = {}; STATE.progressPtr = p; delete STATE._trainAgain;
+      STATE.pain = []; STATE.profile.limitations = []; save();
+      openPlayer();
+      await new Promise(z => setTimeout(z, 250));
+      hurtStop();
+      await settle();
+
+      R.recordedRegion = ((STATE.pain || [])[0] || {}).region || null;
+      R.expectJoint = PAIN_JOINT[R.recordedRegion] || null;
+      paint();
+      const c1 = card();
+      R.cardText = c1 ? c1.innerText : '';
+      R.noDeadPromise = !/tell me where it hurt/i.test(R.cardText);
+      const btn = c1 ? [...c1.querySelectorAll('button')]
+        .find(b => /work around my/i.test(b.innerText)) : null;
+      R.hasOffer = !!btn;
+      R.offerNamesJoint = !!(btn && R.expectJoint && btn.innerText.toLowerCase().includes(R.expectJoint));
+
+      /* DRIVE THE BUTTON, not the helper */
+      if (btn) btn.click();
+      await new Promise(z => setTimeout(z, 300));
+      R.flagged = (STATE.profile.limitations || []).includes(R.expectJoint);
+
+      /* FLOOR: a joint already being worked around is not offered again */
+      paint();
+      R.afterAdoptOffer = !!(card() && [...card().querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+
+      /* FLOOR: the pattern prompt above owns it once it fires — one gap, one note */
+      STATE.profile.limitations = [];
+      /* painCount() counts DISTINCT sessions — it de-duplicates on date|ptr —
+         so two rows from the same session are one report, not a pattern. The
+         guard below caught this fixture asserting on a pattern that was never
+         built. */
+      STATE.pain = [
+        { exId: 'squat', region: R.recordedRegion, date: todayISO(), ptr: p },
+        { exId: 'squat', region: R.recordedRegion, date: todayISO(), ptr: p - 1 },
+      ];
+      save(); paint();
+      R.patternFires = !!painPattern();
+      R.cardDefersToPattern = !!(card() && ![...card().querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+
+      /* AN INHERITED KEY IS NOT A REGION. PAIN_JOINT['constructor'] is truthy,
+         and this region is stored data an import controls, so a bracket read
+         would hand back a FUNCTION and interpolate its source into an onclick. */
+      R.gInheritedIsTruthy = !!PAIN_JOINT['constructor'];
+      R.jointOfInherited = painJoint('constructor');
+      R.jointOfReal = painJoint('legs');
+      STATE.pain = [{ exId: 'squat', region: 'constructor', date: todayISO(), ptr: p }];
+      STATE.profile.limitations = []; save(); paint();
+      const c3 = card();
+      R.inheritedNoOffer = !!(c3 && ![...c3.querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+      R.inheritedNoFunction = !!(c3 && !/function\s|=>/.test(c3.innerHTML));
+
+      /* and the boot repair drops a row whose region is not a string at all */
+      STATE.pain = [{ exId: 'squat', region: { bad: 1 }, date: todayISO(), ptr: p },
+                    { exId: 'squat', region: 'legs', date: todayISO(), ptr: p }];
+      normalizeState();
+      R.repairKept = (STATE.pain || []).length;
+      R.repairKeptReal = (STATE.pain || []).every(x => typeof x.region === 'string');
+
+      /* FLOOR: the offer is about the stop that just happened, not an old report */
+      const dy = new Date(); dy.setDate(dy.getDate() - 3);
+      STATE.pain = [{ exId: 'squat', region: R.recordedRegion, date: localISO(dy), ptr: p }];
+      STATE.profile.limitations = []; save(); paint();
+      R.staleNoOffer = !!(card() && ![...card().querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+
+      /* FLOOR: a region the map does not know promises nothing and offers nothing */
+      STATE.pain = [{ exId: 'burpee', region: 'cardio', date: todayISO(), ptr: p }];
+      STATE.profile.limitations = []; save(); paint();
+      const c4 = card();
+      R.unmappedNoOffer = !!(c4 && ![...c4.querySelectorAll('button')]
+        .some(b => /work around my/i.test(b.innerText)));
+      R.unmappedNoPromise = !!(c4 && !/tell me where it hurt/i.test(c4.innerText));
+      return R;
+    });
+    t.ok('GUARD: the driven stop ran on a movement whose region maps to a joint', r.gRegionMaps === true && !!r.expectJoint, JSON.stringify(r));
+    t.ok('the pain card no longer asks the athlete to tell it what it already knows', r.noDeadPromise === true, JSON.stringify({ text: (r.cardText || '').slice(0, 240) }));
+    t.ok('and offers the one tap that acts on it (v490)', r.hasOffer === true, JSON.stringify({ text: (r.cardText || '').slice(0, 240) }));
+    t.ok('naming the joint the app recorded', r.offerNamesJoint === true, JSON.stringify({ joint: r.expectJoint, text: (r.cardText || '').slice(0, 240) }));
+    t.ok('and tapping it really flags that joint', r.flagged === true, JSON.stringify(r));
+    t.ok('FLOOR: a joint already being worked around is not offered again', r.afterAdoptOffer === false, JSON.stringify(r));
+    t.ok('GUARD: two reports on one region really do make a pattern', r.patternFires === true, JSON.stringify(r));
+    t.ok('FLOOR: and the card defers to the pattern prompt rather than repeating it', r.cardDefersToPattern === true, JSON.stringify(r));
+    t.ok('GUARD: an inherited key really is truthy on the region map', r.gInheritedIsTruthy === true, JSON.stringify(r));
+    t.ok('painJoint() refuses it and still answers for a real region (v490)', r.jointOfInherited === null && r.jointOfReal === 'knee', JSON.stringify({ inh: r.jointOfInherited, real: r.jointOfReal }));
+    t.ok('so an inherited key offers nothing and puts no function on the glass', r.inheritedNoOffer === true && r.inheritedNoFunction === true, JSON.stringify(r));
+    t.ok('and the boot repair drops a row whose region is not a string', r.repairKept === 1 && r.repairKeptReal === true, JSON.stringify(r));
+    t.ok('FLOOR: a report from three days ago is not offered on today\u2019s card', r.staleNoOffer === true, JSON.stringify(r));
+    t.ok('FLOOR: a region the map does not know is offered nothing', r.unmappedNoOffer === true, JSON.stringify(r));
+    t.ok('FLOOR: and is promised nothing either', r.unmappedNoPromise === true, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

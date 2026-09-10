@@ -4463,8 +4463,9 @@ export default async function run() {
         dropsPrescription: !/Then the main work/.test(b1),
         signOff: /behind you/.test(b1), work: /let.s get to work/.test(b1) };
       // stopped for pain is never congratulated
-      // stoppedForPain stores the DATE, not a boolean — commitSession writes todayISO()
-      STATE.logs[p] = { date: todayISO(), ex: {}, done: false, stoppedForPain: todayISO(), completedAt: todayISO() };
+      // hurtStop()'s own shape: stoppedForPain is a DATE, done is false, and
+      // completedAt is never written — commitSession() is its only writer.
+      STATE.logs[p] = { date: todayISO(), ex: {}, done: false, stoppedForPain: todayISO() };
       save();
       const b2 = brief();
       o.painState = { ptr: todayPtr(), done: todayDone(), pain: todayStoppedForPain() };
