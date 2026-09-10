@@ -14290,14 +14290,26 @@ export default async function () {
         const ex = EX.pullup; out.pullupIsReps = ex && ex.unit === 'reps';
         go('progress'); setProgressTab('strength');
         const pane = (document.querySelector('#v-progress') || {}).textContent || '';
-        out.prOne = /\b1 rep\b/.test(pane) && !/\b1 reps\b/.test(pane);
-        out.prTwelve = /\b12 reps\b/.test(pane);
+        /* textContent runs the name and the figure together ("Pull-Up1 rep"),
+           and there is no word boundary between a letter and a digit — so the
+           test is "not preceded by a digit", not \b */
+        out.prOne = /(^|\D)1 rep\b/.test(pane) && !/(^|\D)1 reps\b/.test(pane);
+        out.prTwelve = /(^|\D)12 reps\b/.test(pane);
         out.helper1 = plural(1, 'rep'); out.helper12 = plural(12, 'rep');
         out.brief1 = _briefTarget({ unit: 'reps', target: 1 }); out.brief12 = _briefTarget({ unit: 'reps', target: 12 });
         out.card1 = exCardHTML({ exId: 'pushup', unit: 'reps', target: 1, sets: 3, rest: 45 }, { ex: {} }, 0);
         out.card1ok = /\b1 rep\b/.test(out.card1) && !/\b1 reps\b/.test(out.card1);
-        const a = computeAssessment({ plank: 30, push: 1, side: 20, squat: 10, hollow: 20, pull: 5, lower: 8, dyn: 20, power: 8, stamina: 10 });
+        /* the breakdown reads the RESULTS off the record, which the computation
+           alone does not carry — shape it the way finishAssessment() writes it */
+        const R = { plank: 30, push: 1, side: 20, squat: 10, hollow: 20, pull: 5, lower: 8, dyn: 20, power: 8, stamina: 10 };
+        const a = Object.assign({}, computeAssessment(R), { results: R, subs: {} });
+        /* the breakdown reads the LIVE battery's results (assessState), not the
+           record it is handed — that is the state the finish screen is drawn in */
+        const prevAS = typeof assessState !== 'undefined' ? assessState : null;
+        assessState = { results: R, idx: TESTS.length };
         const bd = testBreakdownHTML(a) || '';
+        assessState = prevAS;
+        out.bdHasRows = /Test by test/.test(bd);
         out.breakdown1 = /\b1 rep\b/.test(bd) && !/\b1 reps\b/.test(bd);
         /* the runner's spoken intro */
         spoken.length = 0;
@@ -14323,6 +14335,7 @@ export default async function () {
     t.eq('the spoken brief says "1 rep"', r.brief1, '1 rep');
     t.eq('FLOOR: and "12 reps"', r.brief12, '12 reps');
     t.ok('the session card says "1 rep"', r.card1ok === true, JSON.stringify({ card1: (r.card1 || '').slice(0, 200) }));
+    t.ok('GUARD: the breakdown rendered its rows', r.bdHasRows === true, JSON.stringify({ bdHasRows: r.bdHasRows }));
     t.ok('the baseline breakdown says "1 rep" for a single push-up', r.breakdown1 === true, JSON.stringify({ breakdown1: r.breakdown1 }));
     t.ok('the ▶ Guided reps intro says "1 rep"', /Guided set\. 1 rep\. Get ready/.test(r.runnerLine), JSON.stringify({ runnerLine: r.runnerLine }));
     t.ok('and the player\'s ready announcement says "1 rep"', /\b1 rep\./.test(r.readyLine) && !/1 reps/.test(r.readyLine), JSON.stringify({ readyLine: r.readyLine }));
