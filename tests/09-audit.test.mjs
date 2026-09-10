@@ -5701,6 +5701,181 @@ export default async function run() {
     await ctx.close();
   }
 
+  /* ============================================================
+     v497 — THE CHART NAMED A REASON THAT WAS NOT TRUE, AND DREW A GUESS
+
+     sameMovement() answers false for two different reasons and the strength
+     trend printed ONE sentence for both. Measured with NO joint flagged at all:
+     a legacy baseline written before the `subs` stamp existed, and an estimated
+     one, were each told "A flagged joint meant this test used a different
+     movement". v321 drew this distinction in testBreakdownHTML() and the chart
+     never got it — naming the wrong reason leaves the athlete nothing to act on.
+
+     And skipBaseline() writes maxes from a dropdown, stamped estimated:true.
+     The pane said "Estimated, never tested" at the top and drew "30s — Your
+     baseline" underneath, over a footer claiming "not a projection".
+     ============================================================ */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    const perr = [];
+    pg.on('pageerror', e => perr.push(String(e)));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+
+    const REC = (d, plank, subs) =>
+      `STATE.reassess[1]={date:'${d}',score:72,level:'Intermediate',maxes:{plank:${plank}},testCount:TESTS.length${subs}};`;
+    const BASE = (d, plank, subs) =>
+      `STATE.baseline={date:'${d}',score:55,level:'Intermediate',maxes:{plank:${plank}},testCount:TESTS.length${subs}};`;
+
+    const read = code => pg.evaluate(src => {
+      STATE.onboarded = true; STATE.profile.name = 'T';
+      STATE.profile.limitations = [];
+      STATE.reassess = {}; STATE.runs = []; STATE.scoreHistory = []; STATE.baseline = null;
+      new Function(src)();
+      strengthSel = 'plank';
+      go('progress'); setProgressTab('strength');
+      const v = document.querySelector('.view.active');
+      const txt = v ? v.textContent : '';
+      const trend = (txt.split('Strength trends')[1] || '');
+      return {
+        flagged: (STATE.profile.limitations || []).length,
+        section: txt.includes('Strength trends'),
+        points: assessSeries().map(s => (s.maxes && s.maxes.plank) || null),
+        /* textContent runs the spans together — `30s▲ +12s42s` — so a greedy
+           [^\s]+ swallowed the NEXT value and the floor failed on correct code.
+           Bound it to one figure in either unit. */
+        delta: (trend.match(/[▲▼] ?\+?\d+(?:s|:\d\d| reps?)/) || [''])[0],
+        held: /— not comparable/.test(trend),
+        blamesJoint: /A flagged joint meant/.test(trend),
+        saysUnknown: /predates the app noting which movement/.test(trend),
+        saysEstimate: /Nothing tested yet/.test(trend),
+      };
+    }, code);
+
+    /* GUARD FIRST: the three states really are three states. Without this every
+       assertion below is satisfied by a rule that was never wrong. */
+    const cmp = await pg.evaluate(() => ({
+      unknownA: movementCompare({ maxes: {} }, { subs: {} }, 'plank'),
+      unknownB: movementCompare({ subs: {} }, { maxes: {} }, 'plank'),
+      unknownJunk: movementCompare({ subs: 'x' }, { subs: {} }, 'plank'),
+      same: movementCompare({ subs: {} }, { subs: {} }, 'plank'),
+      sameNamed: movementCompare({ subs: { plank: 'kneeplank' } }, { subs: { plank: 'kneeplank' } }, 'plank'),
+      different: movementCompare({ subs: {} }, { subs: { plank: 'kneeplank' } }, 'plank'),
+      nulls: movementCompare(null, null, 'plank'),
+      /* The catch is unreachable from stored JSON, so it is exercised DIRECTLY
+         rather than recorded as equivalent — sameMovement() compares against
+         'same', so a catch that returned it would fail OPEN. */
+      throws: movementCompare({ get subs() { throw new Error('x'); } }, { subs: {} }, 'plank'),
+      legacyFailsClosed: sameMovement({ maxes: {} }, { subs: {} }, 'plank'),
+      swapFailsClosed: sameMovement({ subs: {} }, { subs: { plank: 'kneeplank' } }, 'plank'),
+    }));
+    t.eq('guard: an absent stamp and a genuine swap are DIFFERENT answers',
+      [cmp.unknownA, cmp.different].join(','), 'unknown,different', JSON.stringify(cmp));
+    t.eq('guard: and sameMovement() still fails closed on both, which is why one sentence covered them',
+      [cmp.legacyFailsClosed, cmp.swapFailsClosed].join(','), 'false,false', JSON.stringify(cmp));
+    /* THE PREDICATE'S OWN CONTRACT, asserted directly: it is consulted from two
+       narrow branches, so its effects cannot speak for every answer it gives. */
+    t.eq('movementCompare answers unknown for a missing stamp on either side',
+      [cmp.unknownA, cmp.unknownB, cmp.unknownJunk, cmp.nulls].join(','),
+      'unknown,unknown,unknown,unknown', JSON.stringify(cmp));
+    t.eq('and same for two records that name the same movement',
+      [cmp.same, cmp.sameNamed].join(','), 'same,same', JSON.stringify(cmp));
+    t.eq('and it fails CLOSED on a throw, never same', cmp.throws, 'unknown', JSON.stringify(cmp));
+
+    const tr = await pg.evaluate(() => ({
+      real: testedRecord({ maxes: { plank: 1 } }),
+      estimated: testedRecord({ maxes: { plank: 1 }, estimated: true }),
+      deferred: testedRecord({ maxes: { plank: 1 }, deferred: true }),
+      noMaxes: testedRecord({ estimated: false }),
+      junk: testedRecord(null),
+    }));
+    t.eq('testedRecord: a real record yes, an ESTIMATE no, a deferred one no',
+      [tr.real, tr.estimated, tr.deferred, tr.noMaxes, tr.junk].join(','),
+      'true,false,false,false,false', JSON.stringify(tr));
+
+    // --- the defect: a legacy record blamed a joint that is not flagged ---
+    const legacy = await read(`${BASE('2026-06-01', 30, '')} ${REC('2026-09-09', 42, ',subs:{}')}`);
+    t.eq('guard: no joint is flagged in the legacy case', legacy.flagged, 0, JSON.stringify(legacy));
+    t.ok('a record with no swap stamp says the stamp is missing', legacy.saysUnknown, JSON.stringify(legacy));
+    t.ok('and does NOT blame a flagged joint that does not exist', !legacy.blamesJoint, JSON.stringify(legacy));
+    t.ok('the delta is still withheld — both numbers are real, the comparison is not',
+      legacy.held && !legacy.delta, JSON.stringify(legacy));
+
+    // --- FLOOR: a genuine swap keeps the sentence that is true for it ---
+    const swap = await read(`${BASE('2026-06-01', 30, ',subs:{}')} ${REC('2026-09-09', 42, ",subs:{plank:'kneeplank'}")}`);
+    t.ok('FLOOR: a record that names a substitute still blames the flagged joint',
+      swap.blamesJoint && !swap.saysUnknown, JSON.stringify(swap));
+
+    /* A GENUINE SWAP OUTRANKS A MISSING STAMP, and only a THIRD point can tell
+       the two orderings apart: with one comparison the answer is never mixed,
+       so the mutant that lets unknown win is equivalent on every case above.
+       Reachable through an import, which is the threat model everywhere else —
+       finishAssessment() always stamps, so a later record with no `subs` came
+       from a backup. */
+    const mixed = await read(
+      `${BASE('2026-01-01', 30, ',subs:{}')}
+       STATE.reassess[1]={date:'2026-04-01',score:60,level:'Intermediate',maxes:{plank:36},testCount:TESTS.length,subs:{plank:'kneeplank'}};
+       STATE.reassess[2]={date:'2026-07-01',score:70,level:'Intermediate',maxes:{plank:42},testCount:TESTS.length};`);
+    t.eq('guard: the mixed case really has three plotted points',
+      JSON.stringify(mixed.points), '[30,36,42]', JSON.stringify(mixed));
+    t.ok('a genuine swap outranks a missing stamp — the joint sentence wins',
+      mixed.blamesJoint && !mixed.saysUnknown, JSON.stringify(mixed));
+
+    // --- FLOOR: an ordinary tested athlete is unchanged ---
+    const clean = await read(`${BASE('2026-06-01', 30, ',subs:{}')} ${REC('2026-09-09', 42, ',subs:{}')}`);
+    t.eq('FLOOR: a like-for-like pair still shows the real delta', clean.delta, '▲ +12s', JSON.stringify(clean));
+    t.ok('FLOOR: and withholds nothing and explains nothing',
+      !clean.held && !clean.blamesJoint && !clean.saysUnknown, JSON.stringify(clean));
+
+    // --- an estimate is not a data point ---
+    const estRetest = await read(`skipBaseline(); ${REC('2026-09-09', 42, ',subs:{}')}`);
+    t.eq('an estimated baseline is not plotted beside a real re-test',
+      JSON.stringify(estRetest.points), '[42]', JSON.stringify(estRetest));
+
+    const estAlone = await read('skipBaseline();');
+    t.eq('and alone it charts nothing at all', JSON.stringify(estAlone.points), '[]', JSON.stringify(estAlone));
+    t.ok('FLOOR: but the section still renders and says WHY it is empty',
+      estAlone.section && estAlone.saysEstimate, JSON.stringify(estAlone));
+
+    // --- both arms of assessSeries() ask the same question ---
+    const archived = await read(
+      `STATE.runs=[{baseline:{date:'2026-01-01',maxes:{plank:99},estimated:true},reassess:{}}];
+       ${BASE('2026-06-01', 30, ',subs:{}')}`);
+    t.eq('an ARCHIVED estimated baseline is filtered too — both arms, one predicate',
+      JSON.stringify(archived.points), '[30]', JSON.stringify(archived));
+
+    // --- FLOOR: nothing at all still renders nothing ---
+    const none = await read('');
+    t.ok('FLOOR: an athlete with no baseline at all gets no section',
+      !none.section, JSON.stringify(none));
+
+    /* ONE DEFINITION. Reverting sameMovement() to its own inline body is
+       byte-identical today, so only the source can see it. */
+    const src497 = await pg.evaluate(() => {
+      const raw = [...document.querySelectorAll('script:not([src])')]
+        .map(s => s.textContent).sort((a, b) => b.length - a.length)[0];
+      const clean = raw.replace(/\/\*[\s\S]*?\*\//g, ' ')
+                       .split('\n').map(l => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+      return {
+        ok: clean.length > 500000,
+        decl: (clean.match(/function movementCompare\(/g) || []).length,
+        asks: (clean.match(/movementCompare\(/g) || []).length,
+        inlineSubs: (clean.match(/const a=recA&&recA\.subs/g) || []).length,
+        tested: (clean.match(/testedRecord\(/g) || []).length,
+      };
+    });
+    t.ok('guard: the source scan read the app with its comments stripped', src497.ok, JSON.stringify(src497));
+    t.eq('the subs comparison is written exactly once', src497.inlineSubs, 1, JSON.stringify(src497));
+    t.ok('and sameMovement plus the trend both ask movementCompare',
+      src497.decl === 1 && src497.asks >= 3, JSON.stringify(src497));
+    t.ok('and both arms of assessSeries ask testedRecord',
+      src497.tested >= 3, JSON.stringify(src497));
+
+    t.eq('and none of it threw', perr.length, 0, perr.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+
   await tzb.close();
 
   srv.close();

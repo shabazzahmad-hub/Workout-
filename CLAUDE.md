@@ -20877,6 +20877,105 @@ rewriting the check** — the check was correct throughout.
 
 Fourteen mutants, all caught.
 
+## The chart named a reason that was not true (v497)
+
+A fresh axis: **every chart on Progress, against the words printed beside it.**
+The strength trend fails that comparison three ways, and only one of the three
+states it lumps together is the one its sentence describes.
+
+`sameMovement()` answers **false for two different reasons** — a record with no
+`subs` stamp at all, and one that names a genuine substitute — and
+`strengthTrendHTML()` printed ONE sentence for both:
+
+> **— not comparable** … *"A flagged joint meant this test used a **different
+> movement** in one of these records."*
+
+Measured with **no joint flagged at all**:
+
+| the athlete | the app said | true? |
+|---|---|---|
+| a **legacy** baseline, written before the stamp existed | *"a flagged joint meant…"* | **no** |
+| an **estimated** baseline (`skipBaseline()`) | *"a flagged joint meant…"* | **no** |
+| a record naming a real substitute | *"a flagged joint meant…"* | yes |
+| a clean like-for-like pair | ▲ +12s | yes — the floor |
+
+**v321 already drew this distinction, in `testBreakdownHTML()`**, and wrote down
+why: *"a prior with no `subs` stamp cannot be checked; a prior measured on a
+different movement genuinely is not comparable."* The chart never got it —
+*fixing one instance is not fixing the class*, with the class two surfaces wide.
+
+**The legacy case is the big one**, because v321 also recorded that **every
+phone is carrying one**. So the wrong explanation reaches an athlete with a
+real, tested baseline, not only somebody who skipped.
+
+`movementCompare()` answers **three ways** — `same` / `different` / `unknown` —
+and `sameMovement()` asks it, so there is one definition. **A genuine swap
+outranks a missing stamp**: a real change of movement is the stronger fact and
+the better explanation.
+
+### An estimate is not a data point
+
+`skipBaseline()` writes a full set of maxes from a **dropdown**, stamped
+`estimated:true`. That is right for the engine, which has to prescribe
+something. It is not a measurement, and the pane said so at the top and then
+drew it:
+
+| | |
+|---|---|
+| the header | **"Estimated, never tested"** |
+| the chart below it | **"30s · Your baseline"** |
+| the footer below that | *"the truest measure of your real strength, **not a projection**"* |
+
+The numeric delta was already withheld — but only because the estimate carries
+no `subs`, so it failed closed for the wrong reason. **The LINE was still drawn
+from the guess to the measurement**, and the two endpoint labels still read
+`30s … 42s`. v288's *drawn is not the same as shown*, facing the other way: the
+picture told a story the words refused to state.
+
+Same call as v390's day-90 board, which stopped showing the app's own
+assumptions as results. `testedRecord()` filters it, and **both arms of
+`assessSeries()` ask it** — the live baseline was pushed on `maxes` alone while
+the archived one already went through a predicate, so an archived estimate was
+filtered and a live one was drawn.
+
+**A blank that explains itself.** With the estimate gone a skipper's series is
+empty and the section used to vanish, on the one pane that is about testing.
+It now renders and says why, and points at the Re-test button above it.
+
+**`assessSeries()` has exactly ONE consumer**, so the filter cannot ripple —
+checked before it was written, not assumed.
+
+### Two escapes, and both were a case the checks had not built
+
+- **A single comparison can never be mixed.** The mutant that lets *unknown*
+  outrank a genuine swap is **equivalent on every two-point case**, because
+  `_cmp` then holds one answer. Only a THIRD point tells the orderings apart —
+  a stamped baseline, a re-test naming a substitute, and a re-test with no
+  stamp. Reachable through an import, which is the threat model everywhere else:
+  `finishAssessment()` always stamps, so a later record without one came from a
+  backup.
+- **The catch fails OPEN.** `sameMovement()` compares against `'same'`, so a
+  `movementCompare()` catch returning it would read two different movements as
+  one. Nothing an import can carry reaches that catch, so rather than record it
+  equivalent it is **exercised directly** — an object whose `subs` getter throws
+  — the technique the hardness-band and anchor-unit guards use.
+
+### And the greedy regex that failed a floor on correct code
+
+`textContent` runs the spans together — `30s▲ +12s42s` — so `▲ \+[^\s]+`
+swallowed the NEXT value and the like-for-like floor read `▲ +12s42s`. The app
+was right. Bound the match to one figure in either unit.
+
+That is the fifth trap this file records about reading a rendered pane, after
+`innerText` returning CSS-uppercased text — which cost a probe reading in this
+same round, where a search for *"Strength trends"* found nothing because the
+glass says **STRENGTH TRENDS**.
+
+Fourteen mutants, all caught, including the five over-eager twins: the unknown
+sentence for everybody, a `testedRecord()` that refuses everything, `estOnly`
+welded true and welded false, and an empty state that always uses the generic
+sentence.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
