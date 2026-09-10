@@ -888,22 +888,32 @@ export default async function run() {
     /* Assert the SMOOTHING, not the label. The first version of this checked
        only for the words "7-day average" in the markup — a static string that
        stayed true when the averaging was removed entirely. */
-    const spiky = [80, 90, 80, 90, 80, 90, 80, 90];
-    const sm = trailingMean(spiky, 7);
+    /* DATED rows, because the window is days rather than readings — a bare
+       array cannot say how far apart the weigh-ins were, which is the whole
+       thing v498 fixed. Daily dates put seven readings in a seven-day window,
+       so these three assertions are byte-identical to what they measured
+       before, on the athlete the smoothing was written for. */
+    const spikyV = [80, 90, 80, 90, 80, 90, 80, 90];
+    const spiky = spikyV.map((v, i) => {
+      const d = new Date(2026, 0, 3); d.setDate(d.getDate() + i);
+      return { date: localISO(d), v };
+    });
+    const sm = trailingMeanDays(spiky, 7).vals;
     /* Compare the SETTLED part — once the window is full. The early points are
        averages of fewer readings by definition (sm[0] is just raw[0]), so
        including them measures the warm-up of the filter, not the filter. */
     const settled = sm.slice(6);
     o.flattensASpike = (Math.max(...settled) - Math.min(...settled))
-      < (Math.max(...spiky) - Math.min(...spiky)) / 4;
+      < (Math.max(...spikyV) - Math.min(...spikyV)) / 4;
     o.keepsTheLevel = Math.abs(sm[sm.length - 1] - 85) < 1.5;
-    o.firstPointUnchanged = sm[0] === spiky[0];
-    /* And the CHART must use it. Testing trailingMean() alone passed happily
+    o.firstPointUnchanged = sm[0] === spikyV[0];
+    /* And the CHART must use it. Testing trailingMeanDays() alone passed happily
        when weightChartHTML() stopped calling it — the function still existed
        and still worked. The "Now" figure is rendered from the plotted series,
        so it distinguishes the two. */
     const rawVals = STATE.measurements.map(mm => r1(weightShow(mm.weight)));
-    const smVals = trailingMean(rawVals, 7);
+    const smVals = trailingMeanDays(
+      STATE.measurements.map((mm, i) => ({ date: mm.date, v: rawVals[i] })), 7).vals;
     const rawLast = rawVals[rawVals.length - 1], smLast = smVals[smVals.length - 1];
     o.seriesDiffer = rawLast !== smLast;           // guard: otherwise the check is vacuous
     o.chartPlotsSmoothed = html.includes('Now ' + smLast) && !html.includes('Now ' + rawLast);
@@ -5871,6 +5881,320 @@ export default async function run() {
       src497.decl === 1 && src497.asks >= 3, JSON.stringify(src497));
     t.ok('and both arms of assessSeries ask testedRecord',
       src497.tested >= 3, JSON.stringify(src497));
+
+    t.eq('and none of it threw', perr.length, 0, perr.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+
+  /* ============================================================================
+     v498 — the average was a count of readings and the label said days
+
+     A fresh axis: every chart on Progress against the words beside it, this
+     time the WEIGHT one. weightChartHTML() plotted trailingMean(raw, 7) — the
+     last seven READINGS — under a label reading "· 7-day average", with a
+     sentence below it about "one heavy morning". None of that knows about time.
+
+     Measured on the same twelve readings, a real 90.0 -> 84.5 cut, at four
+     cadences:
+
+       11 days   ▼ 4.0kg  Now 86kg
+       33 days   ▼ 4.0kg  Now 86kg
+       77 days   ▼ 4.0kg  Now 86kg     <- the app's OWN prescribed cadence
+      154 days   ▼ 4.0kg  Now 86kg
+
+     One answer for every span. The weekly athlete lost 5.5 kg and was shown
+     4.0, with "Now 86kg" two lines above "actual reading: 84.5kg" — three
+     numbers for one weight, and the one they earned was not among them.
+
+     THE APP'S OWN CADENCE IS WEEKLY. The Saturday check-in, its push and the
+     brief countdown all prescribe one weigh-in a week, so on the schedule the
+     app itself asks for, a "7-day average" was a SEVEN-WEEK one.
+
+     trendKgPerWeek() in the same subsystem has always windowed by TIME and
+     refuses to answer until the readings span three real weeks. One of a pair
+     guarded and its twin not.
+     ============================================================================ */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    const perr = [];
+    pg.on('pageerror', e => perr.push(String(e).slice(0, 200)));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    await seedAthlete(pg);
+
+    const w = await pg.evaluate(() => {
+      const o = {};
+      const iso = d => { const x = new Date(2026, 0, 3); x.setDate(x.getDate() + d); return localISO(x); };
+      const txt = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+      /* THE OLD RULE, re-derived here rather than remembered — a count window.
+         Without it "the fix changed something" is satisfied by a rule that was
+         never wrong, and the daily floor below has nothing to be identical to. */
+      const countMean = (vals, n) => vals.map((_, i) => {
+        const s = vals.slice(Math.max(0, i - (n - 1)), i + 1);
+        return r1(s.reduce((a, b) => a + b, 0) / s.length);
+      });
+
+      const build = step => {
+        const rows = [];
+        for (let i = 0; i < 12; i++) rows.push({ date: iso(i * step), weight: r1(90 - i * 0.5) });
+        return rows;
+      };
+      const readChart = rows => {
+        STATE.measurements = rows;
+        STATE.profile.unit = 'cm';
+        STATE.profile.goal = 'lose';
+        const h = weightChartHTML(), T = txt(h);
+        return {
+          change: (T.match(/[▼▲] ?\+?[\d.]+kg/) || [''])[0],
+          now: (T.match(/Now ([\d.]+)kg/) || [])[1],
+          start: (T.match(/Start ([\d.]+)kg/) || [])[1],
+          label: (h.match(/· (7-day average|your weigh-ins)/) || [])[1] || '',
+          spot: /actual reading/.test(h),
+          html: h
+        };
+      };
+
+      /* GUARD: the trap is real. Twelve readings spanning 11 days and twelve
+         spanning 154 give the OLD rule one identical answer, because a count
+         window cannot see the difference. */
+      const dailyRaw = build(1).map(m => m.weight), weeklyRaw = build(7).map(m => m.weight);
+      o.oldRuleDaily = countMean(dailyRaw, 7)[11];
+      o.oldRuleWeekly = countMean(weeklyRaw, 7)[11];
+      /* Measured off the SEEDED dates. `11 !== 77` would be a tautology — the
+         thing that has to be true is that these two seeds really do span very
+         different amounts of time while carrying the same twelve readings. */
+      const spanOf = rows =>
+        (Date.parse(rows[rows.length - 1].date) - Date.parse(rows[0].date)) / 86400000;
+      o.spanDaily = spanOf(build(1));
+      o.spanWeekly = spanOf(build(7));
+      o.sameReadings = build(1).map(m => m.weight).join() === weeklyRaw.join();
+      o.realLoss = r1(weeklyRaw[11] - weeklyRaw[0]);
+      o.realNow = weeklyRaw[11];
+
+      // THE DEFECT: the app's own weekly cadence
+      o.weekly = readChart(build(7));
+      // and a fortnightly one, further out still
+      o.fortnightly = readChart(build(14));
+      // an in-between cadence must STILL smooth — the fix is not "stop averaging"
+      o.everyThird = readChart(build(3));
+
+      /* FLOOR: the athlete this smoothing was written for. A daily weigher must
+         be BYTE-IDENTICAL to the old count rule — nobody who weighs every
+         morning sees any change at all. */
+      const noisy = [];
+      for (let i = 0; i < 20; i++) noisy.push({ date: iso(i), weight: r1(88 - i * 0.1 + (i % 2 ? 1.1 : -1.1)) });
+      o.daily = readChart(noisy);
+      const noisyRaw = noisy.map(m => m.weight);
+      o.dailyIdenticalToOldRule = JSON.stringify(
+        trailingMeanDays(noisy.map((m, i) => ({ date: m.date, v: noisyRaw[i] })), 7).vals
+      ) === JSON.stringify(countMean(noisyRaw, 7));
+      o.dailyStillSmooths = +o.daily.now !== noisyRaw[19];
+
+      /* MIXED — daily for a fortnight, then weekly. The series genuinely WAS
+         averaged, so the label must say so; today's point was not, so printing
+         "actual reading" beside it would print the same number twice. Only this
+         case can tell maxN from lastN — in every case above they agree. */
+      const mixed = [];
+      for (let i = 0; i < 14; i++) mixed.push({ date: iso(i), weight: r1(90 - i * 0.1) });
+      for (let i = 1; i <= 6; i++) mixed.push({ date: iso(13 + i * 7), weight: r1(88.7 - i * 0.4) });
+      o.mixed = readChart(mixed);
+      const mixedSm = trailingMeanDays(mixed.map(m => ({ date: m.date, v: m.weight })), 7);
+      o.mixedCounts = { maxN: mixedSm.maxN, lastN: mixedSm.lastN };
+
+      // and one lone reading must not throw
+      o.single = readChart([{ date: iso(0), weight: 90 }]);
+
+      /* THE HELPER'S OWN CONTRACT, asserted directly — it is consulted from one
+         call site, so a rendered check alone cannot speak for its edges. */
+      const three = [{ date: '2026-01-01', v: 80 }, { date: '2026-01-02', v: 90 }, { date: '2026-01-03', v: 80 }];
+      const c = trailingMeanDays(three, 7);
+      o.contract = {
+        vals: c.vals.join(','), maxN: c.maxN, lastN: c.lastN,
+        firstIsRaw: c.vals[0] === 80,
+        // a week apart, a 7-day window holds exactly one
+        weeklyLastN: trailingMeanDays(
+          [{ date: '2026-01-01', v: 80 }, { date: '2026-01-08', v: 90 }], 7).lastN,
+        // seven daily readings, not eight
+        dailyMaxN: trailingMeanDays(
+          Array.from({ length: 10 }, (_, i) => ({ date: iso(i), v: 80 })), 7).maxN,
+        // a date that will not parse averages only itself
+        junk: trailingMeanDays([{ date: 'zzz', v: 50 }, { date: '2026-01-02', v: 90 }], 7).vals.join(','),
+        /* Caught here rather than by the whole evaluate dying, so a failure
+           names the check instead of reporting that the test file threw. */
+        notArray: (() => { try { return JSON.stringify(trailingMeanDays(null, 7)); }
+                           catch (e) { return 'THREW: ' + e.message; } })()
+      };
+      return o;
+    });
+
+    // guards — the trap is real, and the fix has something to be different from
+    t.eq('guard: the old count rule gave a DAILY series this figure', w.oldRuleDaily, 86, JSON.stringify(w));
+    t.eq('guard: and gave a WEEKLY series the identical one', w.oldRuleWeekly, 86, JSON.stringify(w));
+    t.eq('guard: yet one seed spans eleven days', w.spanDaily, 11, JSON.stringify(w));
+    t.eq('guard: and the other seventy-seven, from the same twelve readings',
+      `${w.spanWeekly}/${w.sameReadings}`, '77/true', JSON.stringify(w));
+    t.eq('guard: and the athlete really lost this much', w.realLoss, -5.5, JSON.stringify(w));
+    t.eq('guard: ending on this weight', w.realNow, 84.5, JSON.stringify(w));
+
+    // the defect — the app's own weekly cadence
+    t.eq('a weekly weigh-in charts the real change, not a seven-WEEK mean of it',
+      w.weekly.change, '▼ 5.5kg', JSON.stringify(w.weekly));
+    t.eq('and Now is the athlete\'s actual weight', w.weekly.now, '84.5', JSON.stringify(w.weekly));
+    t.eq('a fortnightly cadence reads the truth too', w.fortnightly.change, '▼ 5.5kg', JSON.stringify(w.fortnightly));
+
+    // the label and the note may not claim a smoothing that did not happen
+    t.eq('with nothing averaged the label does not say "7-day average"',
+      w.weekly.label, 'your weigh-ins', JSON.stringify(w.weekly));
+    t.ok('and the note about one heavy morning does not fire', !w.weekly.spot, JSON.stringify(w.weekly));
+
+    // FLOOR: the daily athlete this was written for is untouched
+    t.ok('FLOOR: a daily weigher is byte-identical to the old count rule',
+      w.dailyIdenticalToOldRule, JSON.stringify(w.daily));
+    t.eq('FLOOR: and still reads "7-day average"', w.daily.label, '7-day average', JSON.stringify(w.daily));
+    t.ok('FLOOR: and still shows the spot reading beside the average', w.daily.spot, JSON.stringify(w.daily));
+    t.ok('FLOOR: and the line is still smoothed, not the raw reading', w.dailyStillSmooths, JSON.stringify(w.daily));
+
+    // FLOOR: an in-between cadence still averages — this is not "stop smoothing"
+    t.eq('FLOOR: three readings a week apart still average', w.everyThird.label, '7-day average', JSON.stringify(w.everyThird));
+    t.eq('FLOOR: and land between the raw reading and the old lagged one',
+      w.everyThird.change, '▼ 5.0kg', JSON.stringify(w.everyThird));
+
+    t.eq('FLOOR: one lone reading charts it and says nothing about averaging',
+      w.single.label, 'your weigh-ins', JSON.stringify(w.single));
+
+    /* MIXED — the one case where the two counts disagree, so the one case that
+       can tell the LABEL's question from the NOTE's. */
+    t.eq('guard: a fortnight of daily readings then weekly really does split the two counts',
+      `${w.mixedCounts.maxN}/${w.mixedCounts.lastN}`, '7/1', JSON.stringify(w.mixedCounts));
+    t.eq('a series that WAS averaged still says so, even when today was not',
+      w.mixed.label, '7-day average', JSON.stringify(w.mixed));
+    t.ok('but the spot reading is not printed beside a point that is its own average',
+      !w.mixed.spot, JSON.stringify(w.mixed));
+
+    // the helper's own contract
+    t.eq('three daily readings average all three', w.contract.vals, '80,85,83.3', JSON.stringify(w.contract));
+    t.eq('and report the window they used', w.contract.maxN, 3, JSON.stringify(w.contract));
+    t.eq('the first point is the raw reading — the filter has to warm up', w.contract.firstIsRaw, true, JSON.stringify(w.contract));
+    t.eq('a seven-day window holds exactly one weekly reading', w.contract.weeklyLastN, 1, JSON.stringify(w.contract));
+    t.eq('and exactly seven daily ones, not eight', w.contract.dailyMaxN, 7, JSON.stringify(w.contract));
+    t.eq('a date that will not parse averages only itself', w.contract.junk, '50,90', JSON.stringify(w.contract));
+    t.eq('and anything that is not a list of rows is empty, never a throw',
+      w.contract.notArray, '{"vals":[],"maxN":0,"lastN":0}', JSON.stringify(w.contract));
+
+    /* THE FAST PATH MUST BE INVISIBLE IN THE OUTPUT. The rows are sorted by
+       date — upsertMeasure() is the only writer and it dedupes (which sorts)
+       first — so the window slides and the pass is O(n) rather than filtering
+       the whole list once per row. That is a real cost on a list the app never
+       caps: measured at 1,095 daily readings, 17.6 ms filtering against
+       0.24 ms sliding, growing quadratically.
+
+       A revert to filtering everything is EQUIVALENT in output, so the source
+       assertion below is what catches it. What these catch is a fast path that
+       is WRONG: a bad pointer advance, or one that slides over rows it has not
+       proved are in order. */
+    const slid = await pg.evaluate(() => {
+      const o = {};
+      // the filter rule, re-derived — what the fast path has to match exactly
+      const ref = (rows, days) => {
+        const out = { vals: [], maxN: 0, lastN: 0 };
+        if (!Array.isArray(rows)) return out;
+        const t = rows.map(r => Date.parse(r && r.date));
+        rows.forEach((_, i) => {
+          const cut = t[i] - (days - 1) * 86400000;
+          const w = isFinite(t[i])
+            ? rows.filter((_, j) => j <= i && isFinite(t[j]) && t[j] >= cut).map(x => x.v)
+            : [rows[i].v];
+          out.vals.push(r1(w.reduce((a, b) => a + b, 0) / w.length));
+          if (w.length > out.maxN) out.maxN = w.length;
+          out.lastN = w.length;
+        });
+        return out;
+      };
+      const rnd = (s => () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)(31);
+      const d0 = new Date(2016, 0, 1);
+      const sorted = []; let day = 0;
+      for (let i = 0; i < 40; i++) {
+        day += 1 + Math.floor(rnd() * 9);          // an irregular real cadence
+        const d = new Date(d0); d.setDate(d.getDate() + day);
+        sorted.push({ date: localISO(d), v: r1(60 + rnd() * 40) });
+      }
+      const shuffled = sorted.slice();
+      { const a = shuffled[9]; shuffled[9] = shuffled[10]; shuffled[10] = a; }
+      const junky = sorted.slice();
+      junky[7] = { date: 'not-a-date', v: junky[7].v };
+
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      o.n = sorted.length;
+      o.sortedMatches = same(trailingMeanDays(sorted, 7), ref(sorted, 7));
+      o.shuffledMatches = same(trailingMeanDays(shuffled, 7), ref(shuffled, 7));
+      o.junkMatches = same(trailingMeanDays(junky, 7), ref(junky, 7));
+      /* Guards. Without these, the two cases above are satisfied by rows the
+         swap and the junk date happened not to move — the reference would give
+         the same answer either way and nothing would be under test. */
+      o.shuffleMatters = !same(ref(shuffled, 7).vals, ref(sorted, 7).vals);
+      o.junkMatters = !same(ref(junky, 7).vals, ref(sorted, 7).vals);
+      /* THE OVER-EAGER TWIN HERE IS PURE COST: a fast path that is never
+         taken gives byte-identical output and only runs slower, and this repo
+         has been bitten five times by a check that asserts a DURATION. So
+         count the WORK instead, which is v335's own technique — the fallback
+         filters the whole list once per row and the fast path filters nothing.
+         Array.prototype.filter is restored in a finally, so nothing else in
+         the page can be left patched. */
+      const filterCalls = rows => {
+        const real = Array.prototype.filter;
+        let n = 0;
+        try {
+          Array.prototype.filter = function (...a) { n++; return real.apply(this, a); };
+          trailingMeanDays(rows, 7);
+        } finally { Array.prototype.filter = real; }
+        return n;
+      };
+      o.sortedFilters = filterCalls(sorted);
+      o.shuffledFilters = filterCalls(shuffled);
+      return o;
+    });
+    t.eq('guard: the sliding case really is a spread of irregular readings', slid.n, 40, JSON.stringify(slid));
+    t.ok('guard: a list it may NOT slide over really is filtered once per row',
+      slid.shuffledFilters >= slid.n, JSON.stringify(slid));
+    t.ok('and a sorted list is not filtered at all — the window slides over it',
+      slid.sortedFilters < 5, JSON.stringify(slid));
+    t.ok('guard: swapping two rows really does change the right answer', slid.shuffleMatters, JSON.stringify(slid));
+    t.ok('guard: and so does a date that will not parse', slid.junkMatters, JSON.stringify(slid));
+    t.ok('a sorted list slides to exactly what filtering it would give', slid.sortedMatches, JSON.stringify(slid));
+    t.ok('an out-of-order list is NOT slid over — it falls back and stays right', slid.shuffledMatches, JSON.stringify(slid));
+    t.ok('and neither is one carrying a date that will not parse', slid.junkMatches, JSON.stringify(slid));
+
+    /* And the CHART must ask it. Reverting weightChartHTML() to a count window
+       is byte-identical for the daily athlete every other check here uses as
+       its floor, so the render assertions above are what catch it — but a
+       source assertion catches a SECOND copy of the window rule, which is the
+       drift that produced this round. */
+    const src498 = await pg.evaluate(() => {
+      const raw = [...document.querySelectorAll('script:not([src])')]
+        .map(s => s.textContent).sort((a, b) => b.length - a.length)[0];
+      const clean = raw.replace(/\/\*[\s\S]*?\*\//g, ' ')
+                       .split('\n').map(l => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+      return {
+        ok: clean.length > 500000,
+        decl: (clean.match(/function trailingMeanDays\(/g) || []).length,
+        asks: (clean.match(/trailingMeanDays\(/g) || []).length,
+        oldGone: (clean.match(/function trailingMean\(/g) || []).length,
+        slicedWindow: (clean.match(/slice\(Math\.max\(0,\s*i\s*-\s*\(n\s*-\s*1\)\)/g) || []).length,
+        slidePtr: (clean.match(/while\(t\[lo\]<cut\)lo\+\+;/g) || []).length,
+        sortScan: (clean.match(/t\[i\]<t\[i-1\]/g) || []).length
+      };
+    });
+    t.ok('guard: the source scan read the app with its comments stripped', src498.ok, JSON.stringify(src498));
+    t.eq('the window rule is declared exactly once', src498.decl, 1, JSON.stringify(src498));
+    t.ok('and the chart asks it rather than keeping its own', src498.asks >= 2, JSON.stringify(src498));
+    t.eq('the count-window helper is gone, not left beside it', src498.oldGone, 0, JSON.stringify(src498));
+    t.eq('and no second copy of a count window survives', src498.slicedWindow, 0, JSON.stringify(src498));
+    /* A revert to filtering the whole list every row is byte-identical in
+       output — only slower — so only the source can see it. */
+    t.eq('the window slides rather than filtering the list once per row', src498.slidePtr, 1, JSON.stringify(src498));
+    t.eq('and it proves the order rather than assuming it', src498.sortScan, 1, JSON.stringify(src498));
 
     t.eq('and none of it threw', perr.length, 0, perr.slice(0, 2).join(' | '));
     await ctx.close();

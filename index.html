@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='497';
+const APP_VERSION='498';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -18947,11 +18947,67 @@ function waistGoalHTML(){
     <div class="row" style="justify-content:space-between;margin-top:5px"><span class="tiny muted">Start ${startD}${p.unit}</span><span class="tiny muted">Goal ${goalD}${p.unit}</span></div>${goalETAHTML()}</div>`;
 }
 /* Trailing mean, as its own function so it can be checked directly rather
-   than inferred from a rendered chart. */
-function trailingMean(arr,n){
-  if(!Array.isArray(arr))return [];
-  return arr.map((_,i)=>{const w=arr.slice(Math.max(0,i-(n-1)),i+1);
-    return r1(w.reduce((a,b)=>a+b,0)/w.length);});
+   than inferred from a rendered chart.
+
+   THE WINDOW IS DAYS, NOT READINGS. This used to average the last n READINGS
+   while the label said "7-day average", so the chart knew nothing about time at
+   all: twelve readings spanning 11 days and twelve spanning 154 days plotted
+   the identical line and both read "▼ 4.0kg · Now 86kg". The app's own
+   prescribed cadence is a WEEKLY weigh-in - the Saturday check-in, its push and
+   the brief countdown all say so - so on the cadence it asks for, a "7-day
+   average" was really a SEVEN-WEEK one. Measured on a real 90.0 -> 84.5 cut
+   over eleven weeks: the chart reported 4.0 kg of a 5.5 kg loss and printed
+   "Now 86kg" two lines above "actual reading: 84.5kg". Three numbers, one
+   weight, and the one the athlete earned was the one not shown.
+
+   trendKgPerWeek() in the same subsystem has always windowed by TIME, and
+   refuses to answer at all until the readings span three real weeks. One of a
+   pair guarded and its twin not.
+
+   The window reaches back (days-1), so a 7-day window holds exactly seven daily
+   readings - measured byte-identical to the old count version for a daily
+   weigher, which is the athlete the smoothing was written for. maxN and lastN
+   are returned rather than re-derived by the caller, because "did this actually
+   average anything" is the same window rule and a second copy of it would
+   drift. */
+function trailingMeanDays(rows,days){
+  const out={vals:[],maxN:0,lastN:0};
+  if(!Array.isArray(rows))return out;
+  const t=rows.map(r=>Date.parse(r&&r.date));
+  /* SORTED IS THE FAST PATH, AND IT IS CHECKED RATHER THAN ASSUMED.
+     upsertMeasure() is the only writer of STATE.measurements and it dedupes
+     (which sorts) first, so the window is a SLIDING one: lo only ever moves
+     forward, and dedupe leaves one row per date, so a window holds at most
+     `days` rows. That makes the pass O(n) instead of filtering the whole list
+     once per row. Measured at 1,095 daily readings: 0.24 ms against 17.6 ms,
+     and the gap grows quadratically - the list is uncapped by design, because
+     it is the weight chart. A comment claiming an invariant is not the
+     invariant, so an out-of-order or junk-dated list falls back to the filter,
+     which needs no order at all. */
+  let sorted=true;
+  for(let i=0;i<t.length;i++){if(!isFinite(t[i])||(i&&t[i]<t[i-1])){sorted=false;break;}}
+  let lo=0;
+  rows.forEach((_,i)=>{
+    const cut=t[i]-(days-1)*86400000;
+    let w;
+    if(sorted){
+      while(t[lo]<cut)lo++;
+      w=[];for(let j=lo;j<=i;j++)w.push(rows[j].v);
+    }else{
+      /* A row whose date will not parse cannot be placed in anyone's window,
+         so it averages only itself. */
+      w=isFinite(t[i])
+        ? rows.filter((_,j)=>j<=i&&isFinite(t[j])&&t[j]>=cut).map(x=>x.v)
+        : [rows[i].v];
+    }
+    /* Both windows are handed to ONE place, so the two paths can differ only
+       in which rows are in the window - never in the arithmetic, and never in
+       maxN/lastN. */
+    out.vals.push(r1(w.reduce((a,b)=>a+b,0)/w.length));
+    if(w.length>out.maxN)out.maxN=w.length;
+    out.lastN=w.length;
+  });
+  return out;
 }
 function weightChartHTML(){
   const ms=(STATE.measurements||[]).filter(m=>m.weight>0);if(!ms.length)return '';
@@ -18962,7 +19018,14 @@ function weightChartHTML(){
      range — so a fortnight of water weight filled the whole chart and read as
      failure. Plot a trailing mean instead, with the raw readings behind it, so
      the line shows the thing that is actually happening. */
-  const vals=trailingMean(raw,7);
+  const sm=trailingMeanDays(ms.map((m,i)=>({date:dates[i],v:raw[i]})),7);
+  const vals=sm.vals;
+  /* Did the window average anything? On the app's own weekly cadence it does
+     not - a reading a week apart has no day-to-day water weight left in it -
+     so neither the label nor the note below may claim a smoothing that did not
+     happen. Two questions, because they are about different things: the LABEL
+     describes the whole series, the NOTE describes today's point. */
+  const averagedAny=sm.maxN>1,averagedToday=sm.lastN>1;
   const first=vals[0],last=vals[vals.length-1];const change=last-first;
   /* The arrow always shows which way the number actually moved; only the
      COLOR is goal-relative. A 'gain' athlete moving up is the same green a
@@ -18987,9 +19050,9 @@ function weightChartHTML(){
   const stableNote=stable?(goodDirection?' · held':' · drifting'):'';
   const chart=ms.length>=2?lineChart(vals,dates,'var(--teal)',wu):`<div class="center" style="margin-top:10px"><div style="font-size:26px;font-weight:900">${last}${wu}</div></div>`;
   const spot=raw[raw.length-1];
-  return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b> <span class="tiny muted">· 7-day average</span>${chart}
+  return `<div class="divider" style="margin:14px 0"></div><b>Weight (${wu})</b> <span class="tiny muted">· ${averagedAny?'7-day average':'your weigh-ins'}</span>${chart}
     <div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">Start ${first}${wu}</span><span class="tiny" style="color:${goodDirection?'var(--green)':'var(--muted)'};font-weight:800">${change<=0?'▼ ':'▲ +'}${Math.abs(change).toFixed(1)}${wu}${stableNote}</span><span class="tiny muted">Now ${last}${wu}</span></div>
-    ${ms.length>=3?`<div class="tiny muted" style="margin-top:6px">Averaged, so one heavy morning does not read as a setback. Today's actual reading: <b>${spot}${wu}</b>.</div>`:''}`;
+    ${(ms.length>=3&&averagedToday)?`<div class="tiny muted" style="margin-top:6px">Averaged, so one heavy morning does not read as a setback. Today's actual reading: <b>${spot}${wu}</b>.</div>`:''}`;
 }
 /* Reusable dated line graph (SVG). vals[i] plotted against dates[i]. */
 function lineChart(vals,dates,color,unit){

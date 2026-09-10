@@ -20976,6 +20976,174 @@ sentence for everybody, a `testedRecord()` that refuses everything, `estOnly`
 welded true and welded false, and an empty state that always uses the generic
 sentence.
 
+## The average was a count of readings and the label said days (v498)
+
+A fresh axis: **every chart on Progress against the words printed beside it**,
+this time the WEIGHT one. `weightChartHTML()` plotted `trailingMean(raw, 7)` —
+the last seven **READINGS** — under a label reading *"· 7-day average"*, with a
+sentence below it about *"one heavy morning"*. None of that knows about time.
+
+Measured on the same twelve readings, a real 90.0 → 84.5 kg cut, at four
+cadences:
+
+| the readings span | the chart said |
+|---|---|
+| 11 days | ▼ 4.0kg · Now 86kg |
+| 33 days | ▼ 4.0kg · Now 86kg |
+| **77 days — the app's OWN prescribed cadence** | **▼ 4.0kg · Now 86kg** |
+| 154 days | ▼ 4.0kg · Now 86kg |
+
+**One answer for every span**, because a count window cannot see the difference.
+
+**THE APP'S OWN CADENCE IS WEEKLY.** The Saturday check-in, its push and the
+brief countdown all prescribe one weigh-in a week — so on the schedule the app
+itself asks for, a *"7-day average"* was really a **SEVEN-WEEK** one. That
+athlete lost **5.5 kg** and was shown **4.0**, with *"Now 86kg"* two lines above
+*"actual reading: 84.5kg"* — **three numbers for one weight, and the one they
+earned was not among them.**
+
+**`trendKgPerWeek()` in the same subsystem has always windowed by TIME**, and
+refuses to answer at all until the readings span three real weeks. *One of a
+pair guarded and its twin not*, on a window rather than on a repair.
+
+### The daily athlete is byte-identical, and that is what makes it safe
+
+The window reaches back `(days - 1)`, so a 7-day window holds exactly **seven**
+daily readings rather than eight — measured identical to the old count rule for
+a daily weigher, who is the athlete this smoothing was written for. The whole
+change lands on athletes who weigh **less often than daily**, which is everyone
+following the app's own prescription.
+
+| cadence | real loss | before | after |
+|---|---|---|---|
+| daily | 5.5 kg | ▼ 4.0 | **▼ 4.0 — unchanged** |
+| every 3 days | 5.5 kg | ▼ 4.0 | ▼ 5.0 |
+| weekly | 5.5 kg | ▼ 4.0 | **▼ 5.5** |
+| fortnightly | 5.5 kg | ▼ 4.0 | ▼ 5.5 |
+
+### The label and the note may not claim a smoothing that did not happen
+
+A reading a week apart has no day-to-day water weight left in it, so on a weekly
+cadence **nothing is averaged** — and *"7-day average"* over a series where each
+window holds one reading describes a filter that did nothing. The label reads
+*"your weigh-ins"* there instead.
+
+**Two questions, because they are about different things.** The LABEL describes
+the whole series (`maxN`); the NOTE — *"Averaged, so one heavy morning does not
+read as a setback. Today's actual reading: …"* — describes today's point
+(`lastN`). An athlete who weighed daily for a fortnight and then went weekly has
+a genuinely averaged series whose **last** point is not averaged, and printing
+the spot reading there would print the same number twice.
+
+**Both counts come back from the one helper** rather than being re-derived by
+the caller, because *"did this actually average anything"* is the same window
+rule and a second copy of it is a second place for it to drift.
+
+### The floors, and what each over-eager twin fails
+
+A daily weigher must be byte-identical, must still read *"7-day average"*, must
+still get the spot reading, and must still be **smoothed rather than raw** — a
+"fix" that simply stopped averaging satisfies every assertion about the weekly
+case and fails all four. An in-between cadence (three readings inside a week)
+must still average. And one lone reading must chart without throwing.
+
+**THE GUARD IS THE WHOLE BLOCK.** It re-derives the OLD count rule inside the
+check and pins that it gave the 11-day series and the 77-day series the
+identical figure. Without that, *"the fix changed something"* is satisfied by a
+rule that was never wrong, and the daily floor has nothing to be identical to.
+
+### The class is one chart wide, and that was measured
+
+`lineChart()` has three callers. `measureChartHTML()` — the waist — plots the
+**raw** readings and claims no averaging at all: its labels are *Start*, *Now*
+and the change, every one of them true of the numbers actually plotted. So it
+has no false sentence to remove, and it is not in the class.
+
+**Smoothing it would be a change with no defect behind it**, and on the cadence
+the app itself prescribes it would also be a no-op: that card says *"Log your
+waist weekly"*, and a reading a week apart is exactly the case v498 has just
+established averages nothing. The v386 call, with the reason beside it.
+
+`assessSeries()` — the strength trend — is v497's, and it plots real
+measurements with no window at all.
+
+### The fix I shipped was quadratic, and I measured it before merging
+
+A time window cannot be a `slice()`, so the first version filtered the whole
+list once per row — **O(n²)**, in a render path, over a list the app
+deliberately never caps because it *is* the weight chart. The old count rule
+was linear. Measured before the merge gate was opened:
+
+| daily readings | filtering | sliding |
+|---|---|---|
+| 365 | 1.9 ms | 0.18 ms |
+| 1,095 | **17.6 ms** | 0.24 ms |
+| 1,825 | 40.5 ms | 0.32 ms |
+| 3,650 | ~150 ms | 2.1 ms |
+
+Three times the rows for nine times the work is the shape of a quadratic, and
+v335 already treated **123 ms** on a Progress render as a real finding. So this
+is not the v386 "a fix with no defect behind it" case: **the defect is the one
+I had just introduced**, and the PR was still a draft.
+
+**The rows are sorted, so the window SLIDES** — `upsertMeasure()` is the only
+writer and it dedupes (which sorts) first, and dedupe leaves one row per date,
+so a window holds at most `days` rows. `lo` only ever moves forward.
+
+**IT IS CHECKED RATHER THAN ASSUMED**, because *a comment claiming an invariant
+is not the invariant* — the tenth entry under that rule. An out-of-order or
+junk-dated list falls back to the filter, which needs no order at all.
+
+**The two-pointer finds the BOUNDS and the sum is taken fresh**, which is not a
+micro-optimisation given up for nothing: an accumulating `sum` that adds and
+subtracts drifts from a fresh one, and `r1()` rounds to one decimal, so a
+boundary case could flip a number the athlete reads. Summing `rows[lo..i]`
+gives the filter's own terms in the filter's own order — bit-identical rather
+than nearly so. **600 fuzzed cases, including shuffled and junk-dated lists:
+zero differences.**
+
+**A fast path that is wrong is catchable by output** — a bad pointer advance,
+or one that slides over rows it has not proved are in order. **One that is
+merely absent is not**, because it is byte-identical and only slower. Those
+come in two shapes and they need two different checks:
+
+| the mutant | what sees it |
+|---|---|
+| the sliding code **deleted** | a source assertion — the `WEIGHTS_PATTERNS` lesson |
+| the fast path **disabled**, the code left standing | **nothing, at first** |
+
+**The second one escaped, and the honest answer was not a timing check.** This
+repo has been bitten by a fixed-duration assertion five times (v414, v420,
+v437, v451, v486). v335's own precedent is to count duplicated **work** rather
+than milliseconds, and that transfers exactly: the fallback filters the whole
+list once per row and the fast path filters nothing at all, so the check
+patches `Array.prototype.filter`, counts, and restores it in a `finally`. A
+sorted 40-row list must cost **no** filter calls; the shuffled one must cost at
+least 40. Seeded again, the twin fails by name.
+
+**The guards are the whole point of the fallback cases.** Swapping two rows and
+planting an unparseable date must each *change the right answer*, or those
+cases are satisfied by data the fault could not have moved — and the work
+counter needs its own, or *"a sorted list is not filtered"* is satisfied by a
+helper that never filters anything.
+
+### And the existing check was re-aimed rather than deleted
+
+Suite 09 asserted `flattensASpike`, `keepsTheLevel` and `firstPointUnchanged`
+against a **bare array** — which cannot say how far apart the weigh-ins were,
+and that is the whole thing this round is about. Its subject survives intact:
+the same three properties, on dated rows a day apart, where seven readings land
+in a seven-day window and the assertions are byte-identical to what they
+measured before. `chartPlotsSmoothed` had to move to the new helper for the
+same reason — the requirement never changed, only the smoother's name.
+
+**And the count helper is DELETED, not left beside the new one.** Two helpers
+with one window rule is the drift this round removed; a helper nothing calls is
+what v462 swept for. A source assertion pins that the window rule is declared
+exactly once, that the chart asks it, and that no second copy of a count window
+survives — because reverting the chart to a count window is **byte-identical
+for the daily athlete every other check here uses as its floor**.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
