@@ -9140,7 +9140,15 @@ export default async function () {
       o.reHas1 = /Core Score 41\/100/.test(re1);
       o.reHas2 = /Core Score 71\/100/.test(re2);
       o.finHas = /41→71/.test(fin);
-      o.trHas  = /\+30 points/.test(tr);
+      /* v499 MOVED THE FIGURE, NOT THE SUBJECT. This block is about the score
+         SANITISING still letting real numbers print; +30 was only ever the
+         proxy for that. scoreTrendHTML() used to compare the first comparable
+         test under a sentence saying "since your last", so a 41/55/71 history
+         read "+30". It now reports the real change since the LAST test and
+         keeps the run as a second fact, so the same sanitised scores print
+         both — which pins more of them than the old single figure did. */
+      o.trHas  = /▲ \+16 points since your last comparable test/.test(tr)
+              && /▲ \+30 since your first/.test(tr);
       o.reText1 = re1.slice(0, 120); o.reText2 = re2.slice(0, 120);
       o.finText = fin.slice(0, 120); o.trendText = tr.slice(0, 120);
       o.gain = scoreGain();

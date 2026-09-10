@@ -6200,6 +6200,236 @@ export default async function run() {
     await ctx.close();
   }
 
+  /* ============================================================================
+     v499 — the trend said "since your last" and measured since your first,
+            and nothing kept the history in order
+
+     Same axis as v497 and v498: a figure on Progress against the words printed
+     beside it. Two findings on one card.
+
+     scoreTrendHTML() compared cur[0] — the FIRST comparable test — under a
+     sentence reading "since your last comparable test". Correct at two
+     entries, where cur[0] IS the previous one, and silently wrong from the
+     third on. Measured across 50 -> 60 -> 76 -> 70, an athlete who had just
+     DROPPED six points: "▲ +20 points since your last comparable test", green,
+     with an up arrow. scoreDeltaHTML(), on the re-test results screen, has
+     always read cur[length-2] and says "vs last test" — one of a pair guarded
+     and its twin not, with the correct one in the same file.
+
+     And NOTHING sorted STATE.scoreHistory, while five readers index it by
+     POSITION. Measured on a real render with three entries shuffled, which is
+     what an import can carry:
+
+                        ring   level chip   scoreGain()
+       in order          76    Advanced        +26
+       shuffled          60    Intermediate    -16
+       after a boot      60    Intermediate    -16
+
+     dedupeMeasurements() sorts its own twin and says why: "some readers take
+     the raw last row, others sort first — an out-of-order import made them
+     disagree about now". A dateless entry was worse — it survived the filter
+     and became "now", and the ring showed 12 where the athlete's latest real
+     score was 76.
+     ============================================================================ */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    const perr = [];
+    pg.on('pageerror', e => perr.push(String(e).slice(0, 200)));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    await seedAthlete(pg);
+
+    const v = await pg.evaluate(() => {
+      const o = {};
+      const txt = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const T = TESTS.length;
+      const mk = ss => ss.map((n, i) => ({
+        date: `2026-0${i + 1}-01`, score: n, level: 'Intermediate', testCount: T
+      }));
+
+      /* THE OLD RULE, re-derived rather than remembered: first against last.
+         Without it, every assertion below is satisfied by a rule that was
+         never wrong. */
+      const oldRule = ss => ss[ss.length - 1] - ss[0];
+
+      const trend = ss => {
+        STATE.scoreHistory = mk(ss);
+        const h = scoreTrendHTML();
+        return { txt: txt(h), green: h.includes('var(--green)'), pink: h.includes('var(--pink)') };
+      };
+      o.two = trend([50, 60]);
+      o.threeUp = trend([50, 60, 76]);
+      o.fourDown = trend([50, 60, 76, 70]);
+      o.flat = trend([70, 60, 70, 70]);
+      o.upButLevelWithFirst = trend([70, 60, 70]);
+      o.oldWouldSay = { three: oldRule([50, 60, 76]), four: oldRule([50, 60, 76, 70]) };
+      o.trulySinceLast = { three: 76 - 60, four: 70 - 76 };
+
+      /* The sibling that has always been right. It is the reason the SENTENCE
+         is what the fix keeps and the NUMBER is what moves.
+
+         commitAssessment() PUSHES the new entry before the results screen
+         renders, so hist[length-1] is the assessment being shown and
+         hist[length-2] is the previous test. Seeding it any other way tests a
+         state the app never produces — the first version of this guard did,
+         and the guard is what said so. */
+      STATE.scoreHistory = mk([50, 60, 76, 86]);
+      o.sibling = txt(scoreDeltaHTML({ score: 86, level: 'Advanced' }));
+
+      // the "scoring changed" branch must survive untouched
+      STATE.scoreHistory = [{ date: '2026-01-01', score: 50, testCount: 5 },
+                            { date: '2026-03-01', score: 60, testCount: 5 }];
+      o.scoringChanged = txt(scoreTrendHTML());
+
+      // ---- the sort, driven on a real render ----
+      STATE.baseline = { score: 50, level: 'Intermediate', date: '2026-01-01', maxes: {}, results: {}, subs: {} };
+      const A = { date: '2026-01-01', score: 50, level: 'Beginner', testCount: T };
+      const B = { date: '2026-03-01', score: 60, level: 'Intermediate', testCount: T };
+      const C = { date: '2026-06-01', score: 76, level: 'Advanced', testCount: T };
+      const read = () => {
+        setProgressTab('summary');
+        const view = document.querySelector('#v-progress');
+        const rc = view.querySelector('.ring .rc');
+        const chip = view.querySelector('.card.pad.center .chip');
+        return { ring: rc ? rc.querySelector('b').textContent : null,
+                 level: chip ? chip.textContent : null };
+      };
+      /* GUARDS. The three entries must genuinely differ and the shuffled input
+         must genuinely be out of order, or "the ring reads 76" is satisfied by
+         a list that never needed sorting. */
+      o.entriesDiffer = `${A.score}/${B.score}/${C.score}`;
+      o.shuffledIsOutOfOrder = ['2026-06-01', '2026-01-01', '2026-03-01'].join(',');
+
+      STATE.scoreHistory = [A, B, C]; normalizeState();
+      o.orderedKept = STATE.scoreHistory.map(e => e.date).join(',');
+      o.ordered = read();
+      o.orderedGain = scoreGain();
+
+      STATE.scoreHistory = [C, A, B]; normalizeState();
+      o.shuffledSorted = STATE.scoreHistory.map(e => e.date).join(',');
+      o.shuffled = read();
+      o.shuffledGain = scoreGain();
+
+      STATE.scoreHistory = [A, B, C, { score: 12, level: 'Beginner', testCount: T }];
+      normalizeState();
+      o.datelessLeft = STATE.scoreHistory.length;
+      o.dateless = read();
+
+      STATE.scoreHistory = [A, B, C, { date: 'not-a-date', score: 12, testCount: T }];
+      normalizeState();
+      o.junkLeft = STATE.scoreHistory.length;
+
+      /* A DECLINE AT THE LAST TEST. The three entries above rise in the same
+         order as their dates, so sorting by SCORE gives the identical answer
+         and a mutant that does cannot be told apart — that one escaped until
+         this case existed. Only a history whose scores are NOT monotonic with
+         its dates discriminates, and that is precisely the athlete this round
+         is about. */
+      const D = { date: '2026-09-01', score: 62, level: 'Intermediate', testCount: T };
+      o.declineNotMonotonic = D.score < C.score;
+      STATE.scoreHistory = [D, A, C, B]; normalizeState();
+      o.declineSorted = STATE.scoreHistory.map(e => e.date).join(',');
+      const dec = read();
+      o.declineRing = dec.ring; o.declineLevel = dec.level;
+
+      // a settled history is left alone — v390's rule
+      STATE.scoreHistory = [A, B, C]; normalizeState();
+      const settled = JSON.stringify(STATE.scoreHistory);
+      normalizeState();
+      o.idempotent = settled === JSON.stringify(STATE.scoreHistory);
+
+      // and the shape a real v396 phone carries
+      STATE.scoreHistory = [{ date: '2026-07-01', score: 71, level: 'Intermediate', testCount: 10 }];
+      normalizeState();
+      o.singleEntrySurvives = STATE.scoreHistory.length;
+      return o;
+    });
+
+    // ---- guards ----
+    t.eq('guard: the old rule really gave a different answer at three tests',
+      `${v.oldWouldSay.three}/${v.trulySinceLast.three}`, '26/16', JSON.stringify(v.oldWouldSay));
+    t.eq('guard: and a different DIRECTION at four',
+      `${v.oldWouldSay.four}/${v.trulySinceLast.four}`, '20/-6', JSON.stringify(v.oldWouldSay));
+    t.ok('guard: the sibling on the results screen compares the PREVIOUS test',
+      /\+10 points vs last test/.test(v.sibling), v.sibling);
+    t.eq('guard: the three seeded scores really differ', v.entriesDiffer, '50/60/76', JSON.stringify(v));
+    t.eq('guard: and the shuffled seed really is out of order',
+      v.shuffledIsOutOfOrder, '2026-06-01,2026-01-01,2026-03-01', JSON.stringify(v));
+
+    // ---- the trend line ----
+    t.eq('FLOOR: two comparable tests are unchanged — cur[0] IS the previous one',
+      v.two.txt, '▲ +10 points since your last comparable test', JSON.stringify(v.two));
+    t.ok('FLOOR: and still green', v.two.green && !v.two.pink, JSON.stringify(v.two));
+    t.ok('FLOOR: with no run figure beside it — the two would be one number twice',
+      !/your first/.test(v.two.txt), v.two.txt);
+    t.ok('three tests name the change since the LAST one',
+      /▲ \+16 points since your last comparable test/.test(v.threeUp.txt), v.threeUp.txt);
+    t.ok('and keep the climb the card promises, as a second fact',
+      /▲ \+26 since your first/.test(v.threeUp.txt), v.threeUp.txt);
+    t.ok('a drop at the last test reads as a drop',
+      /▼ -6 points since your last comparable test/.test(v.fourDown.txt), v.fourDown.txt);
+    t.ok('and is coloured as one, not green',
+      v.fourDown.pink && !v.fourDown.green, JSON.stringify(v.fourDown));
+    t.ok('while the run is still reported honestly beside it',
+      /▲ \+20 since your first/.test(v.fourDown.txt), v.fourDown.txt);
+    t.ok('no change is not an increase', /^No change since your last/.test(v.flat.txt), v.flat.txt);
+    t.ok('and is neither green nor red', !v.flat.green && !v.flat.pink, JSON.stringify(v.flat));
+    t.ok('and prints no run figure when the run says the same thing',
+      !/your first/.test(v.flat.txt), v.flat.txt);
+    t.ok('a rise that lands level with the first says so rather than printing +0',
+      /level with your first/.test(v.upButLevelWithFirst.txt), v.upButLevelWithFirst.txt);
+    t.ok('and the scoring-changed branch is untouched',
+      /Scoring changed in this version/.test(v.scoringChanged), v.scoringChanged);
+
+    // ---- the sort ----
+    t.eq('an out-of-order history is sorted at the boot',
+      v.shuffledSorted, '2026-01-01,2026-03-01,2026-06-01', JSON.stringify(v));
+    t.eq('so the Core Score ring shows the newest test, not whichever row was last',
+      v.shuffled.ring, '76', JSON.stringify(v.shuffled));
+    t.eq('and the level chip agrees with it', v.shuffled.level, 'Advanced', JSON.stringify(v.shuffled));
+    t.eq('and scoreGain(), behind a badge, reads the real run', v.shuffledGain, 26, JSON.stringify(v));
+    t.eq('an entry with no date is dropped — it cannot be placed in time', v.datelessLeft, 3, JSON.stringify(v));
+    t.eq('so it cannot claim to be "now"', v.dateless.ring, '76', JSON.stringify(v.dateless));
+    t.eq('and neither can one whose date will not parse', v.junkLeft, 3, JSON.stringify(v));
+    t.ok('guard: the declining history really does fall at its last test',
+      v.declineNotMonotonic, JSON.stringify(v));
+    t.eq('the order is the DATES, not the scores — a decline still sorts last',
+      v.declineSorted, '2026-01-01,2026-03-01,2026-06-01,2026-09-01', JSON.stringify(v));
+    t.eq('so the ring shows the newest test rather than the best one',
+      v.declineRing, '62', JSON.stringify(v));
+    t.eq('and the level with it', v.declineLevel, 'Intermediate', JSON.stringify(v));
+
+    t.eq('FLOOR: an ordered history is left exactly as it was',
+      v.orderedKept, '2026-01-01,2026-03-01,2026-06-01', JSON.stringify(v));
+    t.eq('FLOOR: and reads the same as it always did', v.ordered.ring, '76', JSON.stringify(v.ordered));
+    t.eq('FLOOR: including the badge input', v.orderedGain, 26, JSON.stringify(v));
+    t.ok('FLOOR: a settled history is not touched again — the repair is a fixed point',
+      v.idempotent, JSON.stringify(v));
+    t.eq('FLOOR: and a real single-entry history survives', v.singleEntrySurvives, 1, JSON.stringify(v));
+
+    /* Reverting scoreTrendHTML() to cur[0] is visible in the output above.
+       Reverting the SORT is visible too. What only the source can see is a
+       second copy of either rule. */
+    const src499 = await pg.evaluate(() => {
+      const raw = [...document.querySelectorAll('script:not([src])')]
+        .map(s => s.textContent).sort((a, b) => b.length - a.length)[0];
+      const clean = raw.replace(/\/\*[\s\S]*?\*\//g, ' ')
+                       .split('\n').map(l => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+      return {
+        ok: clean.length > 500000,
+        sorts: (clean.match(/STATE\.scoreHistory[\s\S]{0,200}?\.sort\(/g) || []).length,
+        dateFilter: (clean.match(/isDateISO\(e\.date\)/g) || []).length
+      };
+    });
+    t.ok('guard: the source scan read the app with its comments stripped', src499.ok, JSON.stringify(src499));
+    t.eq('the history is sorted in exactly one place', src499.sorts, 1, JSON.stringify(src499));
+    t.eq('and its date is proved in exactly one place', src499.dateFilter, 1, JSON.stringify(src499));
+
+    t.eq('and none of it threw', perr.length, 0, perr.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+
   await tzb.close();
 
   srv.close();
