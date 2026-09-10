@@ -19938,6 +19938,31 @@ a function that speaks*, and the rep chain was the only one.
 still announce its length — a fix that made every rest quiet passes every
 assertion about the chain.
 
+### "Go!" was cancelled on every set, in the player and in HIIT
+
+The class question — *which function speaks and then calls a function that
+speaks* — has two more members, and they are the two oldest surfaces in the
+app. `plTickReady()` said *"Go!"* and then, in the same tick, `plEnterWork()`
+spoke the form cue; `ivTickLead()` said *"Go!"* and `ivStep()` spoke *"Work!
+<name>"* a tick later. So the word was cut a few milliseconds in, on every set
+of every session, and the athlete heard a clipped syllable before the cue.
+
+**The Go is now the first word of the work line**, where nothing can cancel
+it — the same call v307 made for the rep count, with the flavour after the
+information. HIIT's *"Work!"* is its own go word, so the separate one simply
+goes.
+
+**The floor is the ▶ Hold timer**, whose *"Go!"* has nothing after it and
+must stay a line of its own. And **suite 14 had pinned the defect** —
+*"and still says 'Go!'"* asserted the separate utterance in the source. It
+was re-aimed at the requirement: the Go opens the work line. The eighth time
+a check has held a defect in place rather than caught it.
+
+**A brace-matching scanner reported 144 such pairs and was broken** — it
+attributed every speaker to `_ve()` and `intakeHTML()`, which is the v388
+trap verbatim. The six pairs worth reading were the phase hand-offs, and two
+of the six were real.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

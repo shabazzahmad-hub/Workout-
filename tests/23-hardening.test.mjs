@@ -14101,6 +14101,66 @@ export default async function () {
     t.ok('FLOOR: the hold chain still speaks one line at its hand-off', Array.isArray(r.holdHandoff) && r.holdHandoff.length === 1 && /— rest$/.test(r.holdRestLabel || ''), JSON.stringify({ holdHandoff: r.holdHandoff, holdRestLabel: r.holdRestLabel }));
   }
 
+  /* v489: "GO!" WAS CANCELLED ON EVERY SET. plTickReady() said "Go!" and then,
+     in the same tick, plEnterWork() spoke the form cue — and _deviceSpeak()
+     cancels the previous utterance on every new one, so the athlete heard a
+     clipped syllable before the cue on every set of every session. HIIT's
+     lead-in did the same before "Work! <name>". The Go is now the first
+     word of the work line. Driven through the real ticks with the speaker
+     recorded; the floor is the ▶ Hold timer, whose own "Go!" has nothing
+     after it and must stay a line of its own. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const real = { speak: window.coachSpeak, hype: window.hypeSpeak, beep: window.beep };
+      const spoken = [];
+      window.coachSpeak = t => { spoken.push(String(t)); };
+      window.hypeSpeak = t => { spoken.push(String(t)); return true; };
+      window.beep = () => {};
+      try {
+        const drive = async (sess) => {
+          openPlayer(sess); await wait(250);
+          if (!PLAYER) return null;
+          spoken.length = 0;
+          PLAYER.ready = 1; plTickReady(); await wait(60);
+          const got = spoken.slice();
+          try { playerQuit(); } catch (e) {}
+          await wait(500);
+          return got;
+        };
+        out.hold = await drive({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 2 }], free: true, title: 'probe' });
+        out.reps = await drive({ items: [{ exId: 'pushup', unit: 'reps', target: 10, rest: 30, sets: 2 }], free: true, title: 'probe' });
+        /* HIIT's lead-in */
+        go('today'); spoken.length = 0;
+        startGrinder('grind6'); await wait(50);
+        out.hiitOpened = !!INTV;
+        if (INTV) {
+          spoken.length = 0; INTV.lead = 1; ivTickLead(); await wait(60);
+          out.hiit = spoken.slice();
+          try { hiitQuit(); } catch (e) {}
+          await wait(500);
+        }
+        /* FLOOR: the ▶ Hold timer's own Go stands alone */
+        spoken.length = 0;
+        runTimer('hold', 20, 'Plank', 0, null, false, EX.plank); await wait(20);
+        spoken.length = 0;
+        for (let i = 0; i < 5 && timer; i++) timer.tick();
+        await wait(60);
+        out.timerGo = spoken.slice();
+        stopTimer(); closeSheet(); await wait(400);
+      } catch (e) { out.err = String(e); }
+      window.coachSpeak = real.speak; window.hypeSpeak = real.hype; window.beep = real.beep;
+      return out;
+    });
+    t.ok('GUARD: the player opened for both a hold and a rep set', !r.err && Array.isArray(r.hold) && Array.isArray(r.reps), JSON.stringify(r));
+    t.ok('the hold set hands to work with ONE line, and it opens with Go (v489)', r.hold.length === 1 && /^Go! /.test(r.hold[0]), JSON.stringify(r.hold));
+    t.ok('the rep set too', r.reps.length === 1 && /^Go! /.test(r.reps[0]), JSON.stringify(r.reps));
+    t.ok('GUARD: the grinder opened', r.hiitOpened === true, JSON.stringify(r));
+    t.ok('HIIT hands to work with one line, "Work! <name>", and no Go for it to cancel', Array.isArray(r.hiit) && r.hiit.length === 1 && /^Work! /.test(r.hiit[0]), JSON.stringify(r.hiit));
+    t.ok('FLOOR: the ▶ Hold timer still says Go on its own, with nothing after it', Array.isArray(r.timerGo) && r.timerGo.length === 1 && r.timerGo[0] === 'Go!', JSON.stringify(r.timerGo));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

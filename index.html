@@ -8072,7 +8072,12 @@ function plTickReady(){
   /* No spoken digits. The beep already marks every second, and a digit spoken
      one second after the announcement cancels it mid-word. */
   if(PLAYER.ready>0){beep(1000,.18,0.9);plS('#plNum',PLAYER.ready);return;}
-  beepGo();haptic(30);coachSay('Go!');plEnterWork();
+  /* NO SEPARATE "Go!". plEnterWork() speaks the form cue in the same tick,
+     and _deviceSpeak() cancels the previous utterance on every new one — so
+     the word was cut a few milliseconds in, on every set of every session,
+     and the athlete heard a clipped syllable before the cue. The Go is now
+     the first word of the work line, where nothing can cancel it. */
+  beepGo();haptic(30);plEnterWork();
 }
 // Rotate to the next spoken/shown form cue for the current exercise.
 function plNextCue(){const c=PLAYER.cues||[];if(!c.length)return'';PLAYER.cueIdx=((PLAYER.cueIdx||0)+1)%c.length;const cue=c[PLAYER.cueIdx];plS('#plCoach',cue);return cue;}
@@ -8114,7 +8119,7 @@ function plEnterWork(){
     PLAYER.remain=m.target;PLAYER.total=Math.max(1,m.target);
     PLAYER.deadline=monoNow()+PLAYER.remain*1000;   // same wall-clock floor plTickRest already relies on
     plS('#plNum',fmtTime(PLAYER.remain));plS('#plSub','HOLD');plRingSet(1);
-    coachSpeak(intro+PLAYER.cues[0]);
+    coachSpeak('Go! '+intro+PLAYER.cues[0]);
     if(PLAYER.running)PLAYER.tid=setInterval(plTickHold,1000);
   }else{
     const ecc=eccOf(ex);
@@ -8132,7 +8137,7 @@ function plEnterWork(){
     PLAYER.repN=0;PLAYER.repMs=0;PLAYER.repCounted=false;PLAYER.total=Math.max(1,m.target);
     plS('#plNum','0');plS('#plSub','OF '+m.target+' REPS');plRingSet(0);
     const tempoLine=ecc>=2?('Controlled tempo. Lower for '+ecc+' seconds, then drive up. '+PLAYER.cues[0]):('Fast and explosive. '+PLAYER.cues[0]);
-    coachSpeak(intro+tempoLine);
+    coachSpeak('Go! '+intro+tempoLine);
     if(!firstSet||!ex.why)plS('#plCoach',ecc>=2?'Lower slow…':'Go!');
     if(PLAYER.running)PLAYER.tid=setInterval(plTickRep,100);
   }
@@ -10179,7 +10184,9 @@ function ivTickLead(){
      effort and the v307 call for the guided player's own get-ready — this is
      the same rule reaching the four sibling countdowns that never got it. */
     if(INTV.lead>0){beep(1000,.18,0.9);ivS('#ivNum',INTV.lead);return;}
-  beepGo();haptic(30);coachSay('Go!');ivClear();ivStep(0);
+  /* No separate "Go!" here either: ivStep() speaks "Work! <name>" a tick
+     later and cancelled it — the work line IS the go word. */
+  beepGo();haptic(30);ivClear();ivStep(0);
 }
 /* THE LABEL IS DERIVED, NEVER HARDCODED. ivRenderStep() rebuilds the whole
    body, and hiitSkip() reaches it while paused — INTV.running false, no
