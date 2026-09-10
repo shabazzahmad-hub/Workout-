@@ -20005,6 +20005,13 @@ halfway rep walked through a two-sided floor that only counted spoken lines
 — *measure the payload, not the container*, where the payload was the
 glass. It reads the ring now.
 
+**And the plural check failed on CI, on a screen that was right.** It read the
+whole pane's `textContent`, which runs the rows together —
+`Pull-Up1 repPush-Up12 repsAssessment history` — so `\b` after `rep` found no
+boundary before the next row's name. It reads the `<b>` of the row whose name is
+the movement's now. *Scope the assertion to where the change was made*, and a
+word boundary is not a boundary when the next element starts with a letter.
+
 ### Done twice was two sets, or none
 
 Found by auditing v488's own Done wiring. A second tap on the hold sheet's

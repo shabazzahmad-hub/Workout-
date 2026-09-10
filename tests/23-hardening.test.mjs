@@ -14289,12 +14289,15 @@ export default async function () {
         STATE.prs = STATE.prs || {}; STATE.prs.pullup = 1; STATE.prs.pushup = 12;
         const ex = EX.pullup; out.pullupIsReps = ex && ex.unit === 'reps';
         go('progress'); setProgressTab('strength');
-        const pane = (document.querySelector('#v-progress') || {}).textContent || '';
-        /* textContent runs the name and the figure together ("Pull-Up1 rep"),
-           and there is no word boundary between a letter and a digit — so the
-           test is "not preceded by a digit", not \b */
-        out.prOne = /(^|\D)1 rep\b/.test(pane) && !/(^|\D)1 reps\b/.test(pane);
-        out.prTwelve = /(^|\D)12 reps\b/.test(pane);
+        /* Read the ROW, not the pane's text. textContent runs the rows
+           together ("Pull-Up1 repPush-Up12 repsAssessment history"), so a
+           \b after "rep" finds no boundary before the next row's name and a
+           correct screen read as a failure on CI. The figure is the <b> of
+           the .kv row whose name is the movement's. */
+        const prVal = name => { const row = [...document.querySelectorAll('#v-progress .kv')].find(k => (k.querySelector('span') || {}).textContent === name); return row ? (row.querySelector('b') || {}).textContent : null; };
+        out.prOneText = prVal(EX.pullup.name); out.prTwelveText = prVal(EX.pushup.name);
+        out.prOne = out.prOneText === '1 rep';
+        out.prTwelve = out.prTwelveText === '12 reps';
         out.helper1 = plural(1, 'rep'); out.helper12 = plural(12, 'rep');
         out.brief1 = _briefTarget({ unit: 'reps', target: 1 }); out.brief12 = _briefTarget({ unit: 'reps', target: 12 });
         out.card1 = exCardHTML({ exId: 'pushup', unit: 'reps', target: 1, sets: 3, rest: 45 }, { ex: {} }, 0);
@@ -14330,8 +14333,8 @@ export default async function () {
     t.ok('GUARD: the probe ran and the pull-up is a rep movement', !r.err && r.pullupIsReps, JSON.stringify(r));
     t.eq('plural() says 1 rep', r.helper1, '1 rep');
     t.eq('and 12 reps', r.helper12, '12 reps');
-    t.ok('a personal best of ONE prints "1 rep" on Progress ▸ Strength (v489)', r.prOne === true, JSON.stringify({ prOne: r.prOne }));
-    t.ok('FLOOR: and a best of twelve still prints "12 reps"', r.prTwelve === true, JSON.stringify({ prTwelve: r.prTwelve }));
+    t.ok('a personal best of ONE prints "1 rep" on Progress ▸ Strength (v489)', r.prOne === true, JSON.stringify({ prOne: r.prOne, text: r.prOneText }));
+    t.ok('FLOOR: and a best of twelve still prints "12 reps"', r.prTwelve === true, JSON.stringify({ prTwelve: r.prTwelve, text: r.prTwelveText }));
     t.eq('the spoken brief says "1 rep"', r.brief1, '1 rep');
     t.eq('FLOOR: and "12 reps"', r.brief12, '12 reps');
     t.ok('the session card says "1 rep"', r.card1ok === true, JSON.stringify({ card1: (r.card1 || '').slice(0, 200) }));
