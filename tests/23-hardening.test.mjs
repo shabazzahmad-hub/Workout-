@@ -14208,6 +14208,54 @@ export default async function () {
     t.eq('and a junk shape on the entry falls back to the shared one', r.junk, 'Switch sides now. | SWITCH SIDES');
   }
 
+  /* v489: DONE TWICE IS ONE SET. Found by auditing v488's own Done wiring: a
+     second tap on the hold sheet ran complete() again and marked a SECOND set
+     off one gesture; a second tap on the rep sheet landed inside the pending
+     completion (max(400, tempo*450) ms), closed the sheet, bumped _sheetGen and
+     cancelled the set it had just marked. Both are driven as real double-clicks. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const real = { speak: window.coachSpeak, say: window.plSay, beep: window.beep };
+      window.coachSpeak = () => {}; window.plSay = () => {}; window.beep = () => {};
+      try {
+        let per = null, rp = null, ptr = -1;
+        for (let p = 0; p < 80 && !(per && rp); p++) {
+          const s = buildSession(p); per = null; rp = null;
+          for (const m of s.main) { const e = EX[m.exId]; if (!per && e && e.unit === 'time' && m.sets > 1) per = m; if (!rp && e && e.unit === 'reps' && m.sets > 1) rp = m; }
+          if (per && rp) ptr = p;
+        }
+        if (!(per && rp)) { out.notFound = true; return out; }
+        STATE.progressPtr = ptr; save();
+        const marked = id => { const log = ensureLog(); const st = (log.ex && log.ex[id]) || { sets: [] }; return (st.sets || []).filter(Boolean).length; };
+        const clear = id => { const log = ensureLog(); if (log.ex) delete log.ex[id]; save(); };
+        const green = () => document.querySelector('#sheet .btn.green');
+        const pump = k => { for (let i = 0; i < k && timer; i++) timer.tick(); };
+        clear(per.exId); exSetChain(per.exId); await wait(20); pump(7);
+        green().click(); green().click(); await wait(950);
+        out.holdMarked = marked(per.exId);
+        out.holdRest = /— rest$/.test(($('#sheet .tt') || {}).textContent || '');
+        stopTimer(); closeSheet(); await wait(400); clear(per.exId);
+        clear(rp.exId); exSetChain(rp.exId); await wait(20); pump(6);
+        green().click(); await wait(30); green().click();
+        await wait(Math.max(400, repTempoSetting() * 450) + 900);
+        out.repMarked = marked(rp.exId);
+        out.repRest = /— rest$/.test(($('#sheet .tt') || {}).textContent || '');
+        out.repSheetOpen = $('#scrim').classList.contains('open');
+        stopTimer(); closeSheet(); await wait(400); clear(rp.exId);
+      } catch (e) { out.err = String(e); }
+      try { stopTimer(); closeSheet(); } catch (e) {}
+      window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
+      return out;
+    });
+    t.ok('GUARD: the double-tap probe ran', !r.err && !r.notFound, JSON.stringify(r));
+    t.eq('Done tapped twice on a hold marks ONE set (v489)', r.holdMarked, 1);
+    t.ok('and still opens the chained rest', r.holdRest === true, JSON.stringify(r));
+    t.eq('Done tapped twice on the rep cadence still marks the set', r.repMarked, 1);
+    t.ok('and the second tap does not close the sheet under the pending completion', r.repSheetOpen === true && r.repRest === true, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

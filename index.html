@@ -13707,7 +13707,11 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
      finished the hold and tapped the green button recorded nothing. It marks
      the set (onDone) and hands on exactly as the clock does; on a chained REST
      it is the player's own "Skip rest". Stop is still the abandon. */
+  let finished=false;
   function complete(){
+    /* ONCE. A second Done inside the 700 ms before the chained rest opens would
+       run the completion again and mark a SECOND set off one gesture. */
+    if(finished)return;finished=true;
     beepGo();haptic(30);if(timer)clearInterval(timer.iv);
     if(isHold&&restAfter>0){toast('Hold done! Resting '+restAfter+'s');if(!motivate('done'))coachSpeak('Time. Now rest.');(g=>setTimeout(()=>{if(g===_sheetGen&&$('#scrim').classList.contains('open'))runTimer('rest',restAfter,restLabel(label),0,onAfterRest||null,true,ex);},700))(_sheetGen);if(onDone)onDone();return;}
     if(onDone)onDone();
@@ -13768,12 +13772,18 @@ function markSetFromTimer(exId){
    between-sets rest timer. Reuses the `timer` global (mode 'reps'). */
 let _repTok=0;
 function startGuidedReps(exId){exSetChain(exId);}
-function cancelReps(){_repTok++;stopTimer();closeSheet();}
+function cancelReps(){_repTok++;_repPending=false;stopTimer();closeSheet();}
 /* Done on a timer sheet means "this set is done" — mark it and hand on the way
    the clock would — never merely "close". A sheet with no live clock behind
    it (already finished, or torn down) just closes, which is what Done used to
    do everywhere. */
-function timerFinish(){if(timer&&typeof timer.finish==='function'){timer.finish();return;}stopTimer();closeSheet();}
+let _repPending=false;
+function timerFinish(){if(timer&&typeof timer.finish==='function'){timer.finish();return;}
+  /* the rep cadence's completion is a timer of its own (max(400, tempo*450) ms)
+     and stopTimer() has already run — a second Done in that window must not
+     close the sheet, which bumps _sheetGen and cancels the set it just marked */
+  if(_repPending)return;
+  stopTimer();closeSheet();}
 function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
   const total=Math.max(1,reps);let n=0;
   const tempo=repTempoSetting();
@@ -13827,9 +13837,10 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
      Done used to be cancelReps() under a green label: the set unmarked and the
      chain ended. */
   function complete(){
-    stopTimer();
+    stopTimer();_repPending=true;
     const tok=++_repTok,rest=restAfter,done=onDone,lbl=label,gen=_sheetGen,nxt=onAfterRest;
     setTimeout(()=>{
+      _repPending=false;
       if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
       if(!motivate('done'))coachSpeak('Set complete. Strong work.');
       if(done)done();

@@ -19983,6 +19983,17 @@ rep"*), which v351 read and deliberately left. It is `perSet` now, and its
 step says *"switch sides for the next set"* so the validator's both-ways
 rule holds.
 
+### Done twice was two sets, or none
+
+Found by auditing v488's own Done wiring. A second tap on the hold sheet's
+Done ran `complete()` again inside the 700 ms before the chained rest opened
+and **marked a second set off one gesture**; a second tap on the rep sheet
+landed inside the pending completion, closed the sheet, bumped `_sheetGen`
+and **cancelled the set it had just marked**. Two sheets, two opposite
+failures, one gesture — v405's double-tap class, on the button that round
+had not yet created. `complete()` runs once, and `timerFinish()` is a no-op
+while a rep completion is pending.
+
 ### The halo was told to switch sides, and it has none
 
 Read while comparing every flagged movement's own wording against its side
