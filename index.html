@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='488';
+const APP_VERSION='489';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -13819,9 +13819,13 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
       if(tok!==_repTok||gen!==_sheetGen)return;   // cancelled, superseded, or the sheet world changed
       if(!motivate('done'))coachSpeak('Set complete. Strong work.');
       if(done)done();
-      /* the exercise rides along so the rest ring keeps the photograph, as the
-         player's rest does (v290) and the standalone Rest button already did */
-      if(rest>0)runTimer('rest',rest,restLabel(lbl),0,nxt||null,false,ex);
+      /* THE REST OPENS QUIET, as the hold chain's does. _deviceSpeak() cancels
+         the previous utterance on every new one, so a rest announcing "Rest.
+         45 seconds." in the same tick cut "Set complete. Strong work." — and
+         every hype line — off mid-word, on every set of every rep chain. The
+         duration goes on the toast instead, which is the hold chain's shape.
+         The exercise rides along so the rest ring keeps the photograph (v290). */
+      if(rest>0){toast('Set done! Resting '+rest+'s');runTimer('rest',rest,restLabel(lbl),0,nxt||null,true,ex);}
       else{const nn=$('#rcNum');if(nn)nn.textContent='✓';autoClose(700,closeSheet);}
     },Math.max(400,tempo*450));
   }

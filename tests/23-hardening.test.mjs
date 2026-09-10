@@ -14032,6 +14032,75 @@ export default async function () {
     t.ok('a tick from another day\'s plan is pruned on the next write, and the untick is real', Array.isArray(r.afterPrune) && r.afterPrune.length === 0, JSON.stringify(r));
   }
 
+  /* v489: THE REST CANCELLED THE SET-COMPLETE LINE. _deviceSpeak() calls
+     synth.cancel() on every utterance, and the rep chain's hand-off spoke
+     "Set complete. Strong work." (or a hype line) and then, in the SAME tick,
+     opened its rest with quiet=false — which spoke "Rest. 45 seconds." and cut
+     the first line off mid-word, on every set of every rep chain. The hold
+     chain toasts and opens its rest quiet; the rep chain now does the same.
+     The floor is the standalone ⏱ Rest, which has nothing before it and must
+     still announce its length. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const real = { speak: window.coachSpeak, hype: window.hypeSpeak, say: window.plSay, beep: window.beep, toast: window.toast };
+      const spoken = [], toasts = [];
+      window.coachSpeak = t => { spoken.push(String(t)); };
+      window.hypeSpeak = t => { spoken.push(String(t)); return true; };
+      window.plSay = () => {}; window.beep = () => {};
+      window.toast = (t) => { toasts.push(String(t)); };
+      try {
+        let rp = null, ptr = -1;
+        for (let p = 0; p < 80 && !rp; p++) {
+          const s = buildSession(p);
+          rp = s.main.find(m => EX[m.exId] && EX[m.exId].unit === 'reps' && m.sets > 1) || null;
+          if (rp) ptr = p;
+        }
+        if (!rp) { out.notFound = true; return out; }
+        STATE.progressPtr = ptr; save();
+        const clear = id => { const log = ensureLog(); if (log.ex) delete log.ex[id]; save(); };
+        clear(rp.exId);
+        exSetChain(rp.exId); await wait(20);
+        for (let i = 0; i < 400 && timer; i++) timer.tick();
+        const before = spoken.length;
+        await wait(Math.max(400, repTempoSetting() * 450) + 700);
+        out.restLabel = ($('#sheet .tt') || {}).textContent || '';
+        out.atHandoff = spoken.slice(before);
+        out.toastsAtHandoff = toasts.slice();
+        stopTimer(); closeSheet(); await wait(400); clear(rp.exId);
+        /* FLOOR: the standalone ⏱ Rest still announces its length */
+        spoken.length = 0;
+        openExerciseTimer(rp.exId); await wait(20);
+        out.standalone = spoken.slice();
+        stopTimer(); closeSheet(); await wait(400);
+        /* and the hold chain's own hand-off, which was already right, is unchanged */
+        let per = null;
+        for (let p = 0; p < 80 && !per; p++) { const s = buildSession(p); per = s.main.find(m => EX[m.exId] && EX[m.exId].unit === 'time' && m.sets > 1) || null; if (per) STATE.progressPtr = p; }
+        if (per) {
+          save(); clear(per.exId); spoken.length = 0;
+          exSetChain(per.exId); await wait(20);
+          for (let i = 0; i < 400 && timer; i++) timer.tick();
+          const b2 = spoken.length;
+          await wait(950);
+          out.holdHandoff = spoken.slice(b2);
+          out.holdRestLabel = ($('#sheet .tt') || {}).textContent || '';
+          stopTimer(); closeSheet(); await wait(400); clear(per.exId);
+        }
+      } catch (e) { out.err = String(e); }
+      try { stopTimer(); closeSheet(); } catch (e) {}
+      window.coachSpeak = real.speak; window.hypeSpeak = real.hype; window.plSay = real.say; window.beep = real.beep; window.toast = real.toast;
+      return out;
+    });
+    t.ok('GUARD: the rep chain reached its rest', !r.err && !r.notFound && /— rest$/.test(r.restLabel), JSON.stringify(r));
+    t.ok('GUARD: the hand-off spoke its set-complete line', r.atHandoff.length >= 1, JSON.stringify(r.atHandoff));
+    t.ok('the rep chain speaks ONE line at the hand-off — no rest announcement cancels it (v489)',
+      r.atHandoff.length === 1 && !/^Rest\. \d+ seconds/.test(r.atHandoff[0]), JSON.stringify(r.atHandoff));
+    t.ok('and the rest length goes on the toast instead', r.toastsAtHandoff.some(x => /^Set done! Resting \d+s$/.test(x)), JSON.stringify(r.toastsAtHandoff));
+    t.ok('FLOOR: the standalone ⏱ Rest still announces its length', r.standalone.some(x => /^Rest\. \d+ seconds\.$/.test(x)), JSON.stringify(r.standalone));
+    t.ok('FLOOR: the hold chain still speaks one line at its hand-off', Array.isArray(r.holdHandoff) && r.holdHandoff.length === 1 && /— rest$/.test(r.holdRestLabel || ''), JSON.stringify({ holdHandoff: r.holdHandoff, holdRestLabel: r.holdRestLabel }));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

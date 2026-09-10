@@ -19909,6 +19909,35 @@ own prefix, and **the month list's reset leaves it alone**: a reset on one
 screen that empties a list on another is the "erase one thing, another goes"
 defect.
 
+## The rest cancelled the line that announced it (v489)
+
+Found by reading the v488 rep chain's hand-off — for the seventeenth round
+running the best finding was in the round immediately before.
+
+`_deviceSpeak()` calls `synth.cancel()` on every utterance, and the rep
+chain's `complete()` spoke *"Set complete. Strong work."* (or a hype line)
+and then, **in the same tick**, opened its rest with `quiet=false` — which
+spoke *"Rest. 45 seconds."* and cut the first line off mid-word. On every set
+of every rep chain, and on Quick, the set-complete line and every hype line
+never once played to the end.
+
+**The hold chain had it right**, which is what made it findable: it toasts
+*"Hold done! Resting 45s"* and opens its rest 700 ms later with `quiet=true`.
+The rep chain now takes the same shape — the length goes on the toast, the
+rest opens quiet. v302's rule, on a hand-off rather than a countdown: **a
+voice line and a per-second job cannot share the same second**, and neither
+can two voice lines.
+
+**A line scan could not see it.** The two utterances live in different
+functions — `complete()` and the `runTimer()` it calls — so a sweep for two
+speak calls on adjacent lines reports nine either/or shapes and misses the
+one real member. The class question is *which function speaks and then calls
+a function that speaks*, and the rep chain was the only one.
+
+**The floor is the standalone ⏱ Rest**, which has nothing before it and must
+still announce its length — a fix that made every rest quiet passes every
+assertion about the chain.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
