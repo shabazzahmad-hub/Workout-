@@ -15076,6 +15076,14 @@ export default async function () {
     const nav = await page.evaluate(async () => {
       const o = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
       STATE.onboarded = true;
+      /* A BLOCK THAT DRIVES A BACK PRESS BUILDS ALL THREE AMBIENT FLAGS, and
+         this one did not: an earlier block left _exiting true, onPop() returns
+         on its own first line, and four assertions failed on an app that was
+         right. The deep links still opened their tabs — the hashchange handler
+         navigates on its own — so the failure named the stamp and the Back
+         press rather than the branch that never ran. */
+      try { _backGuard = false; _exiting = false; _homeBackAt = 0; } catch (e) {}
+      o.flagsClear = (typeof _exiting !== 'undefined') ? (!_exiting && !_backGuard) : 'n/a';
       const toastEl = document.getElementById('toast');
       const clearToast = () => { if (toastEl) { toastEl.classList.remove('show'); toastEl.textContent = ''; } };
 
@@ -15124,6 +15132,8 @@ export default async function () {
       return o;
     });
     t.eq('GUARD: the block starts on Today', nav.start, 'today', JSON.stringify(nav));
+    t.ok('GUARD: and with the ambient Back flags clear, so onPop is reachable',
+         nav.flagsClear === true, JSON.stringify(nav));
 
     t.eq('a #tab deep link opens that tab in a running app', nav.firstOpened, 'fuel', JSON.stringify(nav));
     t.eq('and it STAYS there rather than bouncing back (v494)', nav.firstStuck, 'fuel', JSON.stringify(nav));
@@ -15156,6 +15166,8 @@ export default async function () {
     const r = await pg.evaluate(async () => {
       const o = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
       STATE.onboarded = true;
+      try { _backGuard = false; _exiting = false; _homeBackAt = 0; } catch (e) {}
+      o.flagsClear = (typeof _exiting !== 'undefined') ? (!_exiting && !_backGuard) : 'n/a';
       const toastEl = document.getElementById('toast');
       o.stateBefore = JSON.stringify(history.state);
       if (toastEl) { toastEl.classList.remove('show'); toastEl.textContent = ''; }
@@ -15167,6 +15179,7 @@ export default async function () {
     await pg.close();
     t.ok('GUARD: a fresh page really starts one entry above the root',
          /"cf":"home"/.test(r.stateBefore), JSON.stringify(r));
+    t.ok('GUARD: with the ambient Back flags clear', r.flagsClear === true, JSON.stringify(r));
     t.ok('FLOOR: Back at the root still warns before it exits',
          /Back again/.test(r.exitToast), JSON.stringify(r));
     t.ok('FLOOR: and one press alone does not arm the exit', r.exiting === false, JSON.stringify(r));

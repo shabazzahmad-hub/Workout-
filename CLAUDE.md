@@ -20574,6 +20574,34 @@ pins that it stuck, which is the assertion the bounce could not survive.
 corrupting a mutation run: a flaky failure makes a mutant read as CAUGHT when it
 escaped, which is the dangerous direction.
 
+### And the block did not build the three flags this file names
+
+Suite 23 came back with **4 failures on an app that was right**, and the payload
+said so in one field: `exiting: true` **before the block had pressed anything**.
+`onPop()` returns on its own first line when `_exiting` is set, so the whole
+branch under test never ran — no stamp, a dead Back press, a sheet that would
+not close.
+
+Every other Back-driving block in that file clears `_backGuard` and `_exiting`
+first, in **eight** places, and this file already states the rule from v422: *a
+block that drives a Back press builds all three of those flags.* The new block
+did not, and the probes could not see it because a probe runs on a clean page.
+
+**The tell was which assertions survived.** Both deep links still opened their
+tabs, because the `hashchange` handler navigates on its own — so the failures
+named the stamp and the Back press rather than the branch that never ran. A
+guard now pins the flags clear, so the next failure names the setup.
+
+### And the same shape is the one equivalent mutant
+
+`hashchange` calling `go(h)` is why the branch's own `go(t)` cannot be caught:
+popstate runs first and stamps, and if it does not navigate, the hashchange a
+tick later does — `hashTab(h)` is true and `h!==TAB`, so the tab opens either
+way. Measured on the unknown-hash side too, where `t` is `TAB` and neither
+version navigates. Kept because the branch should not depend on a second
+handler to finish its own job, and recorded as uncatchable rather than papered
+over with a check that cannot fail.
+
 ### And the floor had to build its own history stack
 
 The nav-tap floor first read `backSteps` as `fuel` where `today` was expected,
