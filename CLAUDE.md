@@ -20782,6 +20782,18 @@ read `node_modules/playwright-core/browsers.json` rather than guessing. CI
 downloads its own browser and is unaffected — do not "fix" this in
 `package.json`.
 
+**A hand-typed anchor is not a verbatim anchor, and the escape is where it
+breaks.** Three edits failed the same way in one session: the JS carries the
+literal six characters `\u2014` inside a string and a REAL em-dash inside a
+comment, and a heredoc renders the two identically when read back. This file
+already says to take a mutation anchor verbatim from the file; the half that
+cost the time is that **a script editing my own TOOLING had no assert**. Every
+`rep(old,new)` against `index.html` asserts the anchor exists and appears
+exactly once, so a bad anchor is a clean no-op — the driver-editing script used
+a bare `str.replace()`, which is a silent no-op, and the run then failed
+minutes later on a `TypeError` in a half-edited file. **Assert in the scripts
+that edit the harness too**, or read the result back before running it.
+
 **Check the wall clock before calling something slow.** A CI job was reported
 as "seven minutes and needs explaining" when it had run for 88 seconds; the
 elapsed time was my polling latency, not the job's. `date -u` first, then
