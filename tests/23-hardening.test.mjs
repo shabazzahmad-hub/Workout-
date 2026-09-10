@@ -14533,9 +14533,13 @@ export default async function () {
 
       /* FLOOR: the pattern prompt above owns it once it fires — one gap, one note */
       STATE.profile.limitations = [];
+      /* painCount() counts DISTINCT sessions — it de-duplicates on date|ptr —
+         so two rows from the same session are one report, not a pattern. The
+         guard below caught this fixture asserting on a pattern that was never
+         built. */
       STATE.pain = [
         { exId: 'squat', region: R.recordedRegion, date: todayISO(), ptr: p },
-        { exId: 'squat', region: R.recordedRegion, date: todayISO(), ptr: p },
+        { exId: 'squat', region: R.recordedRegion, date: todayISO(), ptr: p - 1 },
       ];
       save(); paint();
       R.patternFires = !!painPattern();

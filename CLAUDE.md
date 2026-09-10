@@ -20155,6 +20155,31 @@ offered nothing and promised nothing.
 **And the button is CLICKED, not the helper called** — the twelfth time this
 file has recorded that the route is the thing to drive.
 
+### The guard caught a floor asserting on a pattern that was never built
+
+`painCount()` counts **DISTINCT sessions** — it de-duplicates on `date|ptr`, and
+its own comment says so — so the two pain rows the floor seeded from one session
+were **one report, not a pattern**. `painPattern()` returned null, the card
+correctly kept offering, and the floor read that as the card failing to defer.
+
+The GUARD is what said so: *"two reports on one region really do make a
+pattern"* went red beside it, so the failure named the setup rather than the
+code. Without it the floor would have been rewritten to match a state it had
+never built. **Assert that the state you are about to test actually exists**,
+and read the counter's own definition before seeding it.
+
+### And the 2 MB install budget fired again
+
+`index.html` is now **1,809 KB of the 2,048 KB install tier** and grows every
+version, so this gate trips periodically by design — v352, v410 and v465 each
+hit it. `icon-192-v2.png` (39 KB) moved to `FIRST_RUN` behind the four icons
+already there: it is the browser tab icon and the notification badge, neither of
+which is first paint, and `icon-180-apple.png` — also referenced in the head —
+was moved for exactly that reason. **Moving a file between tiers costs no
+download.** Install tier now 2,012 KB, and the edit asserts the file appears in
+**exactly one** tier afterwards, which is the check v410's own half-applied move
+lacked.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
