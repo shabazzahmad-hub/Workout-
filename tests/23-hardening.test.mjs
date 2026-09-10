@@ -14978,6 +14978,200 @@ export default async function () {
   }
 
 
+  /* ---- A DATE QUESTION IS A LIFETIME QUESTION (v494) ---------------------
+     restartProgram() archives the whole run into STATE.runs, and it is only
+     reachable from the completion screen — so finishing the programme and
+     tapping "Start a fresh block" the same day is the NATURAL flow, not an
+     obscure one. trainedToday() walked STATE.logs alone, so the app forgot the
+     session it had just watched the athlete finish. holdFreshNow() is what
+     that costs: v361 keeps a fresh hold and a fatigued one apart precisely so
+     a tired effort cannot set a personal best. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}; const today = todayISO();
+      window.confirm = () => true;
+      const wipe = () => { STATE.onboarded = true; STATE.quickLog = {};
+                           STATE.runs = []; STATE.logs = {}; };
+
+      wipe();
+      STATE.logs[0] = { date: today, ex: {}, done: true, completedAt: today,
+                        setsDone: 12, items: [] };
+      STATE.progressPtr = 1;
+      const d = nutToday(); d.habits = d.habits || {};
+      HABITS.filter(h => !h.optional).slice(0, 2).forEach(h => { d.habits[h.k] = true; });
+      save();
+      o.beforeTrained = trainedToday();
+      o.beforeFresh   = holdFreshNow();
+      o.beforeMinimum = minimumDayMet();
+      restartProgram();
+      o.liveLogs      = Object.keys(STATE.logs || {}).length;
+      o.archivedDone  = (STATE.runs || []).reduce((a, r) =>
+          a + Object.values((r && r.logs) || {}).filter(l => l && l.done).length, 0);
+      o.afterTrained  = trainedToday();
+      o.afterFresh    = holdFreshNow();
+      o.afterMinimum  = minimumDayMet();
+      o.afterSibling  = trainedDaysSet().has(today);
+
+      // FLOOR: nothing logged at all
+      wipe(); save();
+      o.floorUntrained = trainedToday();
+      o.floorUntrainedFresh = holdFreshNow();
+
+      // FLOOR: a QUICK session today, no program session
+      wipe(); STATE.quickLog[today] = 1; save();
+      o.floorQuick = trainedToday();
+
+      // FLOOR: an ordinary session today, no restart at all
+      wipe();
+      STATE.logs[0] = { date: today, ex: {}, done: true, completedAt: today,
+                        setsDone: 9, items: [] };
+      save();
+      o.floorOrdinary = trainedToday();
+
+      // FLOOR: yesterday only, and a restart on a day nothing was trained
+      wipe();
+      const y = new Date(); y.setDate(y.getDate() - 1); const yd = localISO(y);
+      STATE.logs[0] = { date: yd, ex: {}, done: true, completedAt: yd,
+                        setsDone: 9, items: [] };
+      save();
+      o.floorYesterday = trainedToday();
+      restartProgram();
+      o.floorRestartNoTraining = trainedToday();
+
+      // FLOOR: an unfinished session today is not training
+      wipe();
+      STATE.logs[0] = { date: today, ex: {}, done: false, setsDone: 3, items: [] };
+      save();
+      o.floorUnfinished = trainedToday();
+      return o;
+    });
+    /* GUARD: the archive really happened, or every assertion below is about a
+       restart that moved nothing. */
+    t.eq('GUARD: the restart really emptied the live logs', r.liveLogs, 0, JSON.stringify(r));
+    t.eq('GUARD: and the finished session really is in the archive', r.archivedDone, 1, JSON.stringify(r));
+    t.ok('GUARD: it read as trained before the restart', r.beforeTrained === true, JSON.stringify(r));
+
+    t.ok('a session finished today survives a same-day restart (v494)', r.afterTrained === true, JSON.stringify(r));
+    t.ok('so a hold taken after it is NOT recorded as fresh', r.afterFresh === false, JSON.stringify(r));
+    t.ok('and the day floor is still met', r.afterMinimum === true, JSON.stringify(r));
+    t.ok('agreeing with its archive-aware sibling', r.afterSibling === true, JSON.stringify(r));
+
+    t.ok('FLOOR: an athlete who has not trained today still reads untrained', r.floorUntrained === false, JSON.stringify(r));
+    t.ok('FLOOR: and their hold really is fresh', r.floorUntrainedFresh === true, JSON.stringify(r));
+    t.ok('FLOOR: a quick session today still counts', r.floorQuick === true, JSON.stringify(r));
+    t.ok('FLOOR: an ordinary session today still counts', r.floorOrdinary === true, JSON.stringify(r));
+    t.ok('FLOOR: a session finished yesterday does not', r.floorYesterday === false, JSON.stringify(r));
+    t.ok('FLOOR: nor does a restart on a day nothing was trained', r.floorRestartNoTraining === false, JSON.stringify(r));
+    t.ok('FLOOR: an unfinished session today is not training', r.floorUnfinished === false, JSON.stringify(r));
+  }
+
+  /* ---- A FRAGMENT NAVIGATION IS NOT A BACK PRESS (v494) ------------------
+     Assigning location.hash creates a history entry with NO state, and onPop
+     read that as "the athlete reached the root and is trying to leave". A #tab
+     deep link into a running app therefore toasted about exiting, the SECOND
+     one did nothing at all, and _exiting latched true — which nothing resets,
+     so every Back press for the rest of the session was swallowed. That is the
+     door v411 recorded as an open question, measured. */
+  {
+    const nav = await page.evaluate(async () => {
+      const o = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true;
+      const toastEl = document.getElementById('toast');
+      const clearToast = () => { if (toastEl) { toastEl.classList.remove('show'); toastEl.textContent = ''; } };
+
+      location.hash = ''; await wait(200); go('today');
+      o.start = TAB;
+      clearToast();
+
+      location.hash = '#fuel'; await wait(400);
+      o.firstOpened = TAB;
+      o.firstToast  = toastEl ? toastEl.textContent : '(none)';
+      /* THE PAYLOAD IS THAT IT STICKS. The old check read TAB at 120ms, which
+         is the boundary the bounce landed on — it measured that the tab MOVED
+         and never that it was still there. */
+      await wait(500);
+      o.firstStuck = TAB;
+      o.firstState = JSON.stringify(history.state);
+
+      location.hash = '#progress'; await wait(500);
+      o.secondOpened = TAB;
+      o.exiting = (typeof _exiting !== 'undefined') ? _exiting : 'n/a';
+
+      // FLOOR: a hash naming no tab leaves the view where it is, silently
+      clearToast();
+      location.hash = '#quick'; await wait(400);
+      o.refused = TAB;
+      o.refusedToast = toastEl ? toastEl.textContent : '(none)';
+
+      /* FLOOR: a nav tap still steps back through tabs. The stack is BUILT
+         here rather than inherited — the entry below whatever the deep links
+         left is not a contract, and asserting on it passes on whichever tab
+         happened to be underneath. */
+      location.hash = '#today'; await wait(400);
+      o.rebased = TAB;
+      navTo('progress'); await wait(200);
+      o.onProgress = TAB;
+      history.back(); await wait(450);
+      o.backSteps = TAB;
+
+      // FLOOR: a sheet still takes the Back press first
+      const beforeSheet = TAB;
+      openSheet('<div>probe sheet</div>'); await wait(250);
+      o.sheetOpen = document.getElementById('scrim').classList.contains('open');
+      history.back(); await wait(450);
+      o.sheetClosed = !document.getElementById('scrim').classList.contains('open');
+      o.tabUnmoved = (TAB === beforeSheet);
+      return o;
+    });
+    t.eq('GUARD: the block starts on Today', nav.start, 'today', JSON.stringify(nav));
+
+    t.eq('a #tab deep link opens that tab in a running app', nav.firstOpened, 'fuel', JSON.stringify(nav));
+    t.eq('and it STAYS there rather than bouncing back (v494)', nav.firstStuck, 'fuel', JSON.stringify(nav));
+    t.ok('and says nothing about leaving the app', !/Back again/.test(nav.firstToast), JSON.stringify(nav));
+    t.ok('the entry it creates is stamped, not left stateless', /"cf":"tab"/.test(nav.firstState), JSON.stringify(nav));
+    t.eq('a SECOND deep link still navigates', nav.secondOpened, 'progress', JSON.stringify(nav));
+    t.ok('and the Back button is not left dead for the session', nav.exiting === false, JSON.stringify(nav));
+
+    t.eq('FLOOR: a hash naming no tab leaves the view where it was', nav.refused, 'progress', JSON.stringify(nav));
+    t.ok('FLOOR: and does not toast about leaving either', !/Back again/.test(nav.refusedToast), JSON.stringify(nav));
+    t.eq('GUARD: the nav floor rebased onto Today first', nav.rebased, 'today', JSON.stringify(nav));
+    t.eq('GUARD: and the nav tap really opened Progress', nav.onProgress, 'progress', JSON.stringify(nav));
+    t.eq('FLOOR: a nav tap still steps back through tabs', nav.backSteps, 'today', JSON.stringify(nav));
+    t.ok('FLOOR: a sheet still takes the Back press first', nav.sheetOpen && nav.sheetClosed, JSON.stringify(nav));
+    t.ok('FLOOR: and the tab underneath it does not move', nav.tabUnmoved === true, JSON.stringify(nav));
+  }
+
+  /* FLOOR: THE EXIT WARNING STILL REACHES THE ROOT. The over-eager twin of the
+     fix above treats EVERY pop as a fragment navigation, which satisfies every
+     assertion in that block and silently deletes the only thing standing
+     between a Back press and the app closing. A freshly booted page has exactly
+     [root, home] on its stack, so ONE Back press lands on the root — this needs
+     a page of its own, because by the end of the block above the stack is many
+     entries deep and walking it down would take the page off the start of its
+     own history. */
+  {
+    const pg = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    const r = await pg.evaluate(async () => {
+      const o = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      STATE.onboarded = true;
+      const toastEl = document.getElementById('toast');
+      o.stateBefore = JSON.stringify(history.state);
+      if (toastEl) { toastEl.classList.remove('show'); toastEl.textContent = ''; }
+      history.back(); await wait(500);
+      o.exitToast = toastEl ? toastEl.textContent : '(none)';
+      o.exiting = (typeof _exiting !== 'undefined') ? _exiting : 'n/a';
+      return o;
+    });
+    await pg.close();
+    t.ok('GUARD: a fresh page really starts one entry above the root',
+         /"cf":"home"/.test(r.stateBefore), JSON.stringify(r));
+    t.ok('FLOOR: Back at the root still warns before it exits',
+         /Back again/.test(r.exitToast), JSON.stringify(r));
+    t.ok('FLOOR: and one press alone does not arm the exit', r.exiting === false, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
