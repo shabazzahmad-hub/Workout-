@@ -13970,6 +13970,65 @@ export default async function () {
     t.ok('FLOOR: which closes it and marks nothing — it was never a set', r.standaloneMarked === 0 && r.standaloneOpen === false, JSON.stringify(r));
   }
 
+  /* v488: THE GROCERY TICKS LIVED IN THE CHECKBOX. The meal-plan sheet said
+     "tap to check off" and stored nothing, so closing it in the shop — a Back
+     press, a reload — lost every tick, while the month list one pane over has
+     kept its ticks in STATE.shopTicks since it was written. A tick is keyed to
+     the plan's day, so it lives exactly as long as the list it was ticked on.
+     Every tick here is a real click on the real checkbox. */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const saveTicks = JSON.stringify(STATE.shopTicks || {});
+      try {
+        STATE.shopTicks = {}; save();
+        REF_TAB = 'food'; go('ref');
+        openGrocery(); await wait(20);
+        const box = () => document.querySelector('#sheet input[data-grocery]');
+        out.opened = !!box();
+        if (!box()) return out;
+        out.item = box().dataset.grocery;
+        out.checkedBefore = box().checked;
+        box().click(); await wait(20);
+        out.storedKeys = Object.keys(STATE.shopTicks || {});
+        closeSheet(); await wait(400);
+        /* the sheet reopened — the tick must still be on it */
+        openGrocery(); await wait(20);
+        out.checkedAfterReopen = box().checked;
+        out.dimmed = box().closest('label').style.opacity;
+        closeSheet(); await wait(400);
+        /* and it survives the boot repair */
+        normalizeState();
+        out.keysAfterBoot = Object.keys(STATE.shopTicks || {});
+        /* FLOOR: the month list's own count does not see a grocery tick */
+        renderRef();
+        const m = (document.querySelector('#v-ref') || {}).textContent.match(/The whole shop · (\d+)\/(\d+)/);
+        out.monthDone = m ? +m[1] : null; out.monthTotal = m ? +m[2] : null;
+        /* FLOOR: resetting the month list leaves the grocery tick alone */
+        STATE.shopTicks['Zzz month item'] = 1; save();
+        clearShop(); await wait(20);
+        out.afterClear = Object.keys(STATE.shopTicks || {});
+        /* a tick from another day's plan is pruned the next time one is written */
+        STATE.shopTicks['g:2000-01-01:stale'] = 1; save();
+        openGrocery(); await wait(20);
+        box().click(); await wait(20);   // untick the same item
+        out.afterPrune = Object.keys(STATE.shopTicks || {});
+        closeSheet(); await wait(400);
+      } catch (e) { out.err = String(e); }
+      try { closeSheet(); } catch (e) {}
+      STATE.shopTicks = JSON.parse(saveTicks); save();
+      return out;
+    });
+    t.ok('GUARD: the grocery sheet opened with a list to tick', !r.err && r.opened && r.checkedBefore === false, JSON.stringify(r));
+    t.ok('a grocery tick is stored, keyed to the plan\'s day (v488)', r.storedKeys.length === 1 && /^g:\d{4}-\d{2}-\d{2}:/.test(r.storedKeys[0]), JSON.stringify(r));
+    t.ok('and it is still ticked when the sheet is reopened', r.checkedAfterReopen === true && r.dimmed === '0.4', JSON.stringify({ checkedAfterReopen: r.checkedAfterReopen, dimmed: r.dimmed }));
+    t.ok('and it survives the boot repair', r.keysAfterBoot.length === 1 && r.keysAfterBoot[0] === r.storedKeys[0], JSON.stringify(r));
+    t.ok('FLOOR: the month list counts none of it', r.monthDone === 0 && r.monthTotal > 0, JSON.stringify({ monthDone: r.monthDone, monthTotal: r.monthTotal }));
+    t.ok('FLOOR: resetting the month list keeps the grocery tick and drops the month one', r.afterClear.length === 1 && r.afterClear[0] === r.storedKeys[0], JSON.stringify(r));
+    t.ok('a tick from another day\'s plan is pruned on the next write, and the untick is real', Array.isArray(r.afterPrune) && r.afterPrune.length === 0, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

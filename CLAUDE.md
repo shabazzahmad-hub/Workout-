@@ -19891,6 +19891,24 @@ never a set.
 check that called `finish()` itself could not have seen it — *calling the
 helper is not driving the route*, for the thirteenth time in this file.
 
+### The grocery ticks lived in the checkbox
+
+Found by sweeping the same class one screen wider — every button or control
+whose label claims a record. The meal-plan grocery sheet said *"tap to check
+off"* and its checkbox changed nothing but its own opacity, so a Back press in
+the shop, or a reload, lost every tick. **The month list one pane over has
+kept its ticks in `STATE.shopTicks` since it was written.** One of a pair
+guarded and its twin not, on the same tab.
+
+A grocery tick is keyed to the **plan's day** as well as the ingredient, so it
+lives exactly as long as the list it was ticked on: it survives the sheet and
+the app closing, and it is gone with tomorrow's plan — and the writer prunes
+any tick that is not on today's list, so a backup never accumulates ticks for
+lists that no longer exist. It shares the map with the month list under its
+own prefix, and **the month list's reset leaves it alone**: a reset on one
+screen that empties a list on another is the "erase one thing, another goes"
+defect.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

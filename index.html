@@ -15287,16 +15287,40 @@ function backupNudgeHTML(){
 }
 function dismissBackupNudge(){STATE._backupNudgeDismissed=Date.now();save();render();}
 /* #5 — Grocery list compiled from today's meal plan. */
-function openGrocery(){
+/* The ingredients of today's plan, de-duplicated and sorted — one derivation,
+   asked by the sheet AND by the tick writer, so the two cannot disagree about
+   which ticks still belong to a plan. */
+function groceryItems(){
   const plan=currentMealPlan();const recs=plan.meals.map(recipeById).filter(Boolean);
-  if(!recs.length){toast('No meal plan yet');return;}
   const seen=new Map();
   recs.forEach(r=>(r.ing||[]).forEach(x=>{const s=String(x).trim();const k=s.toLowerCase();if(s&&!seen.has(k))seen.set(k,s);}));
-  const items=[...seen.values()].sort((a,b)=>a.localeCompare(b));
+  return {date:plan.date,recs,items:[...seen.values()].sort((a,b)=>a.localeCompare(b))};
+}
+/* A grocery tick is keyed to the PLAN'S DAY as well as the ingredient, so it
+   lives exactly as long as the list it was ticked on: it survives the sheet
+   closing and the app reloading in the shop, and it is gone with tomorrow's
+   plan. It shares STATE.shopTicks with the month list under its own prefix,
+   so neither list's ticks can be mistaken for the other's. */
+function groceryKey(date,item){return 'g:'+date+':'+String(item).toLowerCase();}
+function groceryTicked(date,item){return !!shopTicks()[groceryKey(date,item)];}
+function toggleGrocery(item){
+  if(!STATE.shopTicks||typeof STATE.shopTicks!=='object'||Array.isArray(STATE.shopTicks))STATE.shopTicks={};
+  const g=groceryItems();const k=groceryKey(g.date,item);
+  if(STATE.shopTicks[k])delete STATE.shopTicks[k];else STATE.shopTicks[k]=1;
+  /* prune every grocery tick that is not on TODAY'S list — yesterday's plan,
+     or an ingredient a regenerated plan no longer carries — so a backup never
+     accumulates ticks for lists that are gone */
+  const live=new Set(g.items.map(x=>groceryKey(g.date,x)));
+  Object.keys(STATE.shopTicks).forEach(key=>{if(key.indexOf('g:')===0&&!live.has(key))delete STATE.shopTicks[key];});
+  save();haptic(8);
+}
+function openGrocery(){
+  const g=groceryItems();const recs=g.recs,items=g.items;
+  if(!recs.length){toast('No meal plan yet');return;}
   openSheet(`
     <h3>🛒 Grocery list</h3>
     <div class="tiny muted" style="margin-bottom:10px">${_ve(dietLabel())} · from today's ${plural(recs.length,'meal')} · tap to check off</div>
-    <div class="card pad">${items.map(x=>`<label class="kv" style="cursor:pointer;border-top:1px solid var(--line)"><span>${_ve(x)}</span><input type="checkbox" onchange="this.closest('label').style.opacity=this.checked?.4:1" style="width:20px;height:20px;flex:0 0 auto"></label>`).join('')}</div>
+    <div class="card pad">${items.map(x=>{const on=groceryTicked(g.date,x);return `<label class="kv" style="cursor:pointer;border-top:1px solid var(--line);opacity:${on?.4:1}"><span>${_ve(x)}</span><input type="checkbox" data-grocery="${_ve(x)}" ${on?'checked':''} onchange="this.closest('label').style.opacity=this.checked?.4:1;toggleGrocery(this.dataset.grocery)" style="width:20px;height:20px;flex:0 0 auto"></label>`;}).join('')}</div>
     <button class="btn primary" style="margin-top:12px" onclick="closeSheet()">Done</button>
   `);
 }
@@ -21742,7 +21766,10 @@ function toggleShop(k){
   if(STATE.shopTicks[k])delete STATE.shopTicks[k];else STATE.shopTicks[k]=1;
   save();haptic(8);renderRef();
 }
-function clearShop(){STATE.shopTicks={};save();toast('List reset');renderRef();}
+/* Resets the MONTH list's ticks and leaves the grocery sheet's (the g: keys)
+   alone — the button is on the month list, and a reset that also emptied a
+   list on another screen is the "erase one thing, another goes" defect. */
+function clearShop(){const t=shopTicks();const keep={};Object.keys(t).forEach(k=>{if(k.indexOf('g:')===0)keep[k]=t[k];});STATE.shopTicks=keep;save();toast('List reset');renderRef();}
 function mealSlots(){return (STATE.nutrition.meals===4)?['breakfast','lunch','dinner','snack']:['breakfast','lunch','dinner'];}
 function slotShare(slots){return slots.length===4?{breakfast:.28,lunch:.30,dinner:.30,snack:.12}:{breakfast:.30,lunch:.35,dinner:.35};}
 // Whole-food goal: default ON (only explicit false turns it off).
