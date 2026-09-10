@@ -13853,7 +13853,10 @@ export default async function () {
         if (rp) {
           exSetChain(rp.exId);
           for (let i = 0; i < 400 && timer; i++) timer.tick();
-          await new Promise(r => setTimeout(r, 900));
+          /* the rep chain hands to its rest after max(400, tempo*450) ms —
+             1350 ms at the default cadence; a 900 ms wait read the SET label
+             back on CI and reported the rest as never opening */
+          await new Promise(r => setTimeout(r, Math.max(400, repTempoSetting() * 450) + 700));
           const rex = EX[rp.exId];
           out.repRestLabel = ($('#sheet .tt') || {}).textContent || '';
           const rm2 = document.querySelector('#sheet .timerring .pl-ringmedia img, #sheet .timerring .pl-ringmedia video');
