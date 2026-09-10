@@ -6484,7 +6484,7 @@ function day90Rows(){
    const scaled=!!anchorRescale('push',subs);
    const noRuler=!!subName&&!scaled;
    out.push({k:'push', label:'Push-ups', target:'35-45+ strict, continuous',
-     got:v?String(Math.round(v))+' reps':null,
+     got:v?plural(Math.round(v),'rep'):null,
      gotLabel:v?(noRuler?('your baseline '+subName):(scaled?('scaled from your '+subName):'your baseline max')):null,
      scored:!noRuler, ok:v!==null&&v>=35, near:v!==null&&v>=28,
      why:!hasBase?NO_BASE
@@ -6496,7 +6496,7 @@ function day90Rows(){
   {const pr=(()=>{try{return num(bestFor('pullup'));}catch(e){return null;}})();
    const row=hasBase?num(mx.pull):null;
    out.push({k:'pull', label:'Pull-ups', target:'6-10+ strict',
-     got:pr?String(Math.round(pr))+' reps':(row?String(Math.round(row))+' inverted rows':null),
+     got:pr?plural(Math.round(pr),'rep'):(row?plural(Math.round(row),'inverted row'):null),
      gotLabel:pr?'your pull-up record':(row?'your baseline Inverted Rows':null),
      scored:!!pr, ok:pr!==null&&pr>=6, near:pr!==null&&pr>=4,
      why:pr?null:(row?'The baseline battery tests Inverted Rows, not pull-ups. Different movement, so it is not scored against this.'
@@ -6853,7 +6853,7 @@ function _overloadNoteInner(sess){
 }
 function exCardHTML(m,log,idx){
   const ex=EX[m.exId];const st=log.ex[m.exId]||{sets:[],done:false};
-  const targetStr=m.unit==='time'?fmtTime(m.target):m.target+' reps';
+  const targetStr=m.unit==='time'?fmtTime(m.target):plural(m.target,'rep');
   const setsArr=Array.from({length:m.sets},(_,i)=>Array.isArray(st.sets)&&!!st.sets[i]);
   return `
   <div class="ex ${st.done?'done':''}" data-ex="${m.exId}">
@@ -8061,7 +8061,7 @@ function plEnterReady(first){
   const perSide=sidePerSet(m.exId)?sideForSet(PLAYER.s):'';
   if(perSide)plS('#plSub',perSide.toUpperCase());
   plSay(ex.name+'. '+(perSide?perSide+'. ':'')
-    +(m.unit==='time'?(fmtTime(m.target)+'.'):(m.target+' reps.'))
+    +(m.unit==='time'?(fmtTime(m.target)+'.'):(plural(m.target,'rep')+'.'))
     +(sideSwitch(m.exId)?' One side at a time — switch halfway.':''));
   if(!PLAYER.running){plS('#plToggle','Resume');return;}
   PLAYER.tid=setInterval(plTickReady,1000);
@@ -8278,8 +8278,8 @@ function plEnterRest(dur,type){
   plClear();PLAYER.phase='rest';PLAYER.phaseAt=monoNow();PLAYER.remain=Math.max(1,dur|0);PLAYER.total=PLAYER.remain;
   PLAYER.deadline=monoNow()+PLAYER.remain*1000;
   const m=plCur();let lead,rx,nextEx;
-  if(type==='set'){const ex=EX[m.exId];nextEx=ex;lead='Next set';rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):m.target+' reps');}
-  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];nextEx=nex;lead='Up next';rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):nm.target+' reps');}
+  if(type==='set'){const ex=EX[m.exId];nextEx=ex;lead='Next set';rx='Set '+(PLAYER.s+1)+' of '+m.sets+' · '+(m.unit==='time'?fmtTime(m.target):plural(m.target,'rep'));}
+  else{const nm=PLAYER.items[PLAYER.i+1];const nex=EX[nm.exId];nextEx=nex;lead='Up next';rx=nm.sets+' × '+(nm.unit==='time'?fmtTime(nm.target):plural(nm.target,'rep'));}
   const rate=(type==='ex'&&!PLAYER.free)?ratingChipsHTML(m.exId):'';
   $('#plBody').innerHTML=`
     <div class="pl-region"><span class="tag cardio">REST</span>
@@ -11031,7 +11031,7 @@ function testBreakdownHTML(a){
     const nowSubs=assessSubs();
     const nowRec={subs:nowSubs};
     let heldDelta=false;   // a delta withheld because the ruler changed, or is unknown
-    const fmt=(t,v)=>t.unit==='time'?fmtTime(Math.round(v)):Math.round(v)+' reps';
+    const fmt=(t,v)=>t.unit==='time'?fmtTime(Math.round(v)):plural(Math.round(v),'rep');
     const rows=TESTS.map(t=>{
       const v=+res[t.id];
       if(!isFinite(v))return '';
@@ -11571,7 +11571,7 @@ function _briefGreet(){let h=9;try{h=new Date().getHours();}catch(e){}return h<1
    is a different shape and correctly keeps the plural. */
 function plural(n,word){return n+' '+word+(Math.abs(n)===1?'':'s');}
 function _briefList(a){a=(a||[]).filter(Boolean);if(a.length<=1)return a[0]||'';if(a.length===2)return a[0]+' and '+a[1];return a.slice(0,-1).join(', ')+', and '+a[a.length-1];}
-function _briefTarget(m){return m.unit==='time'?(m.target>=60?fmtTime(m.target):m.target+' seconds'):m.target+' reps';}
+function _briefTarget(m){return m.unit==='time'?(m.target>=60?fmtTime(m.target):plural(m.target,'second')):plural(m.target,'rep');}
 
 /* Build the ordered brief: each segment has an on-screen card (icon/title/text) and a
    spoken line (say). The screen text and the audio stay in lock-step. */
@@ -13795,7 +13795,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
   const half=Math.ceil(total/2);
   // 5-second loud GET READY before the reps begin
   let ready=5;const rn=$('#rcNum');if(rn){rn.textContent='5';rn.className='tnum rest';}setP('GET READY');
-  beep(1000,.15,0.7);coachSpeak(sidePrefix(label)+'Guided set. '+total+' reps. Get ready.');
+  beep(1000,.15,0.7);coachSpeak(sidePrefix(label)+'Guided set. '+plural(total,'rep')+'. Get ready.');
   function readyTick(){
     if(timer)timer.lastTick=monoNow();
     ready--;
@@ -14439,7 +14439,7 @@ function _renderProgressPaint(){
        showing `0 reps` for a real movement would be a different lie. */
     const prRows=prKeys.filter(k=>EX[k]&&bestFor(k)>0);
     h+=prRows.length
-      ? `<div class="card pad">${prRows.map(k=>{const ex=EX[k],b=bestFor(k);return `<div class="kv"><span>${ex.name}</span><b>${ex.unit==='time'?fmtTime(b):b+' reps'}</b></div>`;}).join('')}</div>`
+      ? `<div class="card pad">${prRows.map(k=>{const ex=EX[k],b=bestFor(k);return `<div class="kv"><span>${ex.name}</span><b>${ex.unit==='time'?fmtTime(b):plural(b,'rep')}</b></div>`;}).join('')}</div>`
       : `<div class="note info">Complete workouts to bank personal bests here.</div>`;
   }else{h+=`<div class="note info">Complete workouts to bank personal bests here.</div>`;}
   // score history
@@ -15093,7 +15093,7 @@ function precacheSession(items){
 function bestFor(exId){const v=STATE.prs&&STATE.prs[exId];return (typeof v==='number'&&v>0)?v:0;}
 function climbNote(m){
   const b=bestFor(m.exId);if(!b)return '';
-  return `<span class="tiny" style="color:var(--fire-l)">· best ${m.unit==='time'?fmtTime(b):(b+' reps')}</span>`;
+  return `<span class="tiny" style="color:var(--fire-l)">· best ${m.unit==='time'?fmtTime(b):plural(b,'rep')}</span>`;
 }
 /* The mid-set cue for a ladder-maxed movement. climbNote() shows the
    BODYWEIGHT best, which stops moving once a ladder is topped out — this is
@@ -17960,7 +17960,7 @@ function strengthLevel(val,t){let i=0;for(;i<t.length;i++){if(val<t[i])break;}re
 function openStandards(){
   const rows=Object.keys(STANDARDS).map(k=>{
     const st=STANDARDS[k];const pr=bestFor(k);const lvl=pr?strengthLevel(pr,st.t):-1;
-    const val=pr?(st.unit==='time'?fmtTime(pr):pr+' reps'):'—';
+    const val=pr?(st.unit==='time'?fmtTime(pr):plural(pr,'rep')):'—';
     const badge=lvl>=0?LEVELS[lvl]:'Not tested';
     const color=lvl>=4?'var(--gold)':(lvl>=3?'var(--green)':(lvl>=2?'var(--fire-l)':(lvl>=1?'var(--teal)':'var(--muted)')));
     const pct=pr?clamp((lvl/4)*100,5,100):0;
@@ -18794,7 +18794,7 @@ function assessSeries(){
 function strengthTrendHTML(){
   const series=assessSeries();if(!series.length)return '';
   const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
-  const disp=v=>m.unit==='time'?fmtTime(v):v+' reps';
+  const disp=v=>m.unit==='time'?fmtTime(v):plural(v,'rep');
   const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}"${pressed(x.k===strengthSel)} onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
   /* THROUGH THE PREDICATE, NOT AROUND IT. This read was raw, so '99999' > 0
      coerced to true and a figure estimateMaxes() refuses was drawn on the
@@ -18814,7 +18814,7 @@ function strengthTrendHTML(){
     body=lineChart(vals,dates,'var(--fire)',m.unit==='time'?'s':'')+
       `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span>${_mixed
         ? `<span class="tiny" style="font-weight:800;color:var(--gold)">— not comparable</span>`
-        : `<span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):Math.abs(d)+' reps'}</span>`}<span class="tiny muted">${disp(last)}</span></div>`
+        : `<span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):plural(Math.abs(d),'rep')}</span>`}<span class="tiny muted">${disp(last)}</span></div>`
       +(_mixed?`<div class="tiny muted" style="margin-top:6px;color:var(--gold)">A flagged joint meant this test used a <b>different movement</b> in one of these records, so the change is not a like-for-like comparison.</div>`:'');
   }else if(!pts.length){
     // an imported backup can carry baseline.maxes as {} — pts[0] then threw and
@@ -22920,7 +22920,7 @@ function renderQuick(){
     const exId=quickExId(it.exId);
     const ex=EX[exId]||EX[it.exId];const unit=ex.unit;const done=!!(quickState.done&&quickState.done[idx]);
     const target=quickTarget(it,ex);
-    const rx=unit==='time'?fmtTime(target):target+' reps';
+    const rx=unit==='time'?fmtTime(target):plural(target,'rep');
     h+=`<div class="ex ${done?'done':''}">
       <div class="ex-top">
         <button class="ex-check" onclick="quickMark(${idx})" aria-pressed="${done?'true':'false'}" aria-label="${done?'Unmark':'Mark'} ${_ve(ex.name)} as done"><svg viewBox="0 0 24 24" fill="none" stroke="#04220f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>
@@ -23242,12 +23242,12 @@ function openSessionDetail(p){
   const prs=STATE.prs||{};
   const rows=st.items.map(m=>{
     const e=l.ex&&l.ex[m.exId];const done=e&&e.done===true;const sd=setsDoneFor(e,m);
-    const rx=m.unit==='time'?fmtTime(m.target):m.target+' reps';
+    const rx=m.unit==='time'?fmtTime(m.target):plural(m.target,'rep');
     const isPR=prs[m.exId]&&prs[m.exId]===m.target;
     const setTxt=`<span class="tiny ${done?'':'muted'}">${sd}/${m.sets} sets</span>`;
     return `<div class="kv" style="align-items:flex-start"><span>${done?'✅':(sd>0?'🟡':'⚪️')} ${EX[m.exId].name}${isPR?' <span class="tag" style="font-size:10px;background:var(--gold);color:#2a1f00">PR</span>':''}<div class="tiny muted">${m.sets}×${rx} · rest ${m.rest}s</div></span>${setTxt}</div>`;
   }).join('');
-  const volTxt=st.totalReps?`${st.totalReps} reps`:'';
+  const volTxt=st.totalReps?plural(st.totalReps,'rep'):'';
   const holdTxt=st.totalHold?fmtTime(st.totalHold)+' hold':'';
   const workTxt=[volTxt,holdTxt].filter(Boolean).join(' · ')||'—';
   const mins=sessionMinutes(l,st);

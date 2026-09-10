@@ -13751,7 +13751,14 @@ export default async function () {
       o.haloSideLine = spoken.filter(x => x === SIDE_LINE).length;
       closeSheet(); await wait(400); spoken.length = 0; tones.length = 0;
       runRepCadence(10, 'Crunch', 0, null, EX.crunch); await wait(20);
-      for (let i = 0; i < 20; i++) { if (timer && timer.tick) timer.tick(); }
+      /* the GLASS as well as the voice: the over-eager mutant that wrote
+         SWITCH SIDES on the ring for every movement at the halfway rep escaped
+         a floor that only counted spoken lines */
+      o.crunchPhaseSwitch = false;
+      for (let i = 0; i < 20; i++) {
+        if (timer && timer.tick) timer.tick();
+        if (/SWITCH|REVERSE/.test((document.querySelector('#rcphase') || {}).textContent || '')) o.crunchPhaseSwitch = true;
+      }
       o.crunchSwitch = spoken.filter(x => /Switch sides now/.test(x)).length;
       closeSheet(); await wait(400); spoken.length = 0;
       /* Quick's label goes through the same builder */
@@ -13811,6 +13818,7 @@ export default async function () {
        with the voice off had no switch signal at all on ▶ Guided reps. */
     t.eq('and names it on the ring, as the hold timer does (v488)', r.repPhase, 'SWITCH SIDES');
     t.eq('FLOOR: a two-sided rep movement is never told to switch', r.crunchSwitch, 0);
+    t.ok('FLOOR: and its ring never says SWITCH either', r.crunchPhaseSwitch === false, JSON.stringify({ crunchPhaseSwitch: r.crunchPhaseSwitch }));
     t.eq('the halo hears its own halfway call — it reverses, it has no sides (v489)', r.haloLine, 1);
     t.eq('and never the shared side line', r.haloSideLine, 0);
     t.eq('and the ring says REVERSE', r.haloTag, 'REVERSE');
@@ -14254,6 +14262,63 @@ export default async function () {
     t.ok('and still opens the chained rest', r.holdRest === true, JSON.stringify(r));
     t.eq('Done tapped twice on the rep cadence still marks the set', r.repMarked, 1);
     t.ok('and the second tap does not close the sheet under the pending completion', r.repSheetOpen === true && r.repRest === true, JSON.stringify(r));
+  }
+
+  /* v489: "1 REPS". Eighteen sites pluralised a rep count by hand, and a count
+     of one is a real athlete state — a beginner's first pull-up is a personal
+     best of 1, a baseline push-up result can be 1, and the day-90 board and
+     the strength standards print those figures. Every one goes through
+     plural() now, including the two lines the coach SPEAKS (the ready
+     announcement and the guided-reps intro). */
+  {
+    const r = await page.evaluate(async () => {
+      const out = {};
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const real = { speak: window.coachSpeak, say: window.plSay, beep: window.beep };
+      const spoken = [];
+      window.coachSpeak = t => { spoken.push(String(t)); }; window.plSay = t => { spoken.push(String(t)); }; window.beep = () => {};
+      const snap = JSON.stringify(STATE);
+      try {
+        STATE.prs = STATE.prs || {}; STATE.prs.pullup = 1; STATE.prs.pushup = 12;
+        const ex = EX.pullup; out.pullupIsReps = ex && ex.unit === 'reps';
+        go('progress'); setProgressTab('strength');
+        const pane = (document.querySelector('#v-progress') || {}).textContent || '';
+        out.prOne = /\b1 rep\b/.test(pane) && !/\b1 reps\b/.test(pane);
+        out.prTwelve = /\b12 reps\b/.test(pane);
+        out.helper1 = plural(1, 'rep'); out.helper12 = plural(12, 'rep');
+        out.brief1 = _briefTarget({ unit: 'reps', target: 1 }); out.brief12 = _briefTarget({ unit: 'reps', target: 12 });
+        out.card1 = exCardHTML({ exId: 'pushup', unit: 'reps', target: 1, sets: 3, rest: 45 }, { ex: {} }, 0);
+        out.card1ok = /\b1 rep\b/.test(out.card1) && !/\b1 reps\b/.test(out.card1);
+        const a = computeAssessment({ plank: 30, push: 1, side: 20, squat: 10, hollow: 20, pull: 5, lower: 8, dyn: 20, power: 8, stamina: 10 });
+        const bd = testBreakdownHTML(a) || '';
+        out.breakdown1 = /\b1 rep\b/.test(bd) && !/\b1 reps\b/.test(bd);
+        /* the runner's spoken intro */
+        spoken.length = 0;
+        runRepCadence(1, 'Pull-Up', 0, null, EX.pullup); await wait(30);
+        out.runnerLine = spoken.find(x => /Guided set/.test(x)) || '';
+        stopTimer(); closeSheet(); await wait(400);
+        /* the player's ready announcement */
+        spoken.length = 0;
+        openPlayer({ items: [{ exId: 'pullup', unit: 'reps', target: 1, rest: 30, sets: 1 }], free: true, title: 'probe' }); await wait(250);
+        out.readyLine = spoken.find(x => /Pull-?Up/i.test(x)) || '';
+        try { playerQuit(); } catch (e) {}
+        await wait(500);
+      } catch (e) { out.err = String(e); }
+      window.coachSpeak = real.speak; window.plSay = real.say; window.beep = real.beep;
+      Object.assign(STATE, JSON.parse(snap)); save();
+      return out;
+    });
+    t.ok('GUARD: the probe ran and the pull-up is a rep movement', !r.err && r.pullupIsReps, JSON.stringify(r));
+    t.eq('plural() says 1 rep', r.helper1, '1 rep');
+    t.eq('and 12 reps', r.helper12, '12 reps');
+    t.ok('a personal best of ONE prints "1 rep" on Progress ▸ Strength (v489)', r.prOne === true, JSON.stringify({ prOne: r.prOne }));
+    t.ok('FLOOR: and a best of twelve still prints "12 reps"', r.prTwelve === true, JSON.stringify({ prTwelve: r.prTwelve }));
+    t.eq('the spoken brief says "1 rep"', r.brief1, '1 rep');
+    t.eq('FLOOR: and "12 reps"', r.brief12, '12 reps');
+    t.ok('the session card says "1 rep"', r.card1ok === true, JSON.stringify({ card1: (r.card1 || '').slice(0, 200) }));
+    t.ok('the baseline breakdown says "1 rep" for a single push-up', r.breakdown1 === true, JSON.stringify({ breakdown1: r.breakdown1 }));
+    t.ok('the ▶ Guided reps intro says "1 rep"', /Guided set\. 1 rep\. Get ready/.test(r.runnerLine), JSON.stringify({ runnerLine: r.runnerLine }));
+    t.ok('and the player\'s ready announcement says "1 rep"', /\b1 rep\./.test(r.readyLine) && !/1 reps/.test(r.readyLine), JSON.stringify({ readyLine: r.readyLine }));
   }
 
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));

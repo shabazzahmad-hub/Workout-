@@ -19983,6 +19983,28 @@ rep"*), which v351 read and deliberately left. It is `perSet` now, and its
 step says *"switch sides for the next set"* so the validator's both-ways
 rule holds.
 
+### "1 reps", at eighteen sites
+
+v459 closed the plural class for every count the app writes as a LITERAL —
+its scan forbids `1 sets`, `1 reps` and the rest in the source. **A count
+built by concatenation is invisible to that scan**, and `x+' reps'` was
+written eighteen times: the personal-best rows, the strength standards, the
+day-90 board, the baseline breakdown, the session card, the custom builder,
+the session detail, the player's next-set line — and the two lines the coach
+SPEAKS, the ready announcement and the guided-reps intro.
+
+**A count of one is a real athlete state.** A beginner's first pull-up is a
+personal best of 1, and a baseline push-up result can be 1; both printed
+*"1 reps"* and one of them was read aloud. Every site asks `plural()` now,
+and the check drives the two spoken ones and the four rendered ones with a
+count of one, with twelve pinned beside each as the floor.
+
+**And the v488 driver's one escape was a weak floor.** The over-eager
+mutant that wrote `SWITCH SIDES` on the ring for every movement at the
+halfway rep walked through a two-sided floor that only counted spoken lines
+— *measure the payload, not the container*, where the payload was the
+glass. It reads the ring now.
+
 ### Done twice was two sets, or none
 
 Found by auditing v488's own Done wiring. A second tap on the hold sheet's
