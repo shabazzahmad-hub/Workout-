@@ -14601,6 +14601,143 @@ export default async function () {
     t.ok('FLOOR: and is promised nothing either', r.unmappedNoPromise === true, JSON.stringify(r));
   }
 
+  /* ============ TWO CONTROLS KNEW ONE WAY TO CLOSE A DAY (v491) ============
+     v490 made the pain state reachable, and auditing it found two controls that
+     only knew the other one. "Train again anyway" — which now renders on a
+     pain-stop day — opened "You already trained today", false after a stop
+     before any set and contradicting a card two lines above it. And
+     startMyDay() gated on todayDone() alone, so after a pain stop it walked
+     straight into the NEXT session with NO confirm: v344's defect on the state
+     v490 opened. One predicate (todayClosed) and one sentence per state. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {}; const asked = [];
+      const kc = window.confirm;
+      window.confirm = (m) => { asked.push(String(m)); return false; };   // always decline
+      const paint = () => { setTodayTab('workout'); renderToday(); };
+      const painDay = () => { STATE.logs = { 3: { date: todayISO(), ex: {}, done: false, stoppedForPain: todayISO() } };
+                              STATE.progressPtr = 4; delete STATE._trainAgain; save(); paint(); };
+      const doneDay = () => { STATE.logs = { 3: { date: todayISO(), ex: {}, done: true, completedAt: todayISO() } };
+                              STATE.progressPtr = 4; delete STATE._trainAgain; save(); paint(); };
+
+      /* the pain-stop day */
+      painDay();
+      R.gPain = todayStoppedForPain() === true && todayDone() === false;
+      const btn = [...document.querySelectorAll('#v-today button')]
+        .find(b => /train again anyway/i.test(b.innerText));
+      R.gButton = !!btn;
+      if (btn) btn.click();
+      R.painAsk = asked[asked.length - 1] || '';
+      R.painNamesStop = /stopped that session for pain/i.test(R.painAsk);
+      R.painNeverClaimsTraining = !/already trained today/i.test(R.painAsk);
+      R.painDeclined = !STATE._trainAgain;
+
+      /* startMyDay() on the same day must ask at all */
+      const before = asked.length;
+      startMyDay();
+      await new Promise(z => setTimeout(z, 200));
+      R.dayAsked = asked.length > before;
+      R.dayAsk = asked[asked.length - 1] || '';
+      R.dayNamesStop = /stopped that session for pain/i.test(R.dayAsk);
+      R.dayDeclined = !STATE._trainAgain && !(typeof DAYFLOW !== 'undefined' && DAYFLOW && DAYFLOW.active);
+
+      /* FLOOR: a day genuinely trained still says so, at both controls */
+      doneDay();
+      const btn2 = [...document.querySelectorAll('#v-today button')]
+        .find(b => /train again anyway/i.test(b.innerText));
+      R.gButton2 = !!btn2;
+      if (btn2) btn2.click();
+      R.doneAsk = asked[asked.length - 1] || '';
+      R.doneNamesTraining = /already trained today/i.test(R.doneAsk);
+      R.doneNeverNamesPain = !/stopped that session for pain/i.test(R.doneAsk);
+      const before2 = asked.length;
+      startMyDay();
+      await new Promise(z => setTimeout(z, 200));
+      R.doneDayAsked = asked.length > before2;
+
+      /* FLOOR: an ordinary untrained day asks nothing at all */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save(); paint();
+      R.gOpen = todayClosed() === false;
+      const before3 = asked.length;
+      startMyDay();
+      await new Promise(z => setTimeout(z, 200));
+      R.openDayAsked = asked.length > before3;
+      try { dayflowCancel(true); } catch (e) {}
+      try { closeSheet(); } catch (e) {}
+      await new Promise(z => setTimeout(z, 400));
+      window.confirm = kc;
+      return R;
+    });
+    t.ok('GUARD: the day really was closed by a pain stop, not a completion', r.gPain === true, JSON.stringify(r));
+    t.ok('GUARD: and the Train again button rendered on it', r.gButton === true, JSON.stringify(r));
+    t.ok('the Train again confirm names the pain stop (v491)', r.painNamesStop === true, JSON.stringify({ ask: r.painAsk }));
+    t.ok('and never claims the athlete already trained', r.painNeverClaimsTraining === true, JSON.stringify({ ask: r.painAsk }));
+    t.ok('declining it asks for nothing', r.painDeclined === true, JSON.stringify(r));
+    t.ok('Start my day asks after a pain stop instead of walking into the next session', r.dayAsked === true, JSON.stringify({ ask: r.dayAsk }));
+    t.ok('and its sentence names the pain stop too', r.dayNamesStop === true, JSON.stringify({ ask: r.dayAsk }));
+    t.ok('and declining starts no flow', r.dayDeclined === true, JSON.stringify(r));
+    t.ok('GUARD: the Train again button renders on a genuinely finished day too', r.gButton2 === true, JSON.stringify(r));
+    t.ok('FLOOR: a finished day still says the athlete already trained', r.doneNamesTraining === true && r.doneNeverNamesPain === true, JSON.stringify({ ask: r.doneAsk }));
+    t.ok('FLOOR: and Start my day still asks there', r.doneDayAsked === true, JSON.stringify(r));
+    t.ok('GUARD: an untrained day is not closed', r.gOpen === true, JSON.stringify(r));
+    t.ok('FLOOR: and Start my day asks nothing at all on it', r.openDayAsked === false, JSON.stringify(r));
+  }
+
+  /* ============ A BONUS SESSION CANNOT CLEAR THE PROGRAM'S BREADCRUMB ======
+     plSaveResume() returns early for a free session, so a bonus session never
+     WRITES a resume point — playerTeardown() could only ever destroy the
+     program's. Reachable: a program session left part-way by a crash or a
+     reload (a deliberate quit is MEANT to clear it), then a custom workout
+     closed with the ✕ or Back. v365 pinned this invariant for a grinder and a
+     hold test, neither of which touches _plResume. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const settle = () => new Promise(z => setTimeout(z, 700));
+      const bonus = () => ({ items: [{ exId: 'plank', unit: 'time', target: 30, rest: 30, sets: 1 }],
+                             free: true, title: 'probe' });
+      const crumb = () => { STATE.progressPtr = 3;
+        STATE._plResume = { ptr: 3, i: 2, s: 0, setsDone: 5, date: todayISO(), ts: Date.now() };
+        save(); };
+
+      /* the ✕ on a bonus session */
+      crumb();
+      R.gCrumb = !!resumeInfo();     // guard: the app really would offer a resume
+      openPlayer(bonus());
+      await new Promise(z => setTimeout(z, 250));
+      R.gFree = !!PLAYER && PLAYER.free === true;
+      playerQuit();
+      await settle();
+      R.afterBonusQuit = !!STATE._plResume;
+
+      /* the pain stop on a bonus session — v490's branch, which nothing pinned */
+      crumb();
+      openPlayer(bonus());
+      await new Promise(z => setTimeout(z, 250));
+      hurtStop();
+      await settle();
+      R.afterBonusPain = !!STATE._plResume;
+
+      /* FLOOR: quitting the PROGRAM session still clears it — a deliberate exit
+         is what plSaveResume's own comment says clears the breadcrumb */
+      crumb();
+      openPlayer();
+      await new Promise(z => setTimeout(z, 250));
+      R.gProgram = !!PLAYER && !PLAYER.free;
+      playerQuit();
+      await settle();
+      R.afterProgramQuit = !!STATE._plResume;
+      return R;
+    });
+    t.ok('GUARD: the seeded breadcrumb really would offer a resume', r.gCrumb === true, JSON.stringify(r));
+    t.ok('GUARD: the bonus player opened free, and the program one did not', r.gFree === true && r.gProgram === true, JSON.stringify(r));
+    t.ok('closing a bonus session with the ✕ leaves the program’s resume point alone (v491)', r.afterBonusQuit === true, JSON.stringify(r));
+    t.ok('and so does a pain stop on one', r.afterBonusPain === true, JSON.stringify(r));
+    t.ok('FLOOR: quitting the PROGRAM session still clears it', r.afterProgramQuit === false, JSON.stringify(r));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();

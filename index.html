@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='490';
+const APP_VERSION='491';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4814,7 +4814,7 @@ function nextSessionHTML(){
    decision was made under is the same fix as _planStamp: any pointer move
    voids the request automatically and no writer has to remember. */
 function trainAgainToday(){
-  if(!confirm('You already trained today. A second session logs as the next one and moves your program on — recovery is where the muscle is made. Sure?'))return;
+  if(!confirm(trainAgainConfirm('A second session logs as the next one')))return;
   STATE._trainAgain={date:todayISO(),from:STATE.progressPtr};save();
   try{render();}catch(e){}
 }
@@ -4828,6 +4828,27 @@ function trainAgainAsked(){
     if(!r||typeof r!=='object')return false;
     return r.date===todayISO()&&r.from===STATE.progressPtr;
   }catch(e){return false;}
+}
+/* TWO WAYS TODAY'S SLOT IS CLOSED, and every control that asks "are they
+   finished with today?" has to know both. v490 made the pain state reachable
+   and auditing it immediately found two controls that knew only one:
+   nextSessionHTML()'s "Train again anyway" confirm opened "You already trained
+   today" — false after a stop before any set, and on the same screen as a card
+   saying it is NOT logged as a completed session — and startMyDay()'s gate read
+   todayDone() alone, so after a pain stop it walked straight into the NEXT
+   session with NO confirm at all, which is v344's defect on the state v490
+   opened. One predicate, asked by every consumer. */
+function todayClosed(){return todayDone()||todayStoppedForPain();}
+/* ONE SENTENCE PER STATE, asked by both controls, because a confirm that
+   describes the wrong state is the same defect as a promise with no code
+   behind it — and this one contradicted a card two lines above it. */
+function trainAgainConfirm(action){
+  const pain=todayStoppedForPain();
+  return (pain?'You stopped that session for pain, and it was not logged as completed.'
+              :'You already trained today.')
+    +' '+action+' and moves your program on — '
+    +(pain?'the joint that hurt is still the joint that hurt.'
+          :'recovery is where the muscle is made.')+' Sure?';
 }
 function todayPtr(){
   try{
@@ -5047,7 +5068,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
      Session Complete" for work already logged is how an athlete accidentally
      burns the next session — so once today's is done, the list is replaced by
      the record of it and the next one is shown as NEXT, never as today's. */
-  if(todayDone()||todayStoppedForPain()){
+  if(todayClosed()){
     /* Counted here rather than passed in: workoutTabHTML() receives sess and
        log, and the caller's own doneSets is not in scope. */
     const _sets=[...sess.main,sess.finisher].filter(Boolean)
@@ -9117,7 +9138,15 @@ function playerClose(){
   wakeOff();plClear();plClockStop();beatStop();$('#player').classList.remove('open');document.body.style.overflow='';PLAYER=null;tapShield(400);
   setTimeout(()=>{try{if(!$('#player').classList.contains('open'))$('#player').innerHTML='';}catch(e){}},400);
 }
-function playerTeardown(){if(!PLAYER)return;plClearResume();playerClose();
+/* A BONUS SESSION HAS NO BREADCRUMB TO CLEAR, and this exit never asked.
+   plSaveResume() returns early for a free session, so one never WRITES a
+   resume point — it could only ever destroy the program's. Reachable: a
+   program session left part-way by a crash or a reload (a deliberate quit is
+   MEANT to clear it, which plSaveResume's own comment says), then a custom
+   workout, a saved favourite or a quick workout closed with the ✕ or Back.
+   Same class as v490's hurtStop(): a player exit that does not ask
+   PLAYER.free, and the last member of it. */
+function playerTeardown(){if(!PLAYER)return;if(!PLAYER.free)plClearResume();playerClose();
   /* Any teardown of the player = the user bailed (natural finish goes through
      playerFeel, which advances instead) → end the guided day, and SAY SO: the
      cool-down Sarge promised is not coming, which is the one thing quitting
@@ -12038,8 +12067,8 @@ function startMyDay(){
      Same question, same words, one place: once they have asked, trainAgainAsked()
      is true, todayPtr() moves with it, and the whole flow (the brief included)
      correctly describes the new session as today's. */
-  if(todayDone()&&!trainAgainAsked()){
-    if(!confirm('You already trained today. Running the day again starts the NEXT session and moves your program on — recovery is where the muscle is made. Sure?'))return;
+  if(todayClosed()&&!trainAgainAsked()){
+    if(!confirm(trainAgainConfirm('Running the day again starts the NEXT session')))return;
     STATE._trainAgain={date:todayISO(),from:STATE.progressPtr};save();
   }
   try{haptic(14);}catch(e){}
@@ -23136,7 +23165,7 @@ function minimumDayMet(){
    the day floor, and is suppressed once that card is on screen so the same
    sentence is not printed twice. */
 function doneForTodayHTML(){
-  if(todayDone()||todayStoppedForPain())return '';   // the done card carries it
+  if(todayClosed())return '';   // the done card carries it
   if(!minimumDayMet())return '';
   return `<div class="note ok"><b>That is today done.</b> You trained and you covered the basics — everything below this is optional. Come back tomorrow.</div>`;
 }

@@ -20040,6 +20040,59 @@ so each set already works both sides equally; a fourth set there would add
 volume without a balance reason, which is the v310 rule that a request never
 buys volume by accident.
 
+## Two controls knew one way to close a day (v491)
+
+Found by auditing v490 an hour after it merged — the sixteenth round running
+where the best finding was in the round immediately before, and the tenth in a
+row where it was in my own new code. v490 made the pain state REACHABLE, and
+two controls only knew the other way a day closes.
+
+**"Train again anyway" now renders on a pain-stop day**, and its confirm opened:
+
+> **You already trained today.** A second session logs as the next one…
+
+…on the same screen as a card saying the session is **not** logged as a
+completed one. One screen, two answers — and the athlete had not trained at all.
+
+**And `startMyDay()` gated on `todayDone()` alone**, which a pain stop leaves
+false. So after a stop it walked straight into the NEXT session with **no
+confirm at all**, while `todayPtr()` had moved to the stopped one — so the brief
+described the session that hurt and step 3 opened the next. That is v344's own
+defect, on the state v490 opened.
+
+`todayClosed()` is the one predicate, asked by all four consumers, and
+`trainAgainConfirm(action)` is one sentence per state. **A confirm that
+describes the wrong state is the same defect as a promise with no code behind
+it**, and this one contradicted a card two lines above it.
+
+**Four floors, each catching a different over-eager twin**: a genuinely
+finished day still says the athlete trained and never mentions pain, both
+controls still ask there, and an ordinary untrained day asks nothing at all.
+
+### And a bonus session could clear the program's breadcrumb
+
+`playerTeardown()` called `plClearResume()` unconditionally, and the ✕ and the
+Back handler both reach it for a FREE session. `plSaveResume()` returns early
+for free, so a bonus session never WRITES a resume point — it could only ever
+destroy the program's.
+
+Reachable: a program session left part-way by a crash or a reload — a
+**deliberate** quit is MEANT to clear it, which `plSaveResume()`'s own comment
+says — then a custom workout, a saved favourite or a quick workout closed with
+the ✕ or Back. The logged sets survive, so no training data is lost; what goes
+is the resume offer the breadcrumb exists for.
+
+**Same class as v490's `hurtStop()`, and the last member of it.** The class was
+swept rather than guessed: `plSaveResume()`, `markSetFromTimer()`, the set
+advance, the rating chips and the finish screen all ask `PLAYER.free`;
+`playerSwap()` is guarded by a pointer-identity test; `playerFeel()` is
+reachable only from the non-free finish screen. `playerTeardown()` was the one
+that did not ask.
+
+**v365 pinned this invariant and could not see this door** — it drove a grinder
+and a hold test, neither of which touches `_plResume`. The floor beside the fix
+is that quitting the PROGRAM session still clears it.
+
 ## The card that could not render, and the writer nobody asked (v490)
 
 Found by asking which pointer the Today runners build from — `exSetChain()`
