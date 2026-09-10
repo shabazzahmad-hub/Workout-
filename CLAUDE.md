@@ -20315,6 +20315,144 @@ download.** Install tier now 2,012 KB, and the edit asserts the file appears in
 **exactly one** tier afterwards, which is the check v410's own half-applied move
 lacked.
 
+## The button the app tells you to press cost you a scolding (v493)
+
+Found by auditing v490 four rounds after it shipped. v490 made the pain-stop
+state **reachable** — before it, `todayPtr()`'s pain arm tested a field
+`hurtStop()` never writes, so no surface had ever rendered that state. **Four**
+surfaces had therefore never seen it, and all four are wrong on it — and the
+fourth was found only after the first three had been written up as "all three",
+which is the claim that made it findable.
+
+### A pain stop counted as a missed training day
+
+`gapSince()` walks the days between the last completed session and today, and
+counts a day as **missed** when it is scheduled and not in `restDays`. A
+pain-stop day is scheduled and is not a rest day. Measured — train Monday,
+stop for pain on Tuesday, open the app on Wednesday:
+
+| | |
+|---|---|
+| what the athlete did on Tuesday | turned up, started the session, pressed the pain button |
+| what the card said on Tuesday | *"Right call. That is what the button is for."* |
+| what the banner said on Wednesday | 👋 **Welcome back — 1 training day since your last session.** |
+
+**That is v347's defect on a worse state.** v347 fixed it for the days the
+athlete had picked off — *"a rest day is not a missed session"* — and never
+asked the same question of the one day the app itself told them to stop. **The
+button that costs you a scolding is the button that does not get pressed, and
+that button is this app's oldest safety control.**
+
+`painDaysSet()` is the days a pain stop happened on. It reads the **archived
+runs** as well as the live logs, for the reason v471 gives: a restart moves the
+whole run into `STATE.runs`, and a gap measured across one would otherwise lose
+every day in it. It asks `isDateISO()`, the app's one date predicate.
+
+**ORDER IS LOAD-BEARING**, the same way trained-over-rested is in
+`heatmapHTML()`: a day that is both a pain stop and a logged rest day counts as
+the pain stop, because that is the more specific fact and the one the athlete
+is owed an acknowledgement for. Either way it is not missed.
+
+**Named, never silently excluded.** A count that quietly drops a day the
+athlete remembers reads as the app losing track — so `hurt` is its own bucket
+with its own sentence, and it fires only when there is something to say. The
+floor beside it is a banner with no pain stop in it, which must say nothing
+about pain.
+
+**The control is the whole finding.** Without pinning that an ordinary skipped
+day really is one missed day and really does fire the banner, every assertion
+below is satisfied by a counter that never counts anything. And **every day is
+a training day in that block**: `seedAthlete` trains five days a week, so on
+two weekdays in seven the day under test is `off` whatever the fix does and the
+whole block passes on nothing. *The calendar is part of the state a block has
+to build* — v347's own lesson, one round later.
+
+### And its twin banner counted the same day as drift
+
+`driftBanner()` says **"N training days here, and none of them trained."**
+`driftingDays()` skips a scheduled day only when it is a logged rest day — and
+the athlete **did open the app** on a pain-stop day, because starting the
+session is how the stop happened, so `_opens` carries it and the day was
+counted. Measured over a seven-day window with the app opened every day: **7
+before, 6 after.**
+
+v347 taught *both* banners to honour the rest days in one round. This round
+taught `gapSince()` about the pain stop and left its twin — **fixing one
+instance is not fixing the class, landing inside the round that quotes it.**
+
+The treatment matches the rest day exactly: it neither counts nor breaks the
+run. And the guard is what makes the check mean anything — without pinning that
+all seven days really are counted when there is no pain stop, "six" is a number
+with nothing behind it.
+
+### What was measured and is NOT in the class
+
+- **The streak survives a pain stop.** `computeStreak()` tolerates
+  `max(3, the schedule's own gap)`, so the two-day gap either side of one pain
+  day is well inside it. Only the banner punished it.
+- **`trainedToday()` is correctly false**, because it requires `done` and a
+  `completedAt` that `hurtStop()` never writes. So the hold test stays **fresh**
+  after a pain stop and can still set a best — which is the right answer, and it
+  was checked rather than assumed.
+- **The heatmap correctly shows nothing** on a pain-stop day: it is a map of
+  completed training days, and trained-over-rested is already the right order.
+- **`armComeback()` reads the calendar gap and is left alone**, as v347 already
+  recorded: a pain stop feeding the comeback ease gives the next sessions
+  *lighter* volume, which is the conservative direction.
+
+### "Today is already logged" is false on a pain stop
+
+`altSessionHTML()` renders a few lines under `sessionDoneCardHTML()`, which says
+**in bold** that the session is *not* logged as a completed one. The note below
+it read:
+
+> **Today is already logged** — none of these will take the next session off
+> your plan.
+
+One screen, two answers — v450's *the screen argued with itself*, on the state
+v490 opened. **The predicate was right and the sentence had one voice for two
+states**, which is exactly what v491 fixed for the confirm; this is the last
+member of that class.
+
+**The two are read SIDE BY SIDE in one check**, because the requirement is that
+they AGREE: asserting either alone passes on half the code. That is v447's
+lesson, and it is how the disagreement lasted — the card had a check and the
+note had one, and neither compared them.
+
+### And the helper's own comment claimed a property it did not have
+
+`restedTodayFlag()` carries, since v246:
+
+> …so it is **one function** rather than two hand-kept reads of
+> `STATE.restDays`.
+
+`openRestSheet()`, 7,000 lines later, had its own copy of the read. Nothing was
+wrong today — both reads are identical — and **a comment claiming an invariant
+is not the invariant**, for the tenth time in this file. One line makes the
+sentence true, and a source assertion pins that the read idiom appears exactly
+once.
+
+### And a fourth finding that was measured and REVERTED
+
+The pain card says *"Your program still moved on, so the next one is below"*
+and `nextSessionHTML()` decided separately whether to render one — which reads
+exactly like a stale pointer, because `hurtStop()` advances the pointer on the
+last session too, so at 378 the section returns `''`.
+
+**It is unreachable, and a check is what proved it.** `renderToday()` returns
+the completion screen before it ever builds the workout tab:
+
+```js
+if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES){v.innerHTML=finishedHTML();return;}
+```
+
+So the only state in which the sentence would be wrong is the one state in
+which the card cannot render at all. A `hasNextSession()` predicate was written,
+applied to both consumers, checked — and **reverted**, because a fix with no
+defect behind it is the v386 call. The check went red with `{"c":""}`: an empty
+card, which is the app being right and the check building a screen that does
+not exist.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
@@ -20643,6 +20781,18 @@ step 1187 → 1194 → 1200 → 1208 per minor, so if the pinned build ever chan
 read `node_modules/playwright-core/browsers.json` rather than guessing. CI
 downloads its own browser and is unaffected — do not "fix" this in
 `package.json`.
+
+**A hand-typed anchor is not a verbatim anchor, and the escape is where it
+breaks.** Three edits failed the same way in one session: the JS carries the
+literal six characters `\u2014` inside a string and a REAL em-dash inside a
+comment, and a heredoc renders the two identically when read back. This file
+already says to take a mutation anchor verbatim from the file; the half that
+cost the time is that **a script editing my own TOOLING had no assert**. Every
+`rep(old,new)` against `index.html` asserts the anchor exists and appears
+exactly once, so a bad anchor is a clean no-op — the driver-editing script used
+a bare `str.replace()`, which is a silent no-op, and the run then failed
+minutes later on a `TypeError` in a half-edited file. **Assert in the scripts
+that edit the harness too**, or read the result back before running it.
 
 **Check the wall clock before calling something slow.** A CI job was reported
 as "seven minutes and needs explaining" when it had run for 88 seconds; the

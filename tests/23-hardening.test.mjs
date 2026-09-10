@@ -14803,6 +14803,181 @@ export default async function () {
     t.ok('and every consumer asks the predicate', r.asks >= 6, JSON.stringify(r));
   }
 
+
+  /* ============ A PAIN STOP IS NOT A MISSED TRAINING DAY (v493) ===========
+     v347 fixed this for the days the athlete had picked off — he rested on his
+     own Wednesday and Thursday morning said "Welcome back — it's been 2 days",
+     having missed nothing. The same banner counted a PAIN STOP as a missed
+     training day, which is worse: he turned up, started the session, and
+     pressed the button the app tells him to press. sessionDoneCardHTML() says
+     so on the day itself — "Right call. That is what the button is for" — and
+     the next morning the app told him he had missed something. The button that
+     costs you a scolding is the button that does not get pressed, and that
+     button is this app's oldest safety control. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const R = {};
+      const back = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      const d1 = back(1), d2 = back(2), d3 = back(3);
+
+      /* EVERY day is a training day here. seedAthlete trains five days a week,
+         so on two weekdays in seven the day under test is `off` whatever this
+         fix does and the whole block would pass on nothing — the calendar is
+         part of the state a block has to build. */
+      STATE.profile.days = [0, 1, 2, 3, 4, 5, 6];
+
+      const base = trainedOn => {
+        STATE.logs = { 2: { date: trainedOn, ex: {}, done: true, completedAt: trainedOn } };
+        STATE.restDays = {}; STATE.runs = []; STATE.quickLog = {};
+        STATE.progressPtr = 3; delete STATE._trainAgain;
+      };
+
+      /* CONTROL — yesterday with nothing on it really is a missed day, and the
+         banner really fires. Without this every assertion below is satisfied by
+         a counter that never counts anything. */
+      base(d2); save();
+      const g0 = gapSince();
+      R.ctlMissed = g0 && g0.missed;
+      R.ctlBanner = catchUpBanner();
+      R.ctlFires = /Welcome back/i.test(R.ctlBanner);
+      R.ctlNoPainNote = !/for pain/i.test(R.ctlBanner);
+
+      /* the SAME yesterday, stopped for pain */
+      base(d2);
+      STATE.logs[3] = { date: d1, ex: {}, done: false, stoppedForPain: d1 };
+      save();
+      const g1 = gapSince();
+      R.painMissed = g1 && g1.missed;
+      R.painHurt = g1 && g1.hurt;
+      R.painBanner = catchUpBanner();
+
+      /* the same pain stop, in an ARCHIVED run — restartProgram() moves the
+         whole run into STATE.runs, and a walk that reads only STATE.logs
+         loses every day in it (v471). */
+      base(d2);
+      STATE.runs = [{ logs: { 3: { date: d1, ex: {}, done: false, stoppedForPain: d1 } } }];
+      save();
+      const g2 = gapSince();
+      R.archMissed = g2 && g2.missed;
+      R.archHurt = g2 && g2.hurt;
+
+      /* ORDER IS LOAD-BEARING — a day that is BOTH a logged rest day and a
+         pain stop counts as the pain stop, because that is the more specific
+         fact and the one the athlete is owed an acknowledgement for. Without
+         this case the claim in the comment is one no check can catch. */
+      base(d2);
+      STATE.logs[3] = { date: d1, ex: {}, done: false, stoppedForPain: d1 };
+      STATE.restDays = { [d1]: true }; save();
+      const gB = gapSince();
+      R.bothWaysMissed = gB && gB.missed;
+      R.bothWaysHurt = gB && gB.hurt;
+      R.bothWaysOff = gB && gB.off;
+
+      /* FLOOR — a logged rest day is still excluded and still named */
+      base(d2); STATE.restDays = { [d1]: true }; save();
+      const g3 = gapSince();
+      R.restMissed = g3 && g3.missed;
+      R.restOff = g3 && g3.off;
+      R.restBanner = catchUpBanner();
+
+      /* FLOOR — a REAL missed day beside a pain stop still fires, and the
+         banner names both reasons rather than swallowing one */
+      STATE.logs = { 2: { date: d3, ex: {}, done: true, completedAt: d3 },
+                     3: { date: d1, ex: {}, done: false, stoppedForPain: d1 } };
+      STATE.restDays = {}; STATE.runs = []; STATE.progressPtr = 4; save();
+      const g4 = gapSince();
+      R.bothMissed = g4 && g4.missed;
+      R.bothHurt = g4 && g4.hurt;
+      R.bothBanner = catchUpBanner();
+      return R;
+    });
+    t.eq('GUARD: an ordinary skipped day really is one missed training day', r.ctlMissed, 1, JSON.stringify(r));
+    t.ok('GUARD: and the welcome-back banner really fires on it', r.ctlFires === true, JSON.stringify({ b: (r.ctlBanner || '').slice(0, 200) }));
+    t.eq('a pain stop is not a missed training day (v493)', r.painMissed, 0, JSON.stringify(r));
+    t.eq('it is counted as its own thing, not folded into rest days', r.painHurt, 1, JSON.stringify(r));
+    t.eq('so the welcome-back banner does not fire at all', r.painBanner, '', JSON.stringify({ b: (r.painBanner || '').slice(0, 200) }));
+    t.eq('a pain stop inside an ARCHIVED run counts the same', r.archMissed, 0, JSON.stringify(r));
+    t.eq('and is still counted as a pain stop', r.archHurt, 1, JSON.stringify(r));
+    t.eq('a day that is both a rest day and a pain stop counts as the pain stop', r.bothWaysHurt, 1, JSON.stringify(r));
+    t.eq('and is not double-counted as a rest day', r.bothWaysOff, 0, JSON.stringify(r));
+    t.eq('either way it is not missed', r.bothWaysMissed, 0, JSON.stringify(r));
+    t.eq('FLOOR: a logged rest day is still excluded', r.restMissed, 0, JSON.stringify(r));
+    t.eq('FLOOR: and is still counted as a rest day, not a pain stop', r.restOff, 1, JSON.stringify(r));
+    t.eq('FLOOR: a real missed day beside a pain stop still counts', r.bothMissed, 1, JSON.stringify(r));
+    t.ok('FLOOR: and the banner still fires', /Welcome back/i.test(r.bothBanner || ''), JSON.stringify({ b: (r.bothBanner || '').slice(0, 240) }));
+    t.ok('naming the pain stop as not counting against them', /for pain/i.test(r.bothBanner || '') && /not count against you/i.test(r.bothBanner || ''), JSON.stringify({ b: (r.bothBanner || '').slice(0, 240) }));
+    t.ok('FLOOR: a banner with no pain stop in it says nothing about pain', r.ctlNoPainNote === true, JSON.stringify({ b: (r.ctlBanner || '').slice(0, 240) }));
+  }
+
+  /* ============ "TODAY IS ALREADY LOGGED" IS FALSE ON A PAIN STOP (v493) ===
+     altSessionHTML() renders a few lines under sessionDoneCardHTML(), which
+     says in bold that the session is NOT logged as a completed one — and the
+     note below it said "Today is already logged". One screen, two answers, on
+     the state v490 made reachable. The two are read SIDE BY SIDE here, because
+     the requirement is that they agree: asserting either alone passes on half
+     the code. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const R = {};
+      const paint = () => { setTodayTab('workout'); renderToday(); };
+      const pick = re => {
+        const n = [...document.querySelectorAll('#v-today .tiny.muted, #v-today .note')]
+          .find(x => re.test(x.innerText));
+        return n ? n.innerText : '';
+      };
+      const altNote = () => pick(/take the next session off your plan|None of these touch your program/i);
+      const card = () => pick(/stopped for pain|Session done/i);
+
+      /* an OPEN day */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain; save(); paint();
+      R.gOpen = todayClosed() === false;
+      R.openAlt = altNote();
+
+      /* a FINISHED day — "already logged" is true here and must stay */
+      STATE.logs = { 3: { date: todayISO(), ex: {}, done: true, completedAt: todayISO() } };
+      STATE.progressPtr = 4; save(); paint();
+      R.gDone = todayDone() === true;
+      R.doneCard = card();
+      R.doneAlt = altNote();
+
+      /* a PAIN-STOP day */
+      STATE.logs = { 3: { date: todayISO(), ex: {}, done: false, stoppedForPain: todayISO() } };
+      STATE.progressPtr = 4; save(); paint();
+      R.gPain = todayStoppedForPain() === true;
+      R.painCard = card();
+      R.painAlt = altNote();
+      return R;
+    });
+    t.ok('GUARD: the three days really are open, finished and pain-stopped', r.gOpen === true && r.gDone === true && r.gPain === true, JSON.stringify({ o: r.gOpen, d: r.gDone, p: r.gPain }));
+    t.ok('GUARD: the pain card really says the session is not logged as completed', /not\s+logged as a completed session/i.test(r.painCard || ''), JSON.stringify({ c: (r.painCard || '').slice(0, 240) }));
+    t.ok('the alternate-session note never claims a pain stop was logged (v493)', !/already logged/i.test(r.painAlt || ''), JSON.stringify({ n: r.painAlt }));
+    t.ok('and still says none of these take the next session off the plan', /take the next session off your plan/i.test(r.painAlt || ''), JSON.stringify({ n: r.painAlt }));
+    t.ok('FLOOR: a finished day still reads "already logged"', /already logged/i.test(r.doneAlt || ''), JSON.stringify({ n: r.doneAlt }));
+    t.ok('FLOOR: and its own card still says the session was logged today', /Logged today/i.test(r.doneCard || ''), JSON.stringify({ c: (r.doneCard || '').slice(0, 240) }));
+    t.ok('FLOOR: an open day still says none of these touch the program', /None of these touch your program/i.test(r.openAlt || ''), JSON.stringify({ n: r.openAlt }));
+  }
+
+  /* "Has today been logged as a rest day?" is read in ONE place. The helper's
+     own comment has claimed that since v246 — and openRestSheet(), 7,000 lines
+     later, kept its own copy of the read. A comment claiming an invariant is
+     not the invariant. */
+  {
+    const r = await page.evaluate(() => {
+      const src = [...document.querySelectorAll('script:not([src])')]
+        .map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const clean = src.replace(/\/\*[\s\S]*?\*\//g, '');
+      return { gApp: /function restedTodayFlag\(/.test(clean),
+               raw: (clean.match(/STATE\.restDays\s*&&\s*STATE\.restDays\[todayISO\(\)\]/g) || []).length,
+               asks: (clean.match(/restedTodayFlag\(\)/g) || []).length };
+    });
+    t.ok('GUARD: the scan read the app’s own script', r.gApp === true, JSON.stringify(r));
+    t.eq('today-is-a-rest-day is read in exactly one place (v493)', r.raw, 1, JSON.stringify(r));
+    t.ok('and every consumer asks the helper', r.asks >= 3, JSON.stringify(r));
+  }
+
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
