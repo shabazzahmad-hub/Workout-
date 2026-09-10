@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='498';
+const APP_VERSION='499';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -14664,8 +14664,32 @@ function scoreTrendHTML(){
   const cur=s.filter(e=>testCountOf(e)===TESTS.length);
   if(cur.length<2)
     return s.length>1?`<div class="tiny muted" style="margin-top:10px">Scoring changed in this version (${TESTS.length} tests, was 5) — your next re-test starts a comparable run.</div>`:'';
-  const first=scoreVal(cur[0]),last=scoreVal(cur[cur.length-1]);const d=last-first;
-  return `<div class="tiny" style="margin-top:10px;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +'+d:'▼ '+d} points since your last comparable test</div>`;
+  /* "SINCE YOUR LAST" MEANS THE PREVIOUS TEST, AND THIS MEASURED THE FIRST.
+     Correct at two entries, where cur[0] IS the previous one, and silently
+     wrong from the third on. Measured across 50 -> 60 -> 76 -> 70: it printed
+     a green "▲ +20 points since your last comparable test" to an athlete who
+     had just dropped SIX. scoreDeltaHTML(), on the re-test results screen,
+     has always read cur[length-2] and says "vs last test" - one of a pair
+     guarded and its twin not, with the correct one in the same file.
+
+     The run-long figure is not lost: this card's own empty state promises
+     "see your climb", so it is kept as a second, quieter fact - and only when
+     it DIFFERS, because at two entries the two are the same number and
+     printing both is one number wearing two labels.
+
+     `cur.length>2` is an EQUIVALENT guard and no check can catch its removal.
+     At exactly two entries cur[0] IS cur[length-2], so prev===first and run===d
+     by construction - the run!==d test alone already suppresses the line there,
+     and cur.length can never be below 2 because the branch above returns. It is
+     kept as intent, and as cover for a future change to what `first` means. */
+  const last=scoreVal(cur[cur.length-1]),prev=scoreVal(cur[cur.length-2]),first=scoreVal(cur[0]);
+  const d=last-prev,run=last-first;
+  /* Zero is not an increase. scoreDeltaHTML() already says nothing at all for
+     it; this card cannot, because the line is the only thing under the ring. */
+  const arrow=v=>v>0?'▲ +'+v:'▼ '+v;
+  const col=d>0?'var(--green)':d<0?'var(--pink)':'var(--muted)';
+  const runTxt=(cur.length>2&&run!==d)?`<span class="muted"> · ${run===0?'level with your first':arrow(run)+' since your first'}</span>`:'';
+  return `<div class="tiny" style="margin-top:10px;color:${col}">${d===0?'No change':arrow(d)+' points'} since your last comparable test${runTxt}</div>`;
 }
 function measureChartHTML(){
   const ms=STATE.measurements.filter(m=>m.waist>0);
@@ -25385,8 +25409,26 @@ function normalizeState(){
      });
    }
    if(N&&N.eatWindow!=null&&(typeof N.eatWindow!=='object'||Array.isArray(N.eatWindow)))delete N.eatWindow;
+   /* KEEP THE ARRAY SORTED, for the reason dedupeMeasurements() already gives
+      about its own twin: "some readers take the raw last row, others sort
+      first - an out-of-order import made them disagree about now". NOTHING
+      sorted this one, and five readers index it by POSITION: the Core Score
+      ring and its level chip (scoreHistory[length-1]), the Assessment history
+      labels (i===0 is "Baseline"), scoreGain() behind a badge, and
+      scoreTrendHTML(). Measured on a real render with three entries shuffled -
+      the ring read 60 and "Intermediate" where the athlete's own latest test
+      was 76 and "Advanced", scoreGain() read -16 against a real +26, and a
+      boot put none of it right.
+
+      A DATE THAT IS NOT A DATE IS NOT A PLACE IN TIME, so the row goes - the
+      same call the twin makes, and the one that makes the sort mean anything.
+      Every writer stamps todayISO(), so only an import can carry one; measured,
+      a dateless entry survived the old filter and became "now", and the ring
+      showed 12 for an athlete whose latest real score was 76. */
    if(Array.isArray(STATE.scoreHistory))
-     STATE.scoreHistory=STATE.scoreHistory.filter(e=>e&&typeof e==='object'&&e.score!=null&&isFinite(e.score));
+     STATE.scoreHistory=STATE.scoreHistory
+       .filter(e=>e&&typeof e==='object'&&e.score!=null&&isFinite(e.score)&&isDateISO(e.date))
+       .sort((x,y)=>String(x.date).localeCompare(String(y.date)));
    else STATE.scoreHistory=[];
   }
   // comprehensive-quiz defaults for installs created before it

@@ -21144,6 +21144,118 @@ exactly once, that the chart asks it, and that no second copy of a count window
 survives — because reverting the chart to a count window is **byte-identical
 for the daily athlete every other check here uses as its floor**.
 
+## "Since your last" measured since your first (v499)
+
+Same axis as v497 and v498 — a figure on Progress against the words printed
+beside it. Two findings on one card, and the second is the bigger one.
+
+`scoreTrendHTML()` compared `cur[0]`, the **first** comparable test, under a
+sentence reading *"since your last comparable test"*. **Correct at two
+entries**, where `cur[0]` IS the previous one, and silently wrong from the
+third on:
+
+| the re-tests | the app said | since the **last** test |
+|---|---|---|
+| 50 → 60 | ▲ +10 | +10 — correct |
+| 50 → 60 → 76 | **▲ +26** | +16 |
+| 50 → 60 → 76 → **70** | **▲ +20, green** | **−6** |
+
+The fourth row is the one that matters: an athlete who had just **dropped six
+points** was shown a green up-arrow and a +20.
+
+**`scoreDeltaHTML()`, on the re-test results screen, has always been right.**
+It reads `hist[length-2]` and says *"vs last test"* — so the correct
+implementation of that exact sentence was in the same file, and this is *one of
+a pair guarded and its twin not* for the eleventh time.
+
+**The sibling also settles which half to fix.** The sentence is what the author
+meant; the implementation is what drifted, and it drifted the moment a third
+entry existed. So the NUMBER moves.
+
+**The run-long figure is kept as a second, quieter fact**, because the card's
+own empty state promises *"Re-test after each block to see your climb"* — and
+only when it DIFFERS, because at two entries the two are the same number and
+printing both is one number wearing two labels (v314).
+
+**Zero is not an increase.** `▲ +0 points` in green was reachable. The sibling
+returns `''` for it; this card cannot, because that line is the only thing
+under the ring, so it says *"No change"* in neutral.
+
+### And nothing kept the history in order
+
+`STATE.scoreHistory` was **never sorted**, and five readers index it by
+POSITION: the Core Score ring and its level chip (`scoreHistory[length-1]`),
+the Assessment history labels (`i===0` is *"Baseline"*), `scoreGain()` behind a
+badge, and the trend. Measured on a real render with three entries shuffled —
+which is what an import can carry:
+
+| | ring | level chip | `scoreGain()` |
+|---|---|---|---|
+| in order | 76 | Advanced | +26 |
+| **shuffled** | **60** | **Intermediate** | **−16** |
+| **after a boot** | **60** | **Intermediate** | **−16** |
+
+So the headline number on the card, and the level the athlete is told they are,
+both read a stale entry — permanently, because the boot did not put it right.
+
+**`dedupeMeasurements()` sorts its own twin and says why**, in a comment
+written for exactly this: *"some readers take the raw last row, others sort
+first — an out-of-order import made them disagree about now."* One list learned
+it and the other did not.
+
+**A date that is not a date is not a place in time, so the row goes** — the same
+call the twin makes, and the one that makes the sort mean anything. A dateless
+entry was the worst case measured: it survived the old filter and became
+*"now"*, so **the ring showed 12** where the athlete's latest real score was 76.
+Every writer stamps `todayISO()`, so only an import can carry one — and both
+v396 upgrade fixtures were checked first, so dropping costs a real upgrading
+athlete nothing.
+
+### The guard caught my own setup, which is what a guard is for
+
+The guard pinning the sibling's behaviour failed on correct code. It seeded a
+history of three and passed a fourth score — but `commitAssessment()` **pushes
+the new entry before the results screen renders**, so `hist[length-1]` is the
+assessment being shown and `hist[length-2]` is the previous test. The seed was
+a state the app never produces. **Read what the WRITER writes before believing a
+fixture**, in both directions — the sixth entry under that rule.
+
+### Two escapes, and only one was a weak check
+
+- **`cur.length>2` is EQUIVALENT and always will be.** At exactly two entries
+  `cur[0]` IS `cur[length-2]`, so `prev === first` and `run === d` by
+  construction — the `run!==d` test alone already suppresses the line there,
+  and the branch above returns below two. Kept as intent, and recorded rather
+  than papered over with a check that cannot fail.
+- **Sorting by SCORE rather than by date escaped, and that was my seed.** The
+  three entries rose in the same order as their dates, so the two orderings
+  gave the identical answer. Only a history whose scores are **not monotonic
+  with its dates** discriminates — 50 → 60 → 76 → **62** — and that is exactly
+  the athlete this round is about. With it, the ring must show the **newest**
+  test (62) rather than the best one (76), and the mutant fails by name.
+
+### The floors
+
+Two comparable tests must be **byte-identical** and carry no run figure; an
+ordered history must be untouched; the repair must be a **fixed point** (v390 —
+a repair that changes a settled state fires *"we repaired your data"* at every
+athlete on every boot); a real single-entry v396 history must survive; and the
+*"scoring changed"* branch must be untouched.
+
+### And the other three Progress visuals came back clean
+
+Measured before anything was changed, which is what left one axis to fix rather
+than four:
+
+- **the heatmap** — 28 cells, 8 lit, and `last28Count()` also 8; the two days
+  seeded outside the window are correctly excluded.
+- **the waist goal bar** — 60% and 6.0 cm to go against a derivation of exactly
+  60% and 6; it already sorts its own copy, with a comment saying *"same 'now'
+  as the tile, always"*.
+- **the transformation pair** — no claim to check; it renders the two physique
+  rows and the projection, and v309 owns the projection copy.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
