@@ -4981,6 +4981,275 @@ export default async function run() {
       groc.many);
   }
 
+  // ---- v496: a badge is a claim about what the athlete did ----------------
+  /* TWO BADGES FIRED FOR DECLINING THE THING THEY NAME. skipBaseline() writes
+     a real STATE.baseline stamped estimated:true, and the check was
+     !!STATE.baseline — so "Know Your Numbers - Finish the baseline assessment"
+     lit up for an athlete who skipped it. skipReassess() and discardRetest()
+     write a record stamped deferred:true, and the check counted KEYS — so
+     "Levelled Up - Complete a re-test" lit up for a deferral.
+
+     The app already knew, in three places: latestTestDate() and both arms of
+     assessSeries() skip a deferred record, and Progress > Strength renders
+     "Estimated, never tested" off the very field the badge was calling
+     finished. So the Awards pane said Know Your Numbers beside a pane saying
+     the athlete never tested - one tab, two answers.
+
+     v419 fixed this badge's KEY counting (a junk key unlocked it) and never
+     asked whether the RECORD was a re-test. Fixing one instance is not fixing
+     the class, on the same badge.
+
+     Neither fix un-awards: checkAchievements() only ever sets, so an athlete
+     who already earned one from a skip keeps it. That is pinned below - taking
+     a badge back off somebody who has been shown it is worse than the defect. */
+  {
+    const claim = await page.evaluate(async () => {
+      history.back = () => {};
+      const o = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() - d); return localISO(x); };
+      checkAchievements();
+      const base = JSON.stringify(STATE);
+      const reset = () => { STATE = JSON.parse(base); normalizeState(); checkAchievements(); };
+
+      o.descBaseline = ACHIEVEMENTS.find(a => a.id === 'baseline').desc;
+      o.descRetest   = ACHIEVEMENTS.find(a => a.id === 'retest').desc;
+
+      /* GUARD: the record really carries the flag the fix reads. Without this
+         every assertion below is satisfied by a writer that stopped stamping. */
+      reset(); STATE.baseline = null; STATE.achievements = {};
+      skipBaseline();
+      o.skipStamps = !!(STATE.baseline || {}).estimated;
+      logWater(1);                       // any unrelated action runs the checker
+      o.skipAwardsBaseline = !!STATE.achievements.baseline;
+      go('progress'); setProgressTab('strength');
+      o.skipScreenSaysNeverTested = /Estimated, never tested/
+        .test(document.querySelector('#v-progress').innerText);
+
+      /* FLOOR: a real baseline still awards, and the screen stops saying it. */
+      reset(); STATE.achievements = {};
+      STATE.baseline = { date: todayISO(), score: 62, level: 'Intermediate', testCount: TESTS.length,
+        maxes: { plank:75, side:40, hollow:30, lower:12, dyn:25, push:20, pull:8, squat:30, power:14, stamina:18 } };
+      checkAchievements();
+      o.realAwardsBaseline = !!STATE.achievements.baseline;
+      go('progress'); setProgressTab('strength');
+      o.realScreenSaysNeverTested = /Estimated, never tested/
+        .test(document.querySelector('#v-progress').innerText);
+
+      reset(); STATE.achievements = {}; STATE.reassess = {}; STATE.progressPtr = SESSIONS_PER_CYCLE;
+      skipReassess();
+      o.deferStamps = Object.values(STATE.reassess || {}).every(r => !!r.deferred);
+      o.deferKeys = Object.keys(STATE.reassess || {}).length;
+      logWater(1);
+      o.deferAwardsRetest = !!STATE.achievements.retest;
+
+      /* The OTHER deferral writer - an off-day re-test discarded rather than
+         recorded. Two writers, one predicate. */
+      reset(); STATE.achievements = {}; STATE.reassess = {}; STATE.progressPtr = SESSIONS_PER_CYCLE;
+      assessState = { reassess: 1 };
+      discardRetest();
+      o.discardKeys = Object.keys(STATE.reassess || {}).length;
+      logWater(1);
+      o.discardAwardsRetest = !!STATE.achievements.retest;
+
+      /* FLOOR: a real re-test still awards. */
+      reset(); STATE.achievements = {}; STATE.reassess = {};
+      STATE.reassess[1] = { date: todayISO(), score: 70, level: 'Advanced', maxes: { plank: 90 } };
+      checkAchievements();
+      o.realAwardsRetest = !!STATE.achievements.retest;
+
+      /* FLOOR: nothing is taken back off an athlete who already earned it. */
+      reset();
+      STATE.baseline = { date: todayISO(), estimated: true, level: 'Intermediate', score: null,
+        maxes: { plank:30, side:20, hollow:15, lower:8, dyn:20, push:12, pull:6, squat:22, power:10, stamina:12 } };
+      STATE.reassess = { 1: { date: todayISO(), deferred: true, maxes: { plank: 30 } } };
+      STATE.achievements = { baseline: '2026-01-01', retest: '2026-02-01' };
+      checkAchievements();
+      o.keptBaseline = STATE.achievements.baseline;
+      o.keptRetest   = STATE.achievements.retest;
+
+      /* FLOOR: the three readers re-pointed at the predicate still work. A
+         deferred record must be skipped and the real ones kept. */
+      reset();
+      STATE.baseline = { date:'2026-01-01', score:55, level:'Intermediate',
+        maxes:{ plank:60, side:30, hollow:20, lower:9, dyn:20, push:15, pull:6, squat:25, power:11, stamina:14 } };
+      STATE.reassess = {
+        1: { date:'2026-03-01', score:62, level:'Intermediate', maxes:{ plank:75 } },
+        2: { date:'2026-05-01', deferred:true, maxes:{ plank:75 } },
+        3: { date:'2026-07-01', score:70, level:'Advanced', maxes:{ plank:90 } } };
+      o.latestTestDate = latestTestDate();
+      o.seriesDates = assessSeries().map(p => p.date);
+      o.retestCount = retestDoneCount();
+
+      /* Both predicates are consulted from narrow branches, so their own
+         contracts are pinned directly. A record with no maxes is not reachable
+         today - every writer stamps them - so it is exercised here rather than
+         recorded as equivalent. */
+      o.contract = {
+        noRecord:  isRealRetest(null),
+        noMaxes:   isRealRetest({ date: '2026-01-01' }),
+        deferred:  isRealRetest({ date: '2026-01-01', maxes: { plank: 30 }, deferred: true }),
+        real:      isRealRetest({ date: '2026-01-01', maxes: { plank: 30 } }),
+      };
+      reset(); STATE.baseline = null;
+      o.contractNoBaseline = baselineTested();
+      await wait(0);
+      reset(); return o;
+    });
+
+    t.ok('guard: skipping the baseline really stamps it estimated', claim.skipStamps,
+      JSON.stringify(claim));
+    t.ok('guard: deferring a re-test really writes a record and stamps it deferred',
+      claim.deferStamps && claim.deferKeys === 1, JSON.stringify(claim));
+    t.ok('guard: the badge really claims the athlete finished it',
+      /Finish the baseline/.test(claim.descBaseline) && /Complete a re-test/.test(claim.descRetest),
+      claim.descBaseline + ' | ' + claim.descRetest);
+
+    t.ok('skipping the baseline no longer claims "Know Your Numbers"',
+      claim.skipAwardsBaseline === false, JSON.stringify(claim));
+    t.ok('and the screen beside it still says the athlete never tested',
+      claim.skipScreenSaysNeverTested, JSON.stringify(claim));
+    t.ok('deferring a re-test no longer claims "Levelled Up"',
+      claim.deferAwardsRetest === false, JSON.stringify(claim));
+    t.ok('nor does discarding an off-day one - two writers, one predicate',
+      claim.discardAwardsRetest === false && claim.discardKeys === 1, JSON.stringify(claim));
+
+    /* THE FLOORS. Every over-eager fix fails one of these: a predicate that
+       answers false for everything deletes both badges outright, and one that
+       un-awards takes a badge back off somebody who has seen it. */
+    t.ok('FLOOR: a real baseline still awards it', claim.realAwardsBaseline,
+      JSON.stringify(claim));
+    t.ok('FLOOR: and that screen stops saying "never tested"',
+      claim.realScreenSaysNeverTested === false, JSON.stringify(claim));
+    t.ok('FLOOR: a real re-test still awards it', claim.realAwardsRetest,
+      JSON.stringify(claim));
+    t.eq('FLOOR: a badge already earned from a skip is kept, with its own date',
+      claim.keptBaseline + '|' + claim.keptRetest, '2026-01-01|2026-02-01');
+    t.eq('FLOOR: latestTestDate() still skips the deferred record',
+      claim.latestTestDate, '2026-07-01');
+    t.eq('FLOOR: and the strength chart plots the baseline and both real re-tests',
+      (claim.seriesDates || []).join(','), '2026-01-01,2026-03-01,2026-07-01');
+    t.eq('FLOOR: two real re-tests out of three records', claim.retestCount, 2);
+    t.eq('the predicate itself: no record / no maxes / deferred / real',
+      [claim.contract.noRecord, claim.contract.noMaxes,
+       claim.contract.deferred, claim.contract.real].join(','),
+      'false,false,false,true');
+    t.ok('and no baseline at all is not a tested one', claim.contractNoBaseline === false,
+      JSON.stringify(claim.contractNoBaseline));
+
+    /* AND THE RULE HAS TO BE ASKED FOR. The three readers each carried their
+       own inline copy of the deferred test, so reverting one is BYTE-IDENTICAL
+       today and no rendered check can see it - only the source can. That is
+       the drift the helper exists to stop: a fourth flag would be taught to
+       one reader and forgotten for the others. */
+    {
+      const src = await page.evaluate(() => {
+        const raw = [...document.querySelectorAll('script:not([src])')]
+          .map(s => s.textContent).sort((a, b) => b.length - a.length)[0];
+        const clean = raw.replace(/\/\*[\s\S]*?\*\//g, ' ')
+                         .split('\n').map(l => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+        return {
+          ok: clean.length > 500000,
+          deferredTests: (clean.match(/!\s*r\.deferred/g) || []).length,
+          estimatedTests: (clean.match(/\.baseline\.estimated/g) || []).length,
+          asks: (clean.match(/isRealRetest\(/g) || []).length,
+          asksBaseline: (clean.match(/baselineTested\(/g) || []).length,
+        };
+      });
+      t.ok('guard: the scan read the app with its comments stripped', src.ok, JSON.stringify(src));
+      t.eq('the deferred test is written exactly once', src.deferredTests, 1);
+      t.eq('and the estimated test exactly once', src.estimatedTests, 1);
+      /* MEASURED, not guessed: isRealRetest( is its own declaration plus
+         latestTestDate() and both arms of assessSeries(); baselineTested( is
+         its declaration, the badge check and the "never tested" render.
+         retestDoneCount() passes it by name to .filter, so it is not in the
+         call count. The inline counts above are what catch a revert - a
+         consumer that restates the test takes them to 2. */
+      t.ok('and every consumer asks the predicate rather than restating it',
+        src.asks >= 4 && src.asksBaseline >= 3, JSON.stringify(src));
+    }
+  }
+
+  /* AND THE MIRROR: a badge that does NOT fire for a thing that did happen.
+     Two writers move a badge input and never asked the checker.
+
+     quickFinish() writes quickLog, which computeStreak() reads as a training
+     day - the whole point of the round that added it. So a 14th consecutive
+     quick day really does earn Unstoppable, and the cabinet sat at three.
+     hurtStop()'s no-work branch advances progressPtr past a block boundary,
+     while the OTHER branch of that same function hands to playerFeel(), which
+     checks 650 ms later: one of a pair guarded and its twin not.
+
+     Neither self-heals on a render or a tab switch - measured. It catches up
+     only when some unrelated action checks (a sip of water, a habit tick),
+     which the athlete a quick session exists for may not take for days. */
+  {
+    const mirror = await page.evaluate(async () => {
+      history.back = () => {};
+      const o = {}; const wait = ms => new Promise(r => setTimeout(r, ms));
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() - d); return localISO(x); };
+      checkAchievements();
+      const base = JSON.stringify(STATE);
+      const reset = () => { STATE = JSON.parse(base); normalizeState(); checkAchievements(); };
+
+      reset(); STATE.logs = {}; STATE.quickLog = {}; STATE.achievements = {};
+      for (let d = 13; d >= 1; d--) STATE.quickLog[iso(d)] = 1;
+      checkAchievements();
+      o.beforeStreak = computeStreak();
+      o.beforeHas14 = !!STATE.achievements.streak14;
+      quickFinish(); await wait(300);
+      o.afterStreak = computeStreak();
+      o.afterHas14 = !!STATE.achievements.streak14;
+
+      reset(); STATE.progressPtr = SESSIONS_PER_CYCLE - 1; delete STATE.achievements.block;
+      o.painBeforePtr = STATE.progressPtr;
+      o.painBeforeHas = !!STATE.achievements.block;
+      const s = buildSession(STATE.progressPtr);
+      PLAYER = { sess: s, items: s.main, i: 0, free: false, hist: false, phase: 'work' };
+      hurtStop(); await wait(300);
+      o.painAfterPtr = STATE.progressPtr;
+      o.painAfterHas = !!STATE.achievements.block;
+
+      /* FLOOR: a BONUS session's pain stop closes no slot, so it must move
+         neither the pointer nor the cabinet. */
+      reset(); STATE.progressPtr = SESSIONS_PER_CYCLE - 1; delete STATE.achievements.block;
+      const s2 = buildSession(STATE.progressPtr);
+      PLAYER = { sess: s2, items: s2.main, i: 0, free: true, hist: false, phase: 'work' };
+      hurtStop(); await wait(300);
+      o.freePtr = STATE.progressPtr;
+      o.freeHas = !!STATE.achievements.block;
+
+      /* FLOOR: a quick session that completes NO streak awards nothing. */
+      reset(); STATE.logs = {}; STATE.quickLog = {}; STATE.achievements = {};
+      checkAchievements();
+      quickFinish(); await wait(300);
+      o.loneQuick = { streak: computeStreak(), has3: !!STATE.achievements.streak3 };
+
+      reset(); return o;
+    });
+
+    t.eq('guard: a 14th consecutive quick day really is a 14-day streak',
+      mirror.beforeStreak + '->' + mirror.afterStreak, '13->14');
+    t.ok('guard: and the badge was genuinely not held before it',
+      mirror.beforeHas14 === false, JSON.stringify(mirror));
+    t.ok('a quick session that completes a streak records the badge',
+      mirror.afterHas14, JSON.stringify(mirror));
+
+    t.eq('guard: a pain stop really advances the pointer onto a block boundary',
+      mirror.painBeforePtr + '->' + mirror.painAfterPtr,
+      (mirror.painAfterPtr - 1) + '->' + mirror.painAfterPtr);
+    t.ok('guard: and the block badge was genuinely not held before it',
+      mirror.painBeforeHas === false, JSON.stringify(mirror));
+    t.ok('a pain stop onto a block boundary records Block Complete',
+      mirror.painAfterHas, JSON.stringify(mirror));
+
+    t.ok('FLOOR: a BONUS pain stop moves neither the pointer nor the cabinet',
+      mirror.freePtr === mirror.painBeforePtr && mirror.freeHas === false,
+      JSON.stringify(mirror));
+    t.ok('FLOOR: a lone quick session with no streak behind it awards nothing',
+      mirror.loneQuick.streak === 1 && mirror.loneQuick.has3 === false,
+      JSON.stringify(mirror));
+  }
+
   await browser.close();
 
   // ---- the readiness deload, in the timezone it was broken in --------------

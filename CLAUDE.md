@@ -20757,6 +20757,126 @@ wrinkle here is that the teardown is **mid-file** rather than at the end, so
 "append before the teardown" is not the fix — the block starts its own server
 and closes it, which is what a self-contained block should do anyway.
 
+## A badge is a claim about what the athlete did (v496)
+
+Found by sweeping an axis nobody had driven: **the badge cabinet, and whether
+it agrees with what actually happened.** It disagrees in both directions.
+
+### Two badges fired for DECLINING the thing they name
+
+`skipBaseline()` writes a real `STATE.baseline` — estimated from a dropdown,
+stamped `estimated:true`, `score:null` — and the check was `!!STATE.baseline`.
+`skipReassess()` and `discardRetest()` each write a record stamped
+`deferred:true`, and the check counted **keys**. Measured, on the next
+unrelated action (a sip of water):
+
+| the athlete | the badge they were given |
+|---|---|
+| skipped the baseline | **📋 Know Your Numbers — "Finish the baseline assessment"** |
+| deferred the re-test | **📈 Levelled Up — "Complete a re-test"** |
+
+**THE APP ALREADY KNEW, IN THREE PLACES.** `latestTestDate()` and both arms of
+`assessSeries()` skip a deferred record; and Progress ▸ Strength renders
+**"Estimated, never tested"** off the very field the badge was calling
+finished. So one tab gave two answers: the Awards pane said *Know Your
+Numbers* beside a pane saying the athlete had never tested. That is v284's
+sentence — *the codebase already knew the shape and one reader asked the other
+question* — on the cabinet rather than on a repair.
+
+**v419 fixed this badge's KEY counting and never asked whether the RECORD was
+a re-test.** That round unlocked-proofed `retest` against a junk key
+(`{'not-a-cycle': …}`) in `normalizeState()`. A deferred record has a perfectly
+legal cycle key. *Fixing one instance is not fixing the class*, on the same
+badge.
+
+**NEITHER FIX UN-AWARDS.** `checkAchievements()` only ever sets, so an athlete
+who already earned one from a skip keeps it, with its original date. That is
+pinned as a floor: taking a badge back off somebody who has been shown it is
+worse than the defect.
+
+**One definition each, asked by every consumer** — `baselineTested()` and
+`isRealRetest()`, so the screen and the cabinet cannot answer differently
+again. Reverting a reader to its own inline copy is **byte-identical today**,
+so only a source assertion can see it: the deferred test and the estimated
+test each appear exactly once. That is v322's `WEIGHTS_PATTERNS` lesson, and
+it is what catches two of the mutants and nothing else does.
+
+### And the mirror: a badge that did NOT fire for a thing that happened
+
+Two writers move a badge input and never asked the checker.
+
+**`quickFinish()` writes `quickLog`, which `computeStreak()` reads as a
+training day** — the whole point of the round that added it, whose own comment
+says quick sessions *"used to write a counter nothing read: no log, no streak,
+no heatmap square."* So the round that made a quick session count for the
+streak did not tell the badges. Measured on a 14th consecutive quick day:
+
+| | |
+|---|---|
+| the streak | 13 → **14** |
+| `streak14` true | yes |
+| the **Badges** tile | **3** |
+| recorded | **no** |
+
+**It does not self-heal on a render or a tab switch** — measured. It catches
+up only when some unrelated action checks: a sip of water, a habit tick, a
+logged rest day. An athlete who only does quick sessions is exactly the
+athlete a quick session exists for, and `sessionsDoneCount()` is **0** for
+them — so the three streak badges are the only ones they can reach at all.
+
+**`hurtStop()`'s no-work branch advances `progressPtr` past a block
+boundary**, and the OTHER branch of that same function hands to `playerFeel()`,
+which checks 650 ms later. *One of a pair guarded and its twin not*, inside one
+function. Measured: pointer 41 → 42, `block` true, not recorded, no self-heal.
+
+**The floors carry the round**, and each over-eager twin fails one: a real
+baseline and a real re-test must still award, an already-earned badge must be
+kept, a BONUS pain stop must move neither the pointer nor the cabinet (v490),
+and a lone quick session with no streak behind it must award nothing.
+
+### Two probe errors, and both are rules already in this file
+
+- **"A stored photo does not check."** It does — `onPhotoPicked()` runs
+  `if(ok){save();renderProgress();checkAchievements();}`. My probe pushed the
+  row into `STATE.photos` directly instead of driving the real route.
+  *Confirm the control's real shape before believing the result.*
+- **A source scan for "writers that move a badge input" reported 60 hits and
+  most were READERS.** `\.habits\s*\[` matches a read as readily as a write,
+  and `skipLog` matches any mention at all. *A detector that can match ordinary
+  app content is not measuring what you named* — the ninth entry. The empirical
+  drive is what found every real member.
+
+**And I asserted a call count I had not measured.** The source rule first
+demanded `isRealRetest(` at least 5 times and `baselineTested(` at least 4;
+the app has **4 and 3** — `retestDoneCount()` passes the predicate to
+`.filter` by name, so it is not in the call count at all. The check failed on
+correct code and the numbers came from a measurement rather than from a guess.
+
+### A duplicate call is not a moved call, and this function only ever SETS
+
+Fourteen mutants. One read as an escape and it was a **bad mutant**, in a shape
+worth naming because `checkAchievements()` invites it.
+
+The seed for *"`hurtStop()` asks BEFORE the pointer moves"* **PREPENDED** a
+second `try{checkAchievements();}catch(e){}` above the pointer advance and left
+the real one where it was. So the branch called the checker twice — once at
+pointer 41, once at 42 — and **the second call still awards the badge**, because
+this function only ever sets. Nothing observable changed, so no check could have
+caught it.
+
+**A mutant that ADDS a call to a set-only, idempotent function is equivalent by
+construction.** The faithful version has to MOVE the call: delete it from below
+`try{render();}catch(e){}` and insert it above the pointer advance. Seeded that
+way it fails by name on `a pain stop onto a block boundary records Block
+Complete`, reading `painAfterPtr:42, painAfterHas:false` — the pointer moved and
+the cabinet did not.
+
+*A fix with two edits needs a mutant with two* (v363, v403), and here the two
+edits are one deletion and one insertion. **Read the mutant back before
+rewriting the check** — the check was correct throughout.
+
+Fourteen mutants, all caught.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
