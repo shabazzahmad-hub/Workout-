@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='496';
+const APP_VERSION='497';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -10993,16 +10993,25 @@ function assessSubs(){
   try{TESTS.forEach(t=>{const sw=safeSwap(t.ex);if(sw!==t.ex)out[t.id]=sw;});}catch(e){}
   return out;
 }
+/* THREE ANSWERS, NOT TWO. sameMovement() answers false for two different
+   reasons - a record with no `subs` stamp at all (unknown), and one that names a
+   genuine substitute (different) - and the strength trend printed ONE sentence
+   for both: "A flagged joint meant this test used a different movement".
+   Measured with no joint flagged at all: a legacy baseline written before the
+   stamp existed, and an estimated one, both got that sentence. v321 already drew
+   this distinction in testBreakdownHTML() and the chart never got it - naming
+   the wrong reason leaves the athlete nothing to act on. */
+function movementCompare(recA,recB,testId){
+  try{
+    const a=recA&&recA.subs, b=recB&&recB.subs;
+    if(!a||!b||typeof a!=='object'||typeof b!=='object')return 'unknown';
+    return ((a[testId]||null)===(b[testId]||null))?'same':'different';
+  }catch(e){return 'unknown';}
+}
 /* Did this test measure the SAME movement in both records? An absent `subs` is
    an older record from before the stamp existed — unknown, not equal, so it
    fails closed and the comparison is skipped rather than trusted. */
-function sameMovement(recA,recB,testId){
-  try{
-    const a=recA&&recA.subs, b=recB&&recB.subs;
-    if(!a||!b||typeof a!=='object'||typeof b!=='object')return false;
-    return (a[testId]||null)===(b[testId]||null);
-  }catch(e){return false;}
-}
+function sameMovement(recA,recB,testId){return movementCompare(recA,recB,testId)==='same';}
 function retestDrop(a){
   try{
     const prev=assessState&&assessState.reassess
@@ -15150,6 +15159,16 @@ function isRealRetest(r){
 function retestDoneCount(){
   try{return Object.values(STATE.reassess||{}).filter(isRealRetest).length;}catch(e){return 0;}
 }
+/* AN ESTIMATE IS NOT A MEASUREMENT. skipBaseline() writes a full set of maxes
+   from a dropdown, stamped estimated:true - right for the engine, which has to
+   prescribe something, and wrong for a chart, which presents a point as a thing
+   that was measured. Progress > Strength said "Estimated, never tested" at the
+   top and drew "30s - Your baseline" underneath it, over a footer claiming "the
+   truest measure of your real strength, not a projection". Same call as the
+   day-90 board, which stopped showing the app's own assumptions as results. */
+function testedRecord(r){
+  try{return !!(isRealRetest(r)&&!r.estimated);}catch(e){return false;}
+}
 const ACHIEVEMENTS=[
   {id:'first',emoji:'🎬',name:'First Rep',desc:'Complete your first workout',check:()=>sessionsDoneCount()>=1},
   {id:'baseline',emoji:'📋',name:'Know Your Numbers',desc:'Finish the baseline assessment',check:()=>baselineTested()},
@@ -19028,7 +19047,7 @@ function assessSeries(){
      precedes its own block's re-tests, so the list is chronological by
      construction — and a record whose junk date the boot repair dropped has no
      key to sort on, which a date sort would silently put first. */
-  const _push=r=>{if(isRealRetest(r))list.push({date:r.date,maxes:r.maxes,subs:r.subs});};
+  const _push=r=>{if(testedRecord(r))list.push({date:r.date,maxes:r.maxes,subs:r.subs});};
   (Array.isArray(STATE.runs)?STATE.runs:[]).forEach(run=>{
     if(!run||typeof run!=='object')return;
     _push(run.baseline);
@@ -19041,7 +19060,10 @@ function assessSeries(){
      the trend withheld a verdict on all of them — a marker that lives only in
      the stored record is not a record, the same shape as the macroDerived
      stamp saveFood() used to drop. */
-  if(STATE.baseline&&STATE.baseline.maxes)list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes,subs:STATE.baseline.subs});
+  /* THE LIVE ARM ASKS THE SAME QUESTION AS THE ARCHIVED ONE. This pushed on
+     `maxes` alone, so the two were not symmetric: an archived estimated
+     baseline was filtered and the live one was drawn. */
+  if(testedRecord(STATE.baseline))list.push({date:STATE.baseline.date,maxes:STATE.baseline.maxes,subs:STATE.baseline.subs});
   /* skipReassess() carries the previous block's maxes forward stamped with
      today's date and flagged deferred. Plotting those drew a dead-flat strength
      trend from tests that never happened — which reads as a plateau, which is
@@ -19050,7 +19072,13 @@ function assessSeries(){
   return list;
 }
 function strengthTrendHTML(){
-  const series=assessSeries();if(!series.length)return '';
+  const series=assessSeries();
+  /* NOT A SILENT BLANK. With the estimate filtered out, a skipper's series is
+     empty and this used to return '' - so the whole section vanished from the
+     one pane that is about testing, with nothing saying why. A blank that
+     explains itself is the day-90 board's rule. */
+  const estOnly=!series.length&&!!(STATE.baseline&&STATE.baseline.maxes)&&!baselineTested();
+  if(!series.length&&!estOnly)return '';
   const m=STRENGTH_METRICS.find(x=>x.k===strengthSel)||STRENGTH_METRICS[0];
   const disp=v=>m.unit==='time'?fmtTime(v):plural(v,'rep');
   const chips=STRENGTH_METRICS.map(x=>`<button class="chip ${x.k===strengthSel?'on':''}"${pressed(x.k===strengthSel)} onclick="setStrengthMetric('${x.k}')">${x.label}</button>`).join(' ');
@@ -19065,7 +19093,12 @@ function strengthTrendHTML(){
      athlete who improved. The chart still plots every point, because each one
      is a real thing that happened; what is withheld is the ▲/▼ verdict, which
      is the part that would be a lie. */
-  const _mixed=pts.length>=2&&pts.some(p=>!sameMovement(pts[0].rec,p.rec,m.k));
+  /* A GENUINE SWAP OUTRANKS A MISSING STAMP: if any pair really did change
+     movement that is the stronger fact and the better explanation. */
+  const _cmp=pts.slice(1).map(p=>movementCompare(pts[0].rec,p.rec,m.k));
+  const _diff=_cmp.some(c=>c==='different');
+  const _unknown=!_diff&&_cmp.some(c=>c==='unknown');
+  const _mixed=_diff||_unknown;
   let body;
   if(pts.length>=2){
     const vals=pts.map(p=>p.v),dates=pts.map(p=>p.date);const first=vals[0],last=vals[vals.length-1],d=last-first;
@@ -19073,11 +19106,14 @@ function strengthTrendHTML(){
       `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="tiny muted">${disp(first)}</span>${_mixed
         ? `<span class="tiny" style="font-weight:800;color:var(--gold)">— not comparable</span>`
         : `<span class="tiny" style="font-weight:800;color:${d>=0?'var(--green)':'var(--pink)'}">${d>=0?'▲ +':'▼ '}${m.unit==='time'?fmtTime(Math.abs(d)):plural(Math.abs(d),'rep')}</span>`}<span class="tiny muted">${disp(last)}</span></div>`
-      +(_mixed?`<div class="tiny muted" style="margin-top:6px;color:var(--gold)">A flagged joint meant this test used a <b>different movement</b> in one of these records, so the change is not a like-for-like comparison.</div>`:'');
+      +(_diff?`<div class="tiny muted" style="margin-top:6px;color:var(--gold)">A flagged joint meant this test used a <b>different movement</b> in one of these records, so the change is not a like-for-like comparison.</div>`:'')
+      +(_unknown?`<div class="tiny muted" style="margin-top:6px;color:var(--gold)">One of these records <b>predates the app noting which movement each test used</b>, so it cannot be checked against the others. Both numbers are real — only the comparison is withheld. From your next re-test on it will be shown.</div>`:'');
   }else if(!pts.length){
     // an imported backup can carry baseline.maxes as {} — pts[0] then threw and
     // took the whole Progress tab down through the render boundary
-    body=`<div class="tiny muted" style="margin-top:12px">No numbers for this lift yet — they appear after your baseline or a re-test.</div>`;
+    body=estOnly
+      ? `<div class="tiny muted" style="margin-top:12px">Nothing tested yet. Your starting numbers came from the experience level you picked, not from an effort, so there is nothing honest to chart. Take the baseline above and this fills in.</div>`
+      : `<div class="tiny muted" style="margin-top:12px">No numbers for this lift yet — they appear after your baseline or a re-test.</div>`;
   }else{
     body=`<div class="center" style="margin-top:14px"><div style="font-size:30px;font-weight:900">${disp(pts[0].v)}</div><div class="tiny muted" style="margin-top:6px">Your baseline. Re-test after week ${WEEKS_PER_CYCLE} to chart your climb.</div></div>`;
   }
