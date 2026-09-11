@@ -21373,6 +21373,107 @@ floors exist:
 | the real peak week loses its arrow | week 5 keeps its up-arrow |
 
 
+## The pane promised the joints and the sheet never named one (v501)
+
+A fresh axis: **the Reference ▸ Moves pane, against the note printed above it.**
+That note has said, since v314:
+
+> Every movement the app can put in front of you, filtered to the kit you own.
+> Tap one for the how-to, the photo and **the joints it loads**.
+
+Two claims. **The first is TRUE, and measuring it first is what left one thing
+to fix rather than two**: the pane's own gear filter and `hasGearFor()` agree
+exactly — 140 movements each, no difference in either direction — so the
+fourth copy of that body v355 recorded is still equivalent and was left alone.
+
+**The second is false.** `openExerciseInfo()` renders the name, the region, the
+unit, the photo, the why, the steps, the cues and the mistakes. No joint, ever:
+
+| movement | the app flags | the sheet said |
+|---|---|---|
+| Push-Up | wrist | nothing |
+| Pistol Squat | knee | nothing |
+| Controlled Crunch | lower back | nothing |
+| Bench Dip | shoulder, elbow | the words appear inside a **coaching cue** |
+
+The last row is the one that makes a text search useless here: two of six probes
+"mentioned" a joint and neither was a statement about what the movement loads.
+
+**150 of 198 movements carry a flag.** And for an athlete who has flagged a
+shoulder and a wrist, **56 of the 140 rows on that pane load one of them, with
+0 rows marked** — while the custom builder has marked its own rows with a ⚠️
+since v267. *One of a pair guarded and its twin not*, on the list an athlete
+BROWSES rather than picks from.
+
+### Two facts, and they are not the same question
+
+| what | reads | shown |
+|---|---|---|
+| what a movement LOADS | `JOINT_RISK` | on every sheet, flagged or not |
+| whether YOU flagged one | `jointRisky()` | the row ⚠️ and the warning note |
+
+**The parallettes relief is what proves that is a real split rather than a tidy
+one.** With push-up bars and a flagged wrist, raw `JOINT_RISK` says the push-up
+is risky and `jointRisky()` says it is not — the exact false alarm v285 records
+a probe making by reading the map raw. So the sheet still LISTS the wrist (a
+fact about the movement) and there is no ⚠️ and no warning (a fact about this
+athlete).
+
+**And the relief needed a sentence.** `wristRelieved()` has been silent on every
+surface since v267: the movement simply stops being swapped. On a sheet that now
+lists the wrist to an athlete who flagged the wrist, silence reads as the app
+not having noticed — so it says *"Your push-up bars cover this one."*
+**A withheld warning needs a sentence**, the same rule v320 and v497 apply to a
+withheld number.
+
+**`jointRisky()` is the right predicate rather than the builder's own
+`safeSwap(k)!==k`, and that was measured**: the two agree on **all 1,584 cases**
+(198 movements × 8 flag sets), so the library asks the direct question rather
+than a second answer to it.
+
+**A movement with no flag says so** rather than rendering an empty section — and
+says what that does NOT mean: *"That is not a promise it cannot hurt you."*
+
+**The legend is derived and fires only when there is something to explain.** A
+count written by hand beside the list that decides it is v397's class, and a
+legend on an unflagged athlete's screen is a note nobody reads.
+
+### One safety sentence, because three copies of it is three places to drift
+
+The builder, the grip formats and now the library each open *"You flagged a
+joint this loads"* and each close by telling the athlete to stop if it pinches.
+**That closing clause IS the stop-for-pain instruction** — the one sentence in
+this app worst served by hand-written copies — so `jointFlagNote(mid, plural)`
+owns the opening and the close and the middle stays per-surface.
+
+Reverting any caller to its own inline copy is **byte-identical on screen**, so
+only a source assertion can see it: the stop sentence is written exactly once
+and all three warnings ask the helper.
+
+### The fix had the defect, and driving it is what found it
+
+The first version marked a joint chip with `jointRisky(exId,[k])`. That asks
+*"IF the athlete had flagged k, would this be risky"* — the map plus the relief,
+and **nothing about this athlete** — so an athlete who had flagged nothing at all
+got a ⚠️ on every joint of every movement. The athlete half is the membership
+test beside it. Reading the diff would not have found it; driving the pane in
+three athlete states did, in one run.
+
+### And the check failed on correct code, on its own seed
+
+`FLOOR: the custom builder still opens with the plural` seeded two movements of
+which **only one was shoulder-risky**, so the app correctly said the singular.
+*A guard is only visible when the branch it names actually fires* — both
+branches are pinned now, with a guard asserting both seeded movements really are
+risky for the flag being tested.
+
+**The guards carry the block.** Without them, *"every flagged row is marked"* is
+satisfied by a library with nothing flagged, *"the sheet names the wrist"* is a
+statement about a movement with no wrist flag, and the relief floor proves
+nothing. The over-eager twins each fail one: marking every row, showing the
+joints only to a flagged athlete, and reading the map raw so a relieved wrist is
+warned about.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

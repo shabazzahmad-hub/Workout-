@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='500';
+const APP_VERSION='501';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9609,7 +9609,7 @@ function actRiskNoteHTML(exId,why){
   try{
     if(!EX[exId]||safeSwap(exId)===exId)return '';
     const alt=EX[safeSwap(exId)];
-    return `<div class="note warn" style="margin-top:0"><b>You flagged a joint this loads.</b> ${_ve(why)}, and your health answers say that is one to be careful with. The programme routes around it elsewhere${alt?` — it gives you ${_ve(alt.name)} instead`:''}. Nothing here is stopping you, but if it pinches or feels wrong, stop.</div>`;
+    return jointFlagNote(`${_ve(why)}, and your health answers say that is one to be careful with. The programme routes around it elsewhere${alt?` — it gives you ${_ve(alt.name)} instead`:''}.`,false);
   }catch(e){return '';}
 }
 /* Generic activity records: STATE.ruckLog / gripLog / boxLog */
@@ -14355,6 +14355,65 @@ function emblemHTML(ex){
     <div style="position:absolute;bottom:9px;right:12px;font-size:11px;font-weight:900;color:rgba(255,255,255,.85);text-transform:uppercase;letter-spacing:1px">${ex.region}</div>
   </div>`;
 }
+/* ONE SAFETY SENTENCE FOR THE THREE SURFACES THAT WARN ABOUT A FLAGGED JOINT.
+   The custom builder, the grip/boxing formats and now the library each open
+   "You flagged a joint this loads" and each close by telling the athlete to
+   stop if it pinches. That closing clause IS the stop-for-pain instruction,
+   and three hand-written copies of a safety sentence is three places for it to
+   drift. The middle is genuinely per-surface, so the middle is the argument. */
+function jointFlagNote(mid,plural){
+  return `<div class="note warn" style="margin-top:0"><b>You flagged a joint ${plural?'some of these load':'this loads'}.</b> ${mid} Nothing here is stopping you, but if it pinches or feels wrong, stop.</div>`;
+}
+/* "TAP ONE FOR THE HOW-TO, THE PHOTO AND THE JOINTS IT LOADS." The Moves pane
+   has promised that since v314 and the sheet never named a single joint.
+   Measured on the real sheet: Push-Up loads the wrist, Pistol Squat the knee
+   and Controlled Crunch the low back, and none of the three said so - the two
+   probes whose text did contain a joint word had it inside a coaching cue,
+   which is prose rather than a statement. 150 of 198 movements carry a flag,
+   and for an athlete who has flagged a shoulder and a wrist, 56 of the 140
+   rows on that pane load one of them with nothing on the row to say so.
+
+   TWO FACTS, AND THEY ARE NOT THE SAME QUESTION.
+   What a movement LOADS is true for everybody, so it is on every sheet and it
+   reads JOINT_RISK. Whether YOU flagged one is about this athlete, so it asks
+   jointRisky() - the one predicate, which honours the parallettes relief.
+   Measured rather than assumed: with push-up bars and a flagged wrist,
+   JOINT_RISK says the push-up is risky and jointRisky() says it is not, which
+   is the exact false alarm v285 records a probe making by reading the map raw.
+
+   AND THE RELIEF NEEDS A SENTENCE. The sheet lists the wrist, the athlete has
+   flagged the wrist, and no warning appears - so it says why, rather than
+   leaving them to wonder whether the app noticed. wristRelieved() has been
+   silent on every surface since v267.
+
+   The joint NAMES come from JOINTS, the registry the health screen renders
+   from, so the two surfaces cannot call the same joint different things. */
+function exJointsHTML(exId){
+  try{
+    if(!EX[exId])return '';
+    const loads=JOINTS.filter(([k])=>(JOINT_RISK[k]||[]).includes(exId));
+    let h=`<div class="section-label">Joints it loads</div>`;
+    if(!loads.length)
+      return h+`<div class="tiny muted" style="margin:0 3px 4px">None of the ${JOINTS.length} this app watches — ${JOINTS.map(([,l])=>l.toLowerCase()).join(', ')}. That is not a promise it cannot hurt you; it means nothing here gets routed around for a flagged joint.</div>`;
+    const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+    /* THE MARKER IS TWO TESTS, AND THE FIRST VERSION HAD ONLY ONE.
+       jointRisky(exId,[k]) asks "IF the athlete had flagged k, would this be
+       risky" - the map plus the relief, and nothing about this athlete. Driven,
+       that put a warning glyph on every joint of every movement for somebody
+       who has flagged nothing at all. The athlete half is the membership test
+       beside it; the predicate half is still asked rather than re-derived,
+       because that is what keeps a relieved wrist unmarked on a sheet whose
+       note below says the bars cover it. */
+    h+=`<div class="row" style="gap:6px;flex-wrap:wrap;margin:0 3px 6px">${loads.map(([k,l])=>`<span class="chip">${lims.indexOf(k)>=0&&jointRisky(exId,[k])?'⚠️ ':''}${l}</span>`).join('')}</div>`;
+    if(jointRisky(exId,lims)){
+      const sw=safeSwap(exId),alt=EX[sw];
+      h+=jointFlagNote(`The programme routes around it elsewhere${alt&&sw!==exId?` — it gives you ${_ve(alt.name)} instead`:''}.`,false);
+    }else if(lims.indexOf('wrist')>=0&&wristRelieved(exId)){
+      h+=`<div class="note ok" style="margin-top:0"><b>Your push-up bars cover this one.</b> You flagged your wrist, and the neutral grip on the bars keeps it straight — so the programme still gives you this movement instead of routing around it.</div>`;
+    }
+    return h;
+  }catch(e){return '';}
+}
 function openExerciseInfo(exId){
   const ex=EX[exId];
   openSheet(`
@@ -14368,6 +14427,7 @@ function openExerciseInfo(exId){
     <ul class="cuelist">${ex.cues.map(c=>`<li>${c}</li>`).join('')}</ul>
     <div class="section-label">Avoid these mistakes</div>
     <ul class="cuelist bad">${ex.mistakes.map(c=>`<li>${c}</li>`).join('')}</ul>
+    ${exJointsHTML(exId)}
     <button class="btn ghost" style="margin-top:14px" onclick="speakExerciseCues('${exId}')">🔊 Hear coaching cues</button>
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Close</button>
   `);
@@ -15830,7 +15890,7 @@ function customRiskHTML(){
     const risky=_custom.filter(k=>EX[k]&&safeSwap(k)!==k);
     if(!risky.length)return '';
     const names=risky.map(k=>EX[k].name).join(', ');
-    return `<div class="note warn" style="margin-top:8px"><b>You flagged a joint ${risky.length>1?'some of these load':'this loads'}.</b> ${_ve(names)} — the programme routes around ${risky.length>1?'these':'it'} elsewhere. Nothing here is stopping you, but if it pinches or feels wrong, stop.</div>`;
+    return jointFlagNote(`${_ve(names)} — the programme routes around ${risky.length>1?'these':'it'} elsewhere.`,risky.length>1);
   }catch(e){return '';}
 }
 function openBuilder(){
@@ -22460,6 +22520,15 @@ function exLibraryHTML(){
   const _g=STATE.profile.gear||[];
   const libHasGear=k=>{const e=EX[k].equip;return !e||e.every(x=>_g.includes(x));};
   const libKeys=Object.keys(EX).filter(libHasGear);
+  /* 56 OF 140 ROWS LOADED A JOINT THE ATHLETE HAD FLAGGED, with nothing on the
+     row to say so. The custom builder has marked its rows with a warning glyph
+     since v267 and this list, which is the one an athlete BROWSES rather than
+     picks from, never got it. jointRisky() is the test - measured, it agrees
+     with the builder's own `safeSwap(k)!==k` on all 1,584 cases (198 movements
+     x 8 flag sets), so this is the direct question rather than a second answer
+     to it. */
+  const _lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+  const libRisky=k=>{try{return jointRisky(k,_lims);}catch(e){return false;}};
   h+=`<div class="section-label">Exercise library · ${libKeys.length}</div>`;
   const REGION_GROUPS=[['anterior','Abs & anterior core'],['oblique','Obliques & waist'],['lower','Lower abs'],['stability','Stability & posterior'],['dynamic','Dynamic finishers'],['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['strength','Compound strength'],['cardio','Cardio / HIIT']];
   const seen={};
@@ -22468,7 +22537,7 @@ function exLibraryHTML(){
     if(!list.length)return;
     h+=`<div class="tiny muted" style="font-weight:800;letter-spacing:.6px;text-transform:uppercase;margin:16px 3px 6px">${label} · ${list.length}</div><div class="card"><div style="padding:2px 0">`;
     list.forEach(k=>{seen[k]=1;const ex=EX[k];
-      h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;align-items:center;gap:10px" onclick="openExerciseInfo('${k}')"><span style="display:flex;align-items:center;gap:10px;min-width:0">${ex.img?`<img src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'" style="width:34px;height:34px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:var(--card2)">`:''}<span style="min-width:0"><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:2px">${ex.region}</span></span></span><span class="muted">ⓘ</span></button>`;
+      h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;align-items:center;gap:10px" onclick="openExerciseInfo('${k}')"><span style="display:flex;align-items:center;gap:10px;min-width:0">${ex.img?`<img src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'" style="width:34px;height:34px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:var(--card2)">`:''}<span style="min-width:0"><b>${libRisky(k)?'⚠️ ':''}${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:2px">${ex.region}</span></span></span><span class="muted">ⓘ</span></button>`;
     });
     h+=`</div></div>`;
   });
@@ -22476,7 +22545,7 @@ function exLibraryHTML(){
   const leftovers=libKeys.filter(k=>!seen[k]);
   if(leftovers.length){
     h+=`<div class="tiny muted" style="font-weight:800;text-transform:uppercase;margin:16px 3px 6px">More · ${leftovers.length}</div><div class="card"><div style="padding:2px 0">`;
-    leftovers.forEach(k=>{const ex=EX[k];h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer" onclick="openExerciseInfo('${k}')"><span><b>${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:4px">${ex.region}</span></span><span class="muted">ⓘ</span></button>`;});
+    leftovers.forEach(k=>{const ex=EX[k];h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer" onclick="openExerciseInfo('${k}')"><span><b>${libRisky(k)?'⚠️ ':''}${ex.name}</b> <span class="tag ${ex.region}" style="margin-left:4px">${ex.region}</span></span><span class="muted">ⓘ</span></button>`;});
     h+=`</div></div>`;
   }
   return h;
@@ -22487,7 +22556,13 @@ function renderRef(){
   if(R==='moves'){
     v.innerHTML=`<h2 class="vtitle">Reference</h2><div class="vsub">Look it up — what to eat, and how to move.</div>`
       +refTabsHTML()
-      +`<div class="note info">Every movement the app can put in front of you, filtered to the kit you own. Tap one for the how-to, the photo and the joints it loads.</div>`
+      +(()=>{/* A LEGEND THAT ALWAYS FIRES IS A LEGEND NOBODY READS, so the count
+              is derived and the clause appears only for an athlete who has
+              flagged something AND has a marked row for it to explain. */
+        let n=0;try{const l=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+          const g=STATE.profile.gear||[];
+          n=Object.keys(EX).filter(k=>{const e=EX[k].equip;return (!e||e.every(x=>g.includes(x)))&&jointRisky(k,l);}).length;}catch(e){n=0;}
+        return `<div class="note info">Every movement the app can put in front of you, filtered to the kit you own. Tap one for the how-to, the photo and the joints it loads.${n?` <b>⚠️ marks the ${n} that load a joint you flagged.</b>`:''}</div>`;})()
       +exLibraryHTML();
     return;
   }
