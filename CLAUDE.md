@@ -21621,6 +21621,145 @@ midsection, the mutant fails by name.
 
 **Suite 10: 305 → 342 checks.**
 
+## The tree promised every rung and the engine routes around some of them (v503)
+
+A fresh axis: **the Program tab's skill trees, against what the engine will
+actually prescribe.** The note above them says, in bold, that you *"unlock
+harder variations automatically as you level up and move through the weeks"*,
+and every locked rung is badged **"unlocks later"**.
+
+The state is pure ladder POSITION — `i<cur`, `i===cur`, `i>cur` — and it asks
+nothing about the three things that decide whether a movement can EVER reach
+this athlete: a flagged joint (`safeSwap`), kit they do not own (`gearSwap`)
+and a room they cannot cross (`spaceSwap`). Measured over the whole 378-session
+programme, against the 29 locked rungs:
+
+| athlete | locked rungs that never arrive |
+|---|---|
+| no flags, full gear | **0** — the promise holds |
+| **shoulder + wrist flagged** | **13 of 29** |
+| no gear at all | 5 of 29 |
+| **no gear, tight room, four joints** | **26 of 29** |
+
+**And the present tense is worse than the future one.** For the shoulder+wrist
+athlete, **two rungs badged "you are here"** and **two badged "unlocked"** are
+movements the programme never gives them — Bear Plank Hold, Tempo Push-Up,
+Knee Push-Up and Push-Up. *"Unlocks later"* is a promise with no code behind
+it; *"you are here"* on a movement you are not doing is a claim about the
+PRESENT. **17 of 53 rows mislabelled, on the athlete this app takes the most
+care with.**
+
+**The engine is right, so the screen is the half that moved** — the v502
+discriminator — and it **NAMES the blocker rather than hiding the row**, which
+is the call v322 made for missing kit and v501 for a flagged joint. A hidden
+row costs the athlete the how-to for a movement they may unlock by buying a bar
+or clearing a flag, so a marked rung stays tappable and a check pins that the
+row count does not change with the athlete.
+
+**It asks the app's own predicates.** `jointRisky()` rather than raw
+`JOINT_RISK`, so the parallettes relief still reads as reachable;
+`gearNeededFor()` supplies the kit name in the gear picker's own words. The
+joint is named only when the athlete flagged it AND the movement loads it —
+the same two tests v501's chip marker needed, for the same reason.
+
+### The first version of the fix shipped the defect it was removing
+
+Closing the last rung meant reaching past `hasGearFor()`. `resolve()` carries
+five hardcoded overrides that read the **legacy `hasBar`/`hasBench` flags**
+rather than `equip`, so `hasGearFor('copenhagen')` is **true** while the
+programme gives it **84 times with a bench and 0 without**.
+
+Hoisting those five into a map the tree could ask was built, measured
+byte-identical across eight programme fingerprints — and **reverted**, because
+driving it found a **false block**: it badged *Hanging Knee Raise* **"needs
+Pull-up bar"** for a barless athlete who nonetheless **does** get it, because
+`gearSwap()`'s ladder-walk lands on it from `kneetoelbow` above. That is the
+same lie pointed the other way, and it is the defect this round exists to
+remove.
+
+A truthful test needs `gearSwap`'s walk rule a second time, and **a second copy
+of an engine rule is the drift this file fixes everywhere else**. So one rung,
+for one athlete shape, is recorded rather than closed by guessing — with the
+measurement beside it in the code, and a check pinning that the residual is one
+and cannot grow.
+
+**Reading the change back is what caught it**, not reading the diff. The
+measurement that found it is the one that matters: *no rung the tree marks as
+ruled out is ever prescribed*, swept across four athlete shapes against the
+whole programme rather than asserted on one movement.
+
+### The guards, and what each over-eager twin fails
+
+Without pinning that a fully-equipped unflagged athlete has **zero** blocked
+rungs, every assertion below is about a rule that always fires. Without pinning
+that a flagged athlete's rungs genuinely never arrive, the badge is about a
+predicate rather than about reality. And without pinning that the raw map
+**does** call a wrist-flagged push-up risky while the relief **is** in force,
+nothing proves `jointRisky()` was the necessary predicate.
+
+The floors are the unflagged athlete, byte-identical — 29 locked, 16 unlocked,
+8 here, nothing marked, and the count clause absent. A fix that marked
+everything, or that fired the note for everybody, fails there; one that read
+the raw map fails the relief floor; one that hid the row fails the tappable
+floor.
+
+### And a write that truncated the file
+
+`io.open(p,'w')` truncates **before** the write, so a `UnicodeEncodeError`
+raised while encoding left `index.html` at **0 bytes**. Nothing was lost — the
+tree was clean at HEAD — but the rule is cheap: **encode first, then write
+bytes.** `data = s.encode('utf-8')` on its own line, then `io.open(p,'wb')`.
+A patch script that asserts its anchors and then destroys the file has asserted
+the wrong thing.
+
+The cause was a lone surrogate pair: `'🔒'` written as two `\u`
+escapes is two lone surrogates in Python, not one emoji, and UTF-8 refuses
+them. Use `\U0001F512`.
+
+### Three weak checks, and one mutant that is genuinely equivalent
+
+Twelve seeded, eight caught first time. Reading the four escapes back split
+them cleanly:
+
+- **The label named every joint the move loads, not the ones flagged.**
+  Dropping the membership half of that filter is invisible to any assertion on
+  a SAMPLE label, because a single-joint movement's label is correct either
+  way. *Reverse Plank* is the discriminating case: it loads shoulder, wrist AND
+  lower back, and a shoulder+wrist athlete must read exactly
+  *"flagged — shoulder & wrist"*. Under the mutant it names a joint they never
+  flagged — v501's own chip-marker defect, one surface over.
+- **The glyph and the colour were never asserted.** A row reading
+  *"flagged — wrist"* in green with a tick still READS as unlocked, so the
+  state has to be painted as well as worded. Both are now measured on the row
+  the athlete actually sees, found by its own `onclick`, with the unflagged
+  athlete's identical row pinned beside it as the floor.
+- **The tight-room test is EQUIVALENT and always will be.** Measured across
+  three tight shapes — full gear, no gear, and no gear with four joints flagged
+  — **zero** skill-tree rungs are blocked by `spaceSwap` in any of them:
+  the rule covers inversions and travelling movements, and no ladder rung in
+  `SKILL_TREES` is one. Kept as cover for a future ladder that adds a handstand
+  or a travelling move, and recorded rather than papered over with a check that
+  cannot fail.
+
+### And the install budget tripped, one kilobyte over
+
+The first full run went RED on **2049 KB against 2048**. Not a v503 defect:
+`index.html` grows every version, so that gate fires periodically by design —
+v352, v410, v465 and v490 each hit it. **Moving a file between tiers costs no
+download**, so the fix is always the same, and the only question is which file
+is genuinely not first paint.
+
+`coach-sarge.jpg` earns it, MEASURED rather than reasoned: neither the
+first-run wizard (which uses `hero.jpg`) nor an onboarded athlete's Today tab
+references it. That is **44 KB** of headroom against the **10 KB**
+`privacy.html` and `terms.html` would have bought — and those two are linked
+from the first-run screen, where consent is formed, so they stay.
+
+The patch asserts the RESULT, not only the anchor: exactly one occurrence
+afterwards. v410's own half-applied move left a file in two tiers at once.
+
+**Suite 22: 69 → 99 checks.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
