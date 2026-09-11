@@ -22134,6 +22134,132 @@ itself threw"* rather than naming a check. Carry it out in the payload — the
 are compared against each other with a floor that there is more than one block
 to cover, rather than against a constant restated in the check.
 
+## A canvas is not a screen (v507)
+
+v459 closed the plural class for a count written as a **LITERAL**, with a source
+scan that forbids `1 sets` in the file. v489 closed eighteen more that were built
+by **CONCATENATION** — invisible to that scan — and swept the rendered surfaces
+with one of every record seeded. **Six counts survived both**, and the one that
+matters is drawn on a **canvas**, where no rendered sweep can ever read it:
+
+| surface | printed |
+|---|---|
+| **the share card** — a picture the athlete posts | **`1 sets · 1 moves`** |
+| grip / boxing history row | `1 rounds` |
+| skipping history row | `1 rounds` |
+| jumping-jack day detail | `1 reps` |
+| an imported one-week timeline | `~1 weeks` |
+
+**The share card's text never enters the DOM.** `shareCard()` draws `_share.l`
+onto a 1080px canvas with `fillText`, so the words exist only as pixels in a PNG
+— and v489's sweep, v355's and v391's promise sweeps, and every rendered sweep
+since, enumerate elements. The one place the athlete's count is seen by other
+people is the one place no screen sweep can reach.
+
+**And two of the rendered ones WERE driven — with the wrong value.** Suite 23's
+own injection block mounts `actHistoryHTML('grip')` and `skipHistoryHTML()`, and
+seeds `rounds` at 3 and `secs` at 62. **A sweep is only as wide as the VALUES it
+seeds, as well as the surfaces it enumerates** — the second half of that rule,
+which five rounds of "a sweep is only as wide as the surface it enumerates" had
+not needed to state.
+
+**So the class check is a SOURCE scan**, which is the only kind that reaches a
+canvas — v506's answer, one class over — and the driven checks read `_share.l`,
+the **payload**, rather than the drawn image, which is the container.
+
+### The scan needs no allowlist, and that is why six safe sites moved
+
+A hand-written plural reads `+' week'+(n===1?'':'s')` — a **singular** noun — so
+it does not match; a site that asks `plural()` concatenates no noun at all. What
+was left after the six fixes was six more sites that are **provably never one**:
+`programWeeks()` is at least 54, `painPattern()` fires at two, the smallest
+prescribed rest is 20 s, the Full Tour badge counts 378, `MIN_TRAINING_DAYS` is
+5, and the photo-restore line only fires when at least one was saved and one
+lost.
+
+Each was converted anyway. Every one is a **byte-identical no-op today**, and
+converting them is what leaves the rule with **no exceptions** — the same
+reasoning as *the rule has to be ASKED FOR, not merely declared*. An allowlist of
+six "trust me" entries is a worse check than a scan that returns zero.
+
+**`plural(n, word, show)` gained an optional DISPLAY string**, so the
+jumping-jack detail keeps its thousands separator (`9,000 reps`) and the rule
+still lives in one place. Widening `plural()` to call `toLocaleString()` itself
+would have moved 24 existing call sites' output, which is a change with no defect
+behind it.
+
+### The measurement corrected me on one site
+
+`'Backup restored · '+put+' of '+ids.length+' photos'` reads exactly like the
+same defect. It is not: that branch fires only when `put` is truthy **and** some
+photo was lost, so the count is always two or more. Read the branch's own guard
+before believing a match — the scan's job is to find candidates, not verdicts.
+
+### Two check faults on one block, and the guard named the second
+
+The floor — *a real session still says sets and moves* — failed twice on correct
+code, and each time the setup was the thing that was wrong.
+
+**`playerTeardown()` clears the overlay 400 ms LATER** (v437), so a second
+`openPlayer()` inside that window is torn down with the first: `PLAYER` goes
+null, the marking loop exits, and `_share` still holds the previous card.
+
+**And a session of more than one set RESTS between them.** Marking sets blindly
+parks in the rest phase and never reaches `done`, so `_share` is never rewritten
+— the same symptom from a second cause. Measured, the real sequence is
+`ready → rest → ready → … → done:6`; the loop skips each rest the way the
+athlete does.
+
+**The guard is what separated them.** *"the real session really finished six
+sets across two moves"* printed `sets: 1, moves: 2` — one set across two moves —
+which names the cause in one line. Without it the floor reports only that two
+strings disagree, and the obvious next move is to doubt the app.
+
+### The escaped mutant: a guard on the line ABOVE excused the line below
+
+Ten mutants, and **M10 escaped** — the one that matters most: a brand-new
+surface written with the banned form, which is the next unreachable one and
+which the source scan exists to catch.
+
+The scan skips a hit whose own expression carries a singular branch
+(`n===1?'':'s'`), and it looked back a **raw 160-character window** for one.
+That window reaches the line ABOVE — so the new function was excused by a
+ternary belonging to a different statement entirely.
+
+The lookback is scoped to the **same line** now. Measured both ways on the real
+file: **0 hits either way**, so the narrowing costs nothing, and the four
+genuinely guarded sites all carry their ternary on their own line. The guard
+that pins it is a synthetic two-line source — a ternary on line 1, the offence
+on line 2 — which must be reported.
+
+**A character window is not a scope**, and a filter written as one will excuse
+whatever happens to sit near it.
+
+**The narrowing made the scan STRICTER, so the nine already caught stay
+caught.** This file's rule is that a check LOOSENED to stop racing must be
+re-mutated, because loosening is how a check stops being able to fail. A
+tightened filter is the other direction: it can only report more, never less.
+
+**And the re-seeded anchor had to be taken verbatim from the file.** Retyping
+the guard line by hand gave `BAD ANCHOR (0)` — a measurement that has not
+happened, never a pass.
+
+### And a wait loop that could never end
+
+Three shell waiters from an earlier round had been spinning for **6.6 hours**,
+each on `until ! pgrep -f "tests/run.mjs"; do sleep 10; done`. **The loop's own
+command line contains that string**, so `pgrep -f` always matched itself and the
+condition could never come true.
+
+This file already records two forms of that trap — `pkill -f` killing the shell
+that ran it, and `pgrep -f` over-reporting. A **self-matching wait loop** is the
+third, and the worst, because it fails silently and forever. Wait on a **PID**,
+which cannot match itself:
+
+```
+while kill -0 <pid> 2>/dev/null; do sleep 10; done
+```
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

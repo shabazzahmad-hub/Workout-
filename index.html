@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='506';
+const APP_VERSION='507';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -2431,7 +2431,7 @@ function timelineLabel(w){
   const n=+w;if(!(n>0))return '';
   const hit=TIMELINE_OPTS.find(o=>o.w===n);
   if(hit)return hit.label;
-  return n>=16?('~'+Math.round(n/4.345)+' months'):('~'+n+' weeks');
+  return n>=16?('~'+plural(Math.round(n/4.345),'month')):('~'+plural(n,'week'));
 }
 function phaseOf(cycle){return cycle<PHASE1_CYCLES?1:2;}
 function sessionsFor(cycle){return phaseOf(cycle)===1?SESSIONS:PHASE2_SESSIONS;}
@@ -4202,7 +4202,7 @@ function updatePill(){
   // check re-assessment gate
   const gate=reassessGate();
   if(gate){pm.textContent='Cycle '+(gate+1);ps.textContent='Re-test';return;}
-  if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES){pm.textContent='Complete';ps.textContent=programWeeks()+' weeks';return;}
+  if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES){pm.textContent='Complete';ps.textContent=plural(programWeeks(),'week');return;}
   const pos=posOf(STATE.progressPtr);
   pm.textContent='Week '+((pos.cycle*WEEKS_PER_CYCLE)+pos.week);
   ps.textContent='Cycle '+(pos.cycle+1)+' · Wk '+pos.week;
@@ -6657,7 +6657,7 @@ function day90Rows(){
    out.push({k:'freq', label:'Training frequency', target:'5 useful days a week, no persistent pain',
      got:n+' this week', gotLabel:'sessions logged', scored:true,
      ok:n>=5&&!ph, near:n>=4&&!ph,
-     why:ph?(ph.n+' sessions where '+ph.region+' work hurt. The frequency is only half this target — flag the joint and keep training around it.'):null});}
+     why:ph?(plural(ph.n,'session')+' where '+ph.region+' work hurt. The frequency is only half this target — flag the joint and keep training around it.'):null});}
   return out;
 }
 function day90HTML(){
@@ -8527,7 +8527,7 @@ function plEnterDone(){
       ${fmtTime(PLAYER.elapsed||0)} of that was working${PLAYER.paused?(' · '+fmtTime(PLAYER.paused)+' paused'):''} ·
       <b style="color:${overCol}">${over>0?fmtTime(over)+' over':(over<0?fmtTime(-over)+' under':'bang on')}</b> the ~${PLAYER.budget} min this one should take</div>`;
   _share={t:PLAYER.free?sess.session.name:'Session Complete',s:label,
-    l:[fmtTime(PLAYER.wall||1)+' on the clock',PLAYER.setsDone+' sets · '+PLAYER.items.length+' moves']};
+    l:[fmtTime(PLAYER.wall||1)+' on the clock',plural(PLAYER.setsDone,'set')+' · '+plural(PLAYER.items.length,'move')]};
   if(PLAYER.free){
     // Bonus/weights session — no program commit, just a close button.
     $('#plBody').innerHTML=`
@@ -9771,7 +9771,7 @@ function actHistoryHTML(k){
   const l=actLog(k).slice(0,8);if(!l.length)return '';
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
     l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
-      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist>0?distShow(x.dist)+' · ':''}${x.wt?rowLoadShow(x.wt,x.unit)+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?x.rounds+' rounds · ':''}${_ve(x.date)}</span></span>
+      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist>0?distShow(x.dist)+' · ':''}${x.wt?rowLoadShow(x.wt,x.unit)+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?plural(x.rounds,'round')+' · ':''}${_ve(x.date)}</span></span>
       <button class="chip" aria-label="Remove this activity" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
 }
 /* THE KIT QUESTION, ON THE THIRD PICKING PATH TO SKIP IT. startForceTrain()
@@ -10018,7 +10018,7 @@ function skipHistoryHTML(){
   const l=skipLog().slice(0,8);if(!l.length)return '';
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
     l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
-      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.rounds?x.rounds+' rounds · ':''}${_ve(x.date)}</span></span>
+      <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.rounds?plural(x.rounds,'round')+' · ':''}${_ve(x.date)}</span></span>
       <button class="chip" aria-label="Remove this skipping entry" onclick="removeSkip(${i})">✕</button></div>`).join('')+`</div>`;
 }
 function openSkipping(){
@@ -11780,7 +11780,7 @@ function _briefGreet(){let h=9;try{h=new Date().getHours();}catch(e){}return h<1
    gives region 'dynamic' one timed round — so the coach READ ALOUD "Inchworm
    Walkout, 1 sets of 40 seconds" on 10 of every 54 sessions. A RATIO ("0/3 sets")
    is a different shape and correctly keeps the plural. */
-function plural(n,word){return n+' '+word+(Math.abs(n)===1?'':'s');}
+function plural(n,word,show){return (show===undefined?n:show)+' '+word+(Math.abs(n)===1?'':'s');}
 function _briefList(a){a=(a||[]).filter(Boolean);if(a.length<=1)return a[0]||'';if(a.length===2)return a[0]+' and '+a[1];return a.slice(0,-1).join(', ')+', and '+a[a.length-1];}
 function _briefTarget(m){return m.unit==='time'?(m.target>=60?fmtTime(m.target):plural(m.target,'second')):plural(m.target,'rep');}
 
@@ -13867,7 +13867,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
     /* The side goes FIRST so the next line's cancel() can only clip the
        filler, never the half of the movement the athlete is about to do. */
     if(!quiet){const sp=sidePrefix(label);if(sp)coachSpeak(sp+'Get ready.');else if(!motivate('start'))coachSpeak('Get ready.');}
-  }else if(!quiet){coachSpeak('Rest. '+seconds+' seconds.');}
+  }else if(!quiet){coachSpeak('Rest. '+plural(seconds,'second')+'.');}
   function tick(){
     if(timer)timer.lastTick=monoNow();
     if(phase==='ready'){
@@ -15362,7 +15362,7 @@ const ACHIEVEMENTS=[
      328 sessions — six sevenths of the journey — earned no milestone at all. */
   {id:'s100',emoji:'💯',name:'Century',desc:'100 workouts completed',check:()=>sessionsDoneCount()>=100},
   {id:'s200',emoji:'🛡️',name:'Double Century',desc:'200 workouts completed',check:()=>sessionsDoneCount()>=200},
-  {id:'s378',emoji:'🎖️',name:'Full Tour',desc:(SESSIONS_PER_CYCLE*TOTAL_CYCLES)+' sessions — the complete program',check:()=>sessionsDoneCount()>=SESSIONS_PER_CYCLE*TOTAL_CYCLES},
+  {id:'s378',emoji:'🎖️',name:'Full Tour',desc:plural(SESSIONS_PER_CYCLE*TOTAL_CYCLES,'session')+' — the complete program',check:()=>sessionsDoneCount()>=SESSIONS_PER_CYCLE*TOTAL_CYCLES},
   {id:'blocks3',emoji:'🔷',name:'Three Blocks Deep',desc:'Finish 3 '+WEEKS_PER_CYCLE+'-week blocks',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*3},
   {id:'phase2',emoji:'🏗️',name:'Into Phase 2',desc:'Reach the full-body split',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*2},
   {id:'plank60',emoji:'🧱',name:'Solid Minute',desc:'A prescribed 60s+ hold',check:()=>bestHoldPR()>=60},
@@ -18749,7 +18749,7 @@ function toggleTrainingDay(d){
   if(i<0){cur.push(d);}
   else{
     if(cur.length<=MIN_TRAINING_DAYS){
-      toast(MIN_TRAINING_DAYS+' days is the minimum — the program is paced around it');
+      toast(plural(MIN_TRAINING_DAYS,'day')+' is the minimum — the program is paced around it');
       haptic(20);return;
     }
     cur.splice(i,1);
@@ -20579,7 +20579,7 @@ const CARDIO_INFO={
     note:'Nothing to set up and nothing to carry — a hotel room or a friend&#39;s spare floor is enough.',
     unit:()=>movement().junit,setUnit:setJackUnit,add:addJackVal,
     work:()=>jackWork(),
-    detail:w=>w.reps.toLocaleString()+' reps · '+w.kcal+' kcal',
+    detail:w=>plural(w.reps,'rep',w.reps.toLocaleString())+' · '+w.kcal+' kcal',
     block:c=>jackBlockHTML(c.m,c.short,c.jneed,c.jlvl,c.work),
     timer:'block',
     dayMin:d=>{const v=_dv(d&&d.jackVal);if(!v)return 0;
@@ -24660,7 +24660,7 @@ function importData(e){
           const lost=new Set(ids.filter((id,i)=>!res[i]));
           STATE.photos=(STATE.photos||[]).filter(x=>!(x&&lost.has(x.id)));save();
           toast(put
-            ?'Backup restored · '+put+' of '+ids.length+' photos — this device refused the rest, so they are still only in the file'
+            ?'Backup restored · '+put+' of '+plural(ids.length,'photo')+' — this device refused the rest, so they are still only in the file'
             :'Backup restored, but no photos could be saved on this device — they are still in the backup file',7000);
         }
         prunePhotoBlobs(_keepPh);

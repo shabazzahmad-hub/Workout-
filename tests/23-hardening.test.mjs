@@ -15193,6 +15193,177 @@ export default async function () {
     t.ok('FLOOR: and one press alone does not arm the exit', r.exiting === false, JSON.stringify(r));
   }
 
+  /* v507: A CANVAS IS NOT A SCREEN. v459 closed the plural class for a count
+     written as a LITERAL, with a source scan that forbids `1 sets` in the file.
+     v489 closed eighteen more that were built by CONCATENATION — invisible to
+     that scan — and swept the RENDERED surfaces with one of every record
+     seeded. Six counts survived both, and the one that matters is drawn on a
+     CANVAS: the share card's text never enters the DOM at all, so no rendered
+     sweep can ever read it. Measured before the fix:
+
+         the share card      "1 sets · 1 moves"   <- a picture the athlete posts
+         grip/box history    "1 rounds"
+         skipping history    "1 rounds"
+         jumping-jack day    "1 reps"
+         an imported 1-week timeline   "~1 weeks"
+
+     The two history rows ARE driven by this suite (the injection block above
+     mounts actHistoryHTML('grip')) — they were simply never seeded with the one
+     value that discriminates. A sweep is only as wide as the VALUES it seeds,
+     as well as the surfaces it enumerates.
+
+     So the class check is a SOURCE scan, which is the only kind that reaches a
+     canvas, and the driven checks read the PAYLOAD (_share.l) rather than the
+     container (the drawn image). */
+  {
+    const src507 = readFileSync('index.html', 'utf8');
+    const noCom507 = src507
+      .replace(/\/\*[\s\S]*?\*\//g, m => '\n'.repeat((m.match(/\n/g) || []).length))
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    const NOUNS507 = '(?:sets|moves|reps|rounds|exercises|sessions|days|weeks|months|minutes|seconds|meals|tests|blocks|movements|photos|cups|grams)';
+    /* A count joined straight onto a PLURAL noun. A site that hand-writes the
+       plural correctly reads `+' week'+(n===1?'':'s')` — a SINGULAR noun — so
+       it does not match, and a site that goes through plural() concatenates no
+       noun at all. */
+    const CAT507 = new RegExp("\\+\\s*'\\s" + NOUNS507 + "\\b", 'g');
+    const scan507 = text => {
+      const out = [];
+      let m;
+      const re = new RegExp(CAT507.source, 'g');
+      while ((m = re.exec(text))) {
+        const line = text.slice(text.lastIndexOf('\n', m.index) + 1, (text.indexOf('\n', m.index) + 1 || text.length + 1) - 1);
+        if (line.includes('errs.push(')) continue;                 // a validator message, not athlete copy
+        /* Its own singular branch — scoped to the SAME LINE. A raw character
+           window reaches an unrelated ternary on the line above and excuses the
+           hit: seeded with a brand-new surface carrying the banned form, a
+           160-character lookback let it through. */
+        const look = text.slice(text.lastIndexOf('\n', m.index) + 1, m.index);
+        if (/(===\s*1\s*\?|<=\s*1\s*\?|>=\s*2\s*\?|\?\s*'[^']*'\s*:)/.test(look)) continue;
+        out.push(line.trim().slice(0, 110));
+      }
+      return out;
+    };
+
+    /* GUARDS. An empty offender list is otherwise a statement about the regex.
+       Both are asked of a SYNTHETIC source, so they stay true whatever the real
+       file becomes. */
+    t.ok('GUARD: the scan catches a count joined onto a plural noun',
+         scan507("toast(n+' rounds logged');").length === 1);
+    t.ok('GUARD: and stays quiet on a count that hand-writes its own plural',
+         scan507("toast(n+' round'+(n===1?'':'s'));").length === 0
+         && scan507("toast(plural(n,'round'));").length === 0);
+    /* A ternary on the line ABOVE must not excuse the line below it. A raw
+       character window does exactly that, and a new surface written with the
+       banned form walked through it. */
+    t.ok('GUARD: a guard on a NEIGHBOURING line does not excuse the hit',
+         scan507("const a = n===1?'one':'many';\ntoast(n+' rounds done');").length === 1);
+    t.ok('GUARD: the comment stripper really removed the comments',
+         noCom507.length < src507.length * 0.85 && noCom507.length > 400000,
+         JSON.stringify({ raw: src507.length, stripped: noCom507.length }));
+    t.ok('GUARD: the scan really read the app', /function prescribe\(/.test(noCom507));
+
+    const hits507 = scan507(noCom507);
+    t.eq('no athlete-facing count is joined straight onto a plural noun',
+         hits507.length, 0, JSON.stringify(hits507.slice(0, 6)));
+  }
+
+  {
+    const r507 = await page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const out = {};
+      const snap = JSON.stringify(STATE);
+      try {
+        /* THE SHARE CARD, driven to the finish screen rather than built by
+           hand: the defect was in the string plEnterDone() writes, and the
+           canvas that draws it cannot be read back. */
+        /* playerTeardown() clears the overlay 400 ms LATER (v437), and a second
+           openPlayer() inside that window is torn down with the first — PLAYER
+           goes null, the loop below exits, and _share still holds the previous
+           card. So each case waits the window out, and reports the session it
+           actually finished rather than trusting the order. */
+        const runCard = async items => {
+          openPlayer({ items, title: 'Quick core', free: true });
+          await wait(200);
+          let sets = 0, moves = 0;
+          /* A session of more than one set RESTS between them, so marking sets
+             blindly parks in the rest phase and never reaches done — which is
+             how the first version of this floor read the PREVIOUS card. Skip
+             each rest the way the athlete does. */
+          for (let i = 0; i < 60 && PLAYER && PLAYER.phase !== 'done'; i++) {
+            if (PLAYER.phase === 'rest') plRestDone(); else playerSetDone();
+            await wait(90);
+            if (PLAYER) { sets = PLAYER.setsDone; moves = PLAYER.items.length; }
+          }
+          const line = _share ? _share.l[1] : null;
+          try { playerQuit(); } catch (e) {}
+          await wait(700);
+          return { line, sets, moves };
+        };
+        out.one = await runCard([{ exId: 'pushup', sets: 1, target: 10, unit: 'reps', rest: 45 }]);
+        out.many = await runCard([
+          { exId: 'pushup', sets: 3, target: 10, unit: 'reps', rest: 45 },
+          { exId: 'plank', sets: 3, target: 30, unit: 'time', rest: 45 },
+        ]);
+        out.cardOne = out.one.line; out.cardMany = out.many.line;
+
+        const strip = h => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        /* The two history rows, at one round and at five. */
+        STATE.gripLog = [{ date: todayISO(), mins: 5, rounds: 1 }];
+        STATE.skipLog = [{ date: todayISO(), mins: 5, rounds: 1 }];
+        out.gripOne = strip(actHistoryHTML('grip'));
+        out.skipOne = strip(skipHistoryHTML());
+        STATE.gripLog = [{ date: todayISO(), mins: 12, rounds: 5 }];
+        STATE.skipLog = [{ date: todayISO(), mins: 12, rounds: 5 }];
+        out.gripMany = strip(actHistoryHTML('grip'));
+        out.skipMany = strip(skipHistoryHTML());
+
+        /* The jumping-jack day detail keeps its thousands separator. */
+        const d = nutToday(); d.jackUnit = 'reps'; d.jackLvl = 'easy';
+        d.jackVal = 1;    out.jackOne = CARDIO_INFO.jacks.detail(jackWork());
+        d.jackVal = 9000; out.jackMany = CARDIO_INFO.jacks.detail(jackWork());
+
+        /* An imported timeline of one week — the picker offers 12/24/52, so
+           only a backup can carry it, which is the threat model everywhere. */
+        out.tl1 = timelineLabel(1); out.tl12 = timelineLabel(12); out.tl24 = timelineLabel(24);
+
+        out.helperShow = [plural(1, 'rep', '1'), plural(9000, 'rep', '9,000'), plural(2, 'set'), plural(0, 'set')];
+      } finally {
+        STATE = JSON.parse(snap); save();
+      }
+      return out;
+    });
+
+    t.eq('GUARD: the one-set session really finished one set and one move',
+         JSON.stringify([r507.one.sets, r507.one.moves]), '[1,1]', JSON.stringify(r507.one));
+    t.eq('GUARD: and the real session really finished six sets across two moves',
+         JSON.stringify([r507.many.sets, r507.many.moves]), '[6,2]', JSON.stringify(r507.many));
+    t.eq('the share card says one set and one move, not "1 sets · 1 moves"',
+         r507.cardOne, '1 set · 1 move', JSON.stringify(r507));
+    t.eq('FLOOR: and a real session still says sets and moves',
+         r507.cardMany, '6 sets · 2 moves', JSON.stringify(r507));
+
+    t.ok('a one-round grip session reads "1 round"',
+         / 1 round /.test(' ' + r507.gripOne + ' ') && !/1 rounds/.test(r507.gripOne), r507.gripOne);
+    t.ok('a one-round skipping session reads "1 round"',
+         / 1 round /.test(' ' + r507.skipOne + ' ') && !/1 rounds/.test(r507.skipOne), r507.skipOne);
+    t.ok('FLOOR: five rounds still reads "5 rounds"',
+         /5 rounds/.test(r507.gripMany) && /5 rounds/.test(r507.skipMany),
+         JSON.stringify([r507.gripMany, r507.skipMany]));
+
+    t.eq('one jumping jack reads "1 rep"', r507.jackOne.split(' · ')[0], '1 rep', JSON.stringify(r507.jackOne));
+    t.eq('FLOOR: and nine thousand keeps its separator', r507.jackMany.split(' · ')[0], '9,000 reps', JSON.stringify(r507.jackMany));
+
+    t.eq('an imported one-week timeline reads "~1 week"', r507.tl1, '~1 week', JSON.stringify(r507));
+    t.eq('FLOOR: twelve weeks is unchanged', r507.tl12, '~12 weeks', JSON.stringify(r507));
+    t.eq('FLOOR: and so is six months', r507.tl24, '~6 months', JSON.stringify(r507));
+
+    /* plural() gained an optional DISPLAY string so a formatted count keeps its
+       formatting and the rule still lives in one place. */
+    t.eq('plural() takes a display string without changing what it counts',
+         JSON.stringify(r507.helperShow), JSON.stringify(['1 rep', '9,000 reps', '2 sets', '0 sets']),
+         JSON.stringify(r507.helperShow));
+  }
+
   errors.forEach(e => t.fail('a page error fired during hardening checks', e));
   await browser.close();
   srv.close();
