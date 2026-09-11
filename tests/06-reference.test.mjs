@@ -558,6 +558,209 @@ export default async function run() {
   t.ok('a crafted tick key never executes', !inj.executed, inj);
   t.ok('a crafted tick key never reaches the DOM as markup', !inj.raw, inj);
 
+
+  /* ================= v501 — the Moves pane promised the joints =================
+     Its own note has said, since v314: "Tap one for the how-to, the photo and
+     THE JOINTS IT LOADS." Measured on the real sheet, no joint was ever named.
+     Push-Up loads the wrist, Pistol Squat the knee and Controlled Crunch the
+     low back, and none of the three said so; the two probes whose text did
+     contain a joint word had it inside a coaching cue, which is prose rather
+     than a statement. And for an athlete who flagged a shoulder and a wrist,
+     56 of the 140 rows on that pane load one of them with nothing on the row.
+
+     TWO FACTS, TWO TESTS. What a movement LOADS reads JOINT_RISK and is on
+     every sheet. Whether YOU flagged one asks jointRisky(), which honours the
+     parallettes relief - and the relieved athlete is the floor that proves the
+     two are different questions rather than one written twice. */
+  await page.evaluate(() => {
+    STATE.profile.name = 'Test Athlete';
+    STATE.profile.gear = ['bar', 'bench', 'dip'];
+    STATE.profile.limitations = [];
+    STATE.shopTicks = {};
+    save();
+  });
+
+  const jl = await page.evaluate(() => {
+    const o = {};
+    const libKeys = () => { const g = STATE.profile.gear || [];
+      return Object.keys(EX).filter(k => { const e = EX[k].equip; return !e || e.every(x => g.includes(x)); }); };
+    const pane = () => { REF_TAB = 'moves'; go('ref'); renderRef();
+      const v = document.querySelector('#v-ref');
+      const rows = [...v.querySelectorAll('button[onclick^="openExerciseInfo"]')];
+      return { n: rows.length,
+               marked: rows.filter(b => /⚠/.test(b.textContent)).length,
+               note: (v.querySelector('.note.info') || {}).textContent || '' }; };
+    const sheet = k => { openExerciseInfo(k);
+      const txt = (document.querySelector('#sheet').textContent || '').replace(/\s+/g, ' ');
+      closeSheet(); return txt; };
+    const jointsOf = k => JOINTS.filter(([j]) => (JOINT_RISK[j] || []).includes(k));
+
+    /* ---- GUARDS: the trap has to be real, or every assertion below passes on
+       a library with nothing flagged and a sheet with nothing to name. ---- */
+    o.gPushWrist   = (JOINT_RISK.wrist   || []).includes('pushup');
+    o.gPistolKnee  = (JOINT_RISK.knee    || []).includes('pistol');
+    o.gCrunchLow   = (JOINT_RISK.lowback || []).includes('crunch');
+    o.gSideplankNone = jointsOf('sideplank').length === 0;
+    o.gJointCount  = JOINTS.length;
+    o.gLowbackLabel = (JOINTS.find(([j]) => j === 'lowback') || [])[1];
+
+    /* jointRisky() is claimed to agree with the builder's own safeSwap(k)!==k,
+       which is why the library asks the direct question rather than a second
+       answer to it. Swept rather than asserted. */
+    const combos = [['knee'], ['shoulder'], ['wrist'], ['lowback'], ['elbow'],
+                    ['shoulder', 'wrist'], ['knee', 'lowback'],
+                    ['knee', 'shoulder', 'wrist', 'lowback', 'elbow']];
+    const keep = STATE.profile.limitations;
+    o.gDisagree = 0; o.gCases = 0;
+    combos.forEach(lims => { STATE.profile.limitations = lims;
+      Object.keys(EX).forEach(k => { o.gCases++;
+        if (jointRisky(k, lims) !== (safeSwap(k) !== k)) o.gDisagree++; }); });
+    STATE.profile.limitations = keep;
+
+    /* ---- THE CLASS: every movement in the library names its own joints. A
+       three-probe check says nothing about the other 137. ---- */
+    const lib = libKeys();
+    o.libN = lib.length;
+    o.noSection = lib.filter(k => !/Joints it loads/.test(exJointsHTML(k)));
+    o.wrongJoints = lib.filter(k => {
+      const h = exJointsHTML(k), want = jointsOf(k);
+      if (!want.length) return !/None of the/.test(h);
+      return want.some(([, l]) => h.indexOf('>' + l + '<') < 0 && h.indexOf(' ' + l + '<') < 0);
+    });
+    o.flaggedInLib = lib.filter(k => jointsOf(k).length).length;
+    o.cleanInLib = lib.filter(k => !jointsOf(k).length).length;
+
+    /* ---- DRIVEN, because a builder that nothing renders is not a fix ---- */
+    o.unflagged = pane();
+    o.sPush   = sheet('pushup');
+    o.sPistol = sheet('pistol');
+    o.sSide   = sheet('sideplank');
+
+    /* ---- the flagged athlete ---- */
+    STATE.profile.limitations = ['shoulder', 'wrist']; save();
+    o.flagged = pane();
+    o.flaggedExpect = libKeys().filter(k => jointRisky(k, ['shoulder', 'wrist'])).length;
+    o.fPush = sheet('pushup');
+    o.fPistol = sheet('pistol');
+
+    /* ---- the parallettes athlete: the SAME movement, the SAME flag, and the
+       app has decided the bars cover it. Raw JOINT_RISK cannot tell these
+       apart; jointRisky() can. ---- */
+    STATE.profile.gear = ['bar', 'bench', 'dip', 'parallettes'];
+    STATE.profile.limitations = ['wrist']; save();
+    o.gReliefReal = (JOINT_RISK.wrist || []).includes('pushup') && !jointRisky('pushup', ['wrist']);
+    o.relief = pane();
+    o.rPush = sheet('pushup');
+
+    /* ---- the two sibling warnings must still say what they said ---- */
+    STATE.profile.gear = ['bar', 'bench', 'dip'];
+    STATE.profile.limitations = ['shoulder']; save();
+    /* BOTH BRANCHES OF THE SHARED OPENING. The first version of this seeded
+       two movements of which only ONE was shoulder-risky, so the app correctly
+       said the singular and the plural floor failed on correct code. */
+    _custom = ['deadhang', 'pikepushup'];
+    o.builderPlural = customRiskHTML();
+    _custom = ['deadhang'];
+    o.builderOne = customRiskHTML();
+    o.act = actRiskNoteHTML('deadhang', 'One all-out hang');
+    _custom = [];
+    o.gBothRisky = jointRisky('deadhang', ['shoulder']) && jointRisky('pikepushup', ['shoulder']);
+    STATE.profile.limitations = []; save();
+    return o;
+  });
+
+  // guards
+  t.ok('GUARD: the app really flags the wrist on a push-up, the knee on a pistol and the low back on a crunch',
+    jl.gPushWrist && jl.gPistolKnee && jl.gCrunchLow, JSON.stringify({ w: jl.gPushWrist, k: jl.gPistolKnee, l: jl.gCrunchLow }));
+  t.ok('GUARD: and really flags nothing on a side plank, so the no-joint branch has a subject',
+    jl.gSideplankNone, JSON.stringify({ side: jl.gSideplankNone }));
+  t.ok('GUARD: the library holds both kinds — movements with a flag and movements without',
+    jl.flaggedInLib > 50 && jl.cleanInLib > 10, JSON.stringify({ flagged: jl.flaggedInLib, clean: jl.cleanInLib }));
+  t.eq('GUARD: jointRisky() agrees with the builder’s own safeSwap test on every case',
+    jl.gDisagree, 0, JSON.stringify({ disagree: jl.gDisagree, cases: jl.gCases }));
+  t.ok('GUARD: and the sweep really covered the library eight flag-sets over',
+    jl.gCases > 1500, JSON.stringify({ cases: jl.gCases }));
+  t.ok('GUARD: the parallettes relief is real — the map says risky and the predicate says no',
+    jl.gReliefReal, JSON.stringify({ relief: jl.gReliefReal }));
+
+  // the class
+  t.eq('every movement in the library names its joints', jl.noSection.length, 0, JSON.stringify(jl.noSection.slice(0, 6)));
+  t.eq('and names every joint the app flags for it, by the label the health screen uses',
+    jl.wrongJoints.length, 0, JSON.stringify(jl.wrongJoints.slice(0, 6)));
+  t.ok('the low back is named "Lower back" rather than its key', jl.gLowbackLabel === 'Lower back', jl.gLowbackLabel);
+
+  // driven, unflagged
+  t.ok('the Push-Up sheet names the wrist', /Joints it loads\s*Wrist/.test(jl.sPush), jl.sPush.slice(jl.sPush.indexOf('Joints it loads'), jl.sPush.indexOf('Joints it loads') + 90));
+  t.ok('the Pistol Squat sheet names the knee', /Joints it loads\s*Knee/.test(jl.sPistol), jl.sPistol.slice(jl.sPistol.indexOf('Joints it loads'), jl.sPistol.indexOf('Joints it loads') + 90));
+  t.ok('a movement with no flag says so rather than rendering an empty list',
+    /None of the \d+ this app watches/.test(jl.sSide), jl.sSide.slice(jl.sSide.indexOf('Joints it loads'), jl.sSide.indexOf('Joints it loads') + 120));
+  t.ok('and does not claim it cannot hurt you', /not a promise it cannot hurt you/.test(jl.sSide), 'wording');
+
+  // FLOOR: an athlete who flagged nothing is warned about nothing
+  t.eq('FLOOR: with nothing flagged, no row carries a warning', jl.unflagged.marked, 0, JSON.stringify(jl.unflagged));
+  t.ok('FLOOR: and the legend says nothing about marks', !/marks the/.test(jl.unflagged.note), jl.unflagged.note.slice(-80));
+  t.ok('FLOOR: and the joints are still listed — the note promises them to everybody, not only to a flagged athlete',
+    /Joints it loads\s*Wrist/.test(jl.sPush) && !/You flagged a joint/.test(jl.sPush), 'unflagged push-up');
+
+  // the flagged athlete
+  t.ok('with a joint flagged, the rows that load it are marked', jl.flagged.marked > 40, JSON.stringify({ marked: jl.flagged.marked, rows: jl.flagged.n }));
+  t.eq('and the count is exactly what the predicate says, not an approximation',
+    jl.flagged.marked, jl.flaggedExpect, JSON.stringify({ marked: jl.flagged.marked, expect: jl.flaggedExpect }));
+  t.ok('the legend names that same count', jl.flagged.note.indexOf('marks the ' + jl.flaggedExpect + ' that load a joint you flagged') >= 0, jl.flagged.note.slice(-90));
+  t.ok('the sheet for a movement that loads it warns, and names what the programme gives instead',
+    /You flagged a joint this loads/.test(jl.fPush) && /gives you Fist Push-Up instead/.test(jl.fPush), jl.fPush.slice(jl.fPush.indexOf('Joints it loads'), jl.fPush.indexOf('Joints it loads') + 170));
+  t.ok('and it still carries the stop-for-pain sentence', /if it pinches or feels wrong, stop/.test(jl.fPush), 'safety close');
+  t.ok('FLOOR: a joint this athlete did NOT flag is listed without a warning glyph',
+    /Joints it loads\s*Knee/.test(jl.fPistol) && !/You flagged a joint/.test(jl.fPistol), jl.fPistol.slice(jl.fPistol.indexOf('Joints it loads'), jl.fPistol.indexOf('Joints it loads') + 90));
+
+  /* FLOOR: THE RELIEVED ATHLETE. Same movement, same flag, bars owned. Reading
+     JOINT_RISK raw for the marker would warn about a press the app has already
+     decided is fine — the exact false alarm v285 records a probe making. */
+  t.ok('FLOOR: with push-up bars, the flagged wrist is still LISTED on the push-up', /Joints it loads\s*Wrist/.test(jl.rPush), jl.rPush.slice(jl.rPush.indexOf('Joints it loads'), jl.rPush.indexOf('Joints it loads') + 60));
+  t.ok('FLOOR: and it is NOT warned about', !/You flagged a joint/.test(jl.rPush), 'relieved push-up');
+  t.ok('FLOOR: and the sheet says WHY, rather than leaving a withheld warning unexplained',
+    /Your push-up bars cover this one/.test(jl.rPush), jl.rPush.slice(jl.rPush.indexOf('Joints it loads'), jl.rPush.indexOf('Joints it loads') + 170));
+  t.ok('FLOOR: and the relieved movements are not marked in the list either',
+    jl.relief.marked < jl.flagged.marked, JSON.stringify({ relief: jl.relief.marked, flagged: jl.flagged.marked }));
+
+  // FLOOR: the two sibling warnings are unchanged by the shared sentence
+  t.ok('GUARD: both seeded movements really are shoulder-risky, or the plural branch never fires',
+    jl.gBothRisky, JSON.stringify({ both: jl.gBothRisky }));
+  t.ok('FLOOR: the custom builder still opens with the plural when several are risky',
+    /You flagged a joint some of these load/.test(jl.builderPlural), jl.builderPlural.slice(0, 120));
+  t.ok('FLOOR: and with the singular when one is', /You flagged a joint this loads/.test(jl.builderOne), jl.builderOne.slice(0, 120));
+  t.ok('FLOOR: and still names the movements and closes with the stop sentence',
+    /Dead Hang/.test(jl.builderPlural) && /if it pinches or feels wrong, stop/.test(jl.builderPlural), jl.builderPlural.slice(0, 200));
+  t.ok('FLOOR: the grip warning still names its reason and closes the same way',
+    /One all-out hang, and your health answers say/.test(jl.act) && /if it pinches or feels wrong, stop/.test(jl.act), jl.act.slice(0, 200));
+
+  /* THE SHARED SAFETY SENTENCE IS DECLARED ONCE. Reverting any of the three
+     callers to its own inline copy is byte-identical on screen, so only the
+     source can see it — and that closing clause is the stop-for-pain
+     instruction, which is the one sentence in this app worst served by three
+     hand-written copies. */
+  const src501 = await page.evaluate(() => {
+    const el = [...document.querySelectorAll('script:not([src])')]
+      .sort((a, b) => b.textContent.length - a.textContent.length)[0];
+    const raw = el ? el.textContent : '';
+    const body = raw.replace(/\/\*[\s\S]*?\*\//g, '');
+    return {
+      len: raw.length,
+      hasApp: /function renderRef\(/.test(body),
+      close: (body.match(/if it pinches or feels wrong, stop/g) || []).length,
+      decl: (body.match(/function jointFlagNote\(/g) || []).length,
+      calls: (body.match(/jointFlagNote\(/g) || []).length,
+      libAsks: /libRisky\(k\)/.test(body),
+      libDecl: /const libRisky=k=>\{try\{return jointRisky\(k,_lims\)/.test(body),
+      sheetAsks: /\$\{exJointsHTML\(exId\)\}/.test(body),
+    };
+  });
+  t.ok('GUARD: the scan read the app and not a two-character stub', src501.hasApp && src501.len > 500000, JSON.stringify({ len: src501.len, app: src501.hasApp }));
+  t.eq('the stop-for-pain sentence is written exactly once', src501.close, 1, JSON.stringify(src501));
+  t.eq('and all three warnings ask that one helper', src501.calls - src501.decl, 3, JSON.stringify(src501));
+  t.ok('the library row asks jointRisky() rather than re-deriving the relief', src501.libAsks && src501.libDecl, JSON.stringify(src501));
+  t.ok('and the sheet renders the joints section rather than only declaring it', src501.sheetAsks, JSON.stringify(src501));
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
