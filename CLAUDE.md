@@ -21256,6 +21256,123 @@ than four:
   rows and the projection, and v309 owns the projection copy.
 
 
+## The last week of a block, described as the hardest (v500)
+
+v474 banned *"gets harder every week"* from the manifest, the `<meta>`
+description and `package.json`, and **built a detector for it** — because week 6
+of every block is a scheduled deload, measured there at 33-41% across all nine
+blocks. It swept those three **static** files. Point the same regex at **31
+rendered surfaces** and it finds one sentence, on the tab that describes the
+programme:
+
+> 9 blocks of 42 sessions — 378 in all… The first block is core & abs, then a
+> full-body split. **The load climbs every week.**
+
+Measured on block 1, whole weeks, with the athlete's own default settings:
+
+| | week 5 | week 6 |
+|---|---|---|
+| units | 3,436 | **2,091** — 39% off |
+| sets | 116 | **69** — 41% off |
+
+**A sweep is only as wide as the surface it enumerates**, for the fifth round
+running — and this one is sharper than the usual case, because the detector
+that would have caught it already existed and had never been pointed here.
+
+### Seven members, all about the last two weeks of a block
+
+| where | said | the app does |
+|---|---|---|
+| Program subtitle | *"the load climbs every week"* | −39% in week 6 |
+| Program week-6 label | **"Peak+ 🔺"** | the lightest week of the block |
+| Program progression note | *"Weeks 2–6 raise reps & hold times"* | week 6 lowers them |
+| **Today headline, week 6** | **"load increased"** | 116 → 97 sets |
+| **Today note, week 6** | **"the highest load of the ${N}-week block"** | week 5 is higher, in all nine |
+| Today icon, week 6 | 📈 | — |
+| Today note, week 5 | *"Peak **weeks** begin"* | there has only ever been one |
+
+The two Today ones are the sharpest, because that banner is what an athlete
+reads on the **morning** of that week — and `overloadNote()`'s own comment
+records this exact defect being fixed for the deload athlete. **The other arm
+was never asked about.**
+
+### The measurement corrected the fix, and the correction is the finding
+
+The first attempt made the subtitle **branch on the athlete**, on the reasoning
+v474 recorded: somebody who turns automatic deloads off really does climb every
+week. **They do not.** `prescribe()` adds the peak set on
+`week>=5 && week<WEEKS_PER_CYCLE` — **week 5 ONLY, whatever the setting** — so
+the last week loses it either way. Measured with deloads off, across all nine
+blocks:
+
+| | week 5 | week 6 |
+|---|---|---|
+| sets | **116-124** | **97-108 — lower in every block** |
+
+So *"climbs every week"* needed no branch at all, and the sentence that is true
+in both states carries no branch to drift: **the load climbs through the block,
+then the last week steps back off the peak.**
+
+That athlete's week 6 is genuinely **not** a deload — the targets keep climbing
+— so the last week has **three** states rather than two, and the up-arrow
+belongs to the real peak week alone.
+
+### One predicate, and one answer
+
+**`scheduledDeloadWeek(wk)`** asks the narrow question the Program tab needs:
+*is week `wk` of a block the scheduled lighter week, for this athlete?*
+`deloadOn()` answers *"is TODAY eased"*, which folds in a readiness slump, a
+load spike and a prep taper — **all of them about NOW** — so asking it about a
+future week would label week 3 as a deload because the athlete happens to be in
+a slump today. `deloadOn()` asks the new one too, so the calendar rule lives in
+exactly one place and the four readers cannot disagree.
+
+**The substitution is byte-identical, and the reason is the ORDER.**
+`deloadOn()` has already returned false at its own `autoDeload` line before the
+calendar arm is reached, so at that call site the predicate reduces to
+`wk===WEEKS_PER_CYCLE`. Putting the `autoDeload` test *inside* the predicate is
+what lets the Program tab ask it standalone.
+
+**`lastWeekMode(sess)`** is the same shape one surface over: one answer —
+`deload` / `peakoff` / neither — read by the icon, the headline and the note.
+Three sentences on one banner, and they had already drifted once.
+
+### The floors, and what each over-eager twin fails
+
+Week 5 keeps its own name and its up-arrow and still reports an increase in both
+states; a mid-block week is byte-identical; weeks 1-4 are labelled exactly as
+before; and **`deloadOn()` is unchanged** — `false, true, false` — because the
+fix is about the words, not the engine. A "fix" that relabelled every week, or
+that eased the last week for everybody, fails one of those.
+
+**The guards are what make the block mean anything**: v474's own detector really
+does catch the old subtitle and really is quiet on the new one, the deload
+really eases in every block, the deloads-off week really does lose the peak set
+in every block, and the peak set really is added at week 5 and gone by week 6.
+Without them every assertion is about a rule that was never wrong.
+
+### And the check asserted a call count I had not measured
+
+`src500.asks - src500.decl >= 4` — and there are **three** consumers
+(`deloadOn()`, the week label, the progression note). It failed on correct code.
+That is v496's lesson verbatim, and the fix is the same: read the number out of
+the app rather than writing down what you expected.
+
+**Sixteen mutants, all caught by name — none escaped and none equivalent.** Six
+of them are the over-eager twins, and **every one was caught by a floor rather
+than by the check its own fix was written for**, which is the whole reason the
+floors exist:
+
+| the wrong fix | the floor that caught it |
+|---|---|
+| the predicate ignores the athlete's setting | the deloads-off athlete's own label and note |
+| every week labelled Deload | week 5 keeps its name and its up-arrow |
+| every week reads as a deload | the back-off banner and its falling chart |
+| the subtitle says nothing about the block | it must name the step back off the peak |
+| no last-week handling at all | the deload banner must still say "load eased" |
+| the real peak week loses its arrow | week 5 keeps its up-arrow |
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

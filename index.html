@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='499';
+const APP_VERSION='500';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4008,15 +4008,33 @@ $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')closeSheet();}
    tab printed "📈 Week 6 — load increased. Final peak week — the highest load
    of the block" five lines under the deload banner, on a session that had just
    halved its sets. */
+/* ONE ANSWER for what the last week of a block is doing, read by the icon, the
+   headline and the note - three sentences on one banner, and they had drifted.
+   The deload arm was fixed long ago; the OTHER arm was never asked about.
+
+   An athlete who turns automatic deloads off still loses the peak set:
+   prescribe() adds it on `week>=5 && week<WEEKS_PER_CYCLE`, so it is week 5
+   only, whatever the setting. Measured across all nine blocks with deloads off,
+   the last week is lower than week 5 in EVERY one - 97-108 sets against 116-124
+   - and the banner said "load increased" over "the highest load of the block".
+   Both false, on the tab an athlete reads on the morning of that week. */
+function lastWeekMode(sess){
+  if(!sess||sess.week!==WEEKS_PER_CYCLE)return '';
+  try{if(deloadOn(sess))return 'deload';}catch(e){}
+  return 'peakoff';
+}
+/* A RISING CHART OVER "LOAD EASED" IS THE SAME DEFECT AS "PEAK+ 🔺" ON THE
+   DELOAD WEEK, one glyph over, so it follows the headline. */
+function overloadIcon(sess){const m=lastWeekMode(sess);return m==='deload'?'🌙':m==='peakoff'?'📉':'📈';}
 function overloadNote(sess){
-  try{if(sess&&sess.week===WEEKS_PER_CYCLE&&deloadOn(sess))
-    return 'Volume drops on purpose this week so the next block starts higher. Do not add the sets back.';}catch(e){}
+  if(lastWeekMode(sess)==='deload')
+    return 'Volume drops on purpose this week so the next block starts higher. Do not add the sets back.';
   return _overloadNoteInner(sess);
 }
 // and the headline above it must not say the opposite
 function overloadHeadline(sess){
-  try{if(sess&&sess.week===WEEKS_PER_CYCLE&&deloadOn(sess))return 'load eased';}catch(e){}
-  return 'load increased';
+  const m=lastWeekMode(sess);
+  return m==='deload'?'load eased':m==='peakoff'?'peak set comes off':'load increased';
 }
 
 /* ---- Android / browser Back-button integration ----
@@ -5089,7 +5107,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
   h+=backupNudgeHTML();
   // progressive overload note vs previous week
   if(sess.pos.dayInWeek===0){
-    h+=`<div class="note fire">📈 <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
+    h+=`<div class="note fire">${overloadIcon(sess)} <b>Week ${wkNum} — ${overloadHeadline(sess)}.</b> ${overloadNote(sess)}</div>`;
   }
   /* A FINISHED SESSION IS NOT AN OFFER. Rendering the set dots and "Mark
      Session Complete" for work already logged is how an athlete accidentally
@@ -6916,8 +6934,14 @@ function _overloadNoteInner(sess){
   if(w===2)return 'Reps and hold times step up ~8%. Same moves, more work.';
   if(w===3)return 'Volume rises again and harder variations start to unlock.';
   if(w===4)return 'Deeper into the build — targets climb and the tougher rungs kick in.';
-  if(w===5)return 'Peak weeks begin — an extra set on your key exercises. Push hard.';
-  if(w===WEEKS_PER_CYCLE)return `Final peak week — the highest load of the ${WEEKS_PER_CYCLE}-week block. Then you re-test and climb higher.`;
+  /* "PEAK WEEKS" IS ONE WEEK. prescribe() adds the extra set on
+     `week>=5 && week<WEEKS_PER_CYCLE`, so there has only ever been one of them
+     - measured, sets go 102 -> 116 at week 5 and back to 97 at week 6. */
+  if(w===WEEKS_PER_CYCLE-1)return 'Peak week — an extra set on your key exercises. Push hard.';
+  /* Reached only with automatic deloads OFF; overloadNote() answers the other
+     state. It still names the block by its structural week count, which v467
+     kept deliberately. */
+  if(w===WEEKS_PER_CYCLE)return `Week ${WEEKS_PER_CYCLE-1} was the heaviest of the ${WEEKS_PER_CYCLE}-week block. Your targets keep climbing. Then you re-test and climb higher.`;
   return 'Load increased. Keep pushing.';
 }
 function exCardHTML(m,log,idx){
@@ -14385,7 +14409,20 @@ function renderProgram(){
      makes the number checkable — without it a reader has no way to tell a
      right number from a wrong one. */
   const _pw=programWeeks(),_wt=weeklyTarget();
-  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${TOTAL_CYCLES} blocks of ${SESSIONS_PER_CYCLE} sessions — ${SESSIONS_PER_CYCLE*TOTAL_CYCLES} in all, about <b>${_pw} weeks</b> at your ${_wt} session${_wt===1?'':'s'} a week. ${PHASE1_CYCLES===1?'The first block is':'The first '+PHASE1_CYCLES+' blocks are'} core &amp; abs, then a full-body split. The load climbs every week.</div>`;
+  /* "THE LOAD CLIMBS EVERY WEEK" WAS FALSE ON THE LAST WEEK OF EVERY BLOCK.
+     v474 banned that exact sentence from the manifest, the <meta> description
+     and package.json, and built a detector for it - and swept only those three
+     STATIC files. Measured on the rendered tab: block 1 runs 3436 units and 116
+     sets in week 5 against 2091 and 69 in week 6, a 39% cut, and the drop is
+     33-41% in all nine blocks. A sweep of 31 rendered surfaces with v474's own
+     detector finds this one sentence and nothing else.
+
+     THE FIRST ATTEMPT BRANCHED ON THE ATHLETE AND THE MEASUREMENT CORRECTED IT.
+     "Climbs every week" is false with deloads OFF too: prescribe() adds the peak
+     set on week 5 only, so the last week loses it in every one of the nine
+     blocks (116-124 sets down to 97-108). One sentence is true in both states,
+     so there is no branch here to drift. */
+  let h=`<h2 class="vtitle">Your Program</h2><div class="vsub">${TOTAL_CYCLES} blocks of ${SESSIONS_PER_CYCLE} sessions — ${SESSIONS_PER_CYCLE*TOTAL_CYCLES} in all, about <b>${_pw} weeks</b> at your ${_wt} session${_wt===1?'':'s'} a week. ${PHASE1_CYCLES===1?'The first block is':'The first '+PHASE1_CYCLES+' blocks are'} core &amp; abs, then a full-body split. The load climbs through the block, then week ${WEEKS_PER_CYCLE} steps back off the peak.</div>`;
   h+=programVsGoalHTML();
   /* The alternate-session tiles used to sit here. They are choices about TODAY —
      "not the planned session, something else instead" — and Program is the
@@ -14401,8 +14438,21 @@ function renderProgram(){
   // week-by-week for current cycle
   for(let wk=1;wk<=WEEKS_PER_CYCLE;wk++){
     const wkNum=viewCycle*WEEKS_PER_CYCLE+wk;
-    const phase=['Foundation','Build','Develop','Intensify','Peak','Peak+'][wk-1];
-    h+=`<div class="section-label">Week ${wkNum} · ${phase} ${wk>=5?'🔺':''}</div>`;
+    /* "PEAK+ 🔺" ON THE ONE WEEK THE APP TAKES A THIRD OFF. The up-arrow said
+       the hardest week of the block and the athlete got the lightest. The app
+       already has a name and a glyph for a deload - "Deload week 🌙", in the
+       Today banner and in Settings - so this uses those rather than inventing a
+       third.
+
+       AND "PEAK+" IS FALSE FOR THE DELOADS-OFF ATHLETE TOO, which is why the
+       last week has three states rather than two. prescribe() adds the peak set
+       on `week>=5 && week<WEEKS_PER_CYCLE` - week 5 ONLY, whatever the setting -
+       so measured across all nine blocks with deloads off, week 5 is the peak by
+       set count in every one (116-124) and the last week is always lower
+       (97-108). The up-arrow therefore belongs to the real peak week alone. */
+    const _dl=scheduledDeloadWeek(wk),_last=wk===WEEKS_PER_CYCLE;
+    const phase=_dl?'Deload':['Foundation','Build','Develop','Intensify','Peak','Back-off'][wk-1];
+    h+=`<div class="section-label">Week ${wkNum} · ${phase} ${_dl?'🌙':_last?'📉':(wk===WEEKS_PER_CYCLE-1?'🔺':'')}</div>`;
     h+=`<div class="cal">`;
     for(let d=0;d<SESSIONS_PER_WEEK;d++){
       const ptr=viewCycle*SESSIONS_PER_CYCLE+(wk-1)*SESSIONS_PER_WEEK+d;
@@ -14444,7 +14494,7 @@ function renderProgram(){
     }
     h+=`</div>`;
   }
-  h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–6 raise reps &amp; hold times, unlock harder variations, and add a set in the peak weeks. The app also reads how each week <i>felt</i> and auto-adjusts. After ${blockWeeks()} weeks you re-test, and everything scales up from your new numbers.</div>`;
+  h+=`<div class="note info" style="margin-top:16px"><b>How progression works:</b> Week 1 sets your baseline volumes. Weeks 2–${WEEKS_PER_CYCLE-1} raise reps &amp; hold times, unlock harder variations, and add a set in week ${WEEKS_PER_CYCLE-1}. ${scheduledDeloadWeek(WEEKS_PER_CYCLE)?`Week ${WEEKS_PER_CYCLE} eases back — about a third less work — so you reach the re-test recovered rather than cooked.`:`Week ${WEEKS_PER_CYCLE} drops that extra set while your targets keep climbing.`} The app also reads how each week <i>felt</i> and auto-adjusts. After ${blockWeeks()} weeks you re-test, and everything scales up from your new numbers.</div>`;
   h+=skillTreesHTML();
   v.innerHTML=h;
 }
@@ -15962,12 +16012,31 @@ function loadSpike(){const r=acwr();return r!=null&&r>=1.5;}
    that choice. v310's rule is untouched: a deadline may never ADD work. This
    only ever removes it, in the fortnight the taper exists for. */
 function prepTaperEase(){try{return prepPhase()==='taper';}catch(e){return false;}}
+/* IS WEEK `wk` OF A BLOCK THE SCHEDULED LIGHTER WEEK, FOR THIS ATHLETE?
+   deloadOn() answers "is TODAY eased", which folds in a readiness slump, a
+   load spike and a prep taper - all of them about NOW. The Program tab shows a
+   whole block of FUTURE weeks, so asking deloadOn() there would label week 3
+   as a deload because the athlete happens to be in a slump today. This is the
+   narrower question, and deloadOn() asks it too so the calendar rule lives in
+   exactly one place: the subtitle, the week label, the progression note and
+   the engine cannot disagree about which week is lighter.
+
+   The autoDeload test is inside it rather than beside it, which is why the
+   substitution below is byte-identical: deloadOn() has already returned false
+   at its own autoDeload line before this is ever reached, so at that call site
+   this reduces to wk===WEEKS_PER_CYCLE. */
+function scheduledDeloadWeek(wk){
+  try{
+    if(STATE.settings&&STATE.settings.autoDeload===false)return false;
+    return wk===WEEKS_PER_CYCLE;
+  }catch(e){return false;}
+}
 function deloadOn(pos){
   try{
     if(STATE.settings&&STATE.settings.deload===true)return true;
     if(STATE.settings&&STATE.settings.autoDeload===false)return false;
     const p=pos||posOf(STATE.progressPtr);
-    return (p&&p.week===WEEKS_PER_CYCLE)||readinessSlump()||loadSpike()||prepTaperEase();
+    return (p&&scheduledDeloadWeek(p.week))||readinessSlump()||loadSpike()||prepTaperEase();
   }catch(e){return false;}
 }
 /* deloadOn() is now a COMPOSITE (manual flag OR scheduled week 6 OR a readiness
