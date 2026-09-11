@@ -7150,6 +7150,162 @@ export default async function run() {
     await ctx.close();
   }
 
+  /* v506 — THE ONE SURFACE v500's RENDERED SWEEP COULD NOT REACH.
+
+     v474 banned a claim that the work rises on a fixed cadence and built the
+     detector below, because the last week of every block is a scheduled deload
+     — measured there at 33-41% lower in all nine blocks. v474 swept three
+     STATIC files (the manifest, the <meta> description, package.json); v500
+     pointed the same detector at 31 RENDERED surfaces and fixed the Program
+     subtitle.
+
+     Neither could reach the assessment-results sheet. It is built inside
+     commitAssessment() and painted only after a completed baseline battery or
+     a re-test, so no tab-and-sheet sweep ever opens it — and it read:
+
+       "Targets start sub-maximal for perfect form, then climb ... week."
+
+     A sweep is only as wide as the surface it enumerates, for the fifth round
+     running. So this check is a SOURCE scan rather than a rendered one: the
+     source reaches every surface, including the ones that paint only inside a
+     flow, and the next unreachable surface fails HERE rather than on a phone.
+
+     Measured with the detector over the comment-stripped app: 1 hit before the
+     fix, 0 after. The stripping is not optional — v474's and v500's own notes
+     quote the banned claim, and a comment that quotes code breaks the scan for
+     that code (the sixth time this file has recorded that trap). */
+  {
+    const src506 = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    /* The same stripper idiom the two source scans above use: the (^|[^:])
+       lookbehind is what stops a `//` inside an https:// URL eating its line. */
+    const noCom506 = src506.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+    const RISE506 = /\b(?:harder|heavier|tougher|more|increases?|climbs?|rises?|progresses?)\s+(?:\w+\s+){0,2}every\s+(?:week|day|session|workout|time)\b/gi;
+    const hits506 = noCom506.match(RISE506) || [];
+
+    /* GUARDS. Without these the ban is a statement about a regex rather than
+       about the app: a detector that matches nothing reports a clean app, and
+       a stripper that deleted everything reports one too. */
+    /* A literal matching itself proves nothing — v344's self-comparing guard —
+       so both clauses ask the DETECTOR about a sentence it did not come from. */
+    t.ok('GUARD: the detector catches the claim it was written for',
+      new RegExp(RISE506.source, 'i').test('then climb every week')
+      && new RegExp(RISE506.source, 'i').test('the load climbs every week'));
+    t.ok('GUARD: and stays quiet on the wording that replaced it',
+      !new RegExp(RISE506.source, 'i').test(
+        'Targets start sub-maximal for perfect form and climb through the block, then the last week steps back off the peak.'));
+    t.ok('GUARD: the stripper really removed the comments',
+      noCom506.length < src506.length * 0.85 && noCom506.length > 400000,
+      JSON.stringify({ kept: noCom506.length, of: src506.length }));
+    t.ok('GUARD: and it really read the app', /function prescribe\(/.test(noCom506));
+
+    /* AND THE FOUR COPIES OF THE DETECTOR MUST AGREE. This is the fourth
+       hand-written copy of v474's regex, and two of the others live INSIDE a
+       page evaluate() where a shared import is not visible — so hoisting it
+       would mean serialising the pattern into every evaluate, which trades one
+       drift risk for a less readable check. The copies stay; what closes the
+       drift is an assertion that they are identical, because a detector whose
+       whole purpose is catching drift is the worst thing in this suite to let
+       drift. Measured: four copies, one pattern. */
+    const copies506 = [...new Set(
+      fs.readdirSync(path.join(ROOT, 'tests'))
+        .filter(f => f.endsWith('.mjs'))
+        .flatMap(f => (fs.readFileSync(path.join(ROOT, 'tests', f), 'utf8')
+          .match(/\/\\b\(\?:harder\|[^\n]*?\/[gi]*/g) || [])
+          .map(x => x.replace(/\/[gi]*$/, '')))
+    )];
+    t.ok('GUARD: the copies of the detector were found at all', copies506.length >= 1,
+      JSON.stringify(copies506.length));
+    t.eq('every copy of the rise detector in the suite is the same pattern',
+      copies506.length, 1, JSON.stringify(copies506));
+
+    /* THE CHECK. */
+    t.eq('no athlete-facing string claims the work rises every week',
+      hits506.length, 0, hits506.slice(0, 3).join(' | '));
+
+    const ctx506 = await tzb.newContext();
+    const pg506 = await ctx506.newPage();
+    const perr506 = [];
+    pg506.on('pageerror', e => perr506.push(String(e).slice(0, 200)));
+    await pg506.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg506);
+    await seedAthlete(pg506);
+
+    const r506 = await pg506.evaluate(() => {
+      const o = {};
+
+      /* GUARD: THE DEFECT IS REAL — the last week genuinely is lighter, in
+         every block and in BOTH deload states. v500 measured it; without it
+         the ban above is banning a true sentence. Whole weeks, because total
+         volume is not comparable across session types. */
+      const wk = (c, n, off) => {
+        const prev = STATE.settings.autoDeload;
+        if (off) STATE.settings.autoDeload = false; else delete STATE.settings.autoDeload;
+        let sets = 0, units = 0;
+        for (let d = 0; d < SESSIONS_PER_WEEK; d++) {
+          const s = buildSession(c * SESSIONS_PER_CYCLE + (n - 1) * SESSIONS_PER_WEEK + d);
+          [...s.main, s.finisher].forEach(m => { if (m) { sets += m.sets; units += m.sets * m.target; } });
+        }
+        if (prev === undefined) delete STATE.settings.autoDeload; else STATE.settings.autoDeload = prev;
+        return { sets, units };
+      };
+      const P = WEEKS_PER_CYCLE - 1, L = WEEKS_PER_CYCLE;
+      const easesOn = [], losesOff = [];
+      for (let c = 0; c < TOTAL_CYCLES; c++) {
+        easesOn.push(wk(c, L, false).units < wk(c, P, false).units * 0.85);
+        losesOff.push(wk(c, L, true).sets < wk(c, P, true).sets);
+      }
+      o.blocks = TOTAL_CYCLES;          // carried out: a page const is not visible in Node
+      o.blocksSwept = easesOn.length;
+      o.lastWeekEasesEveryBlock = easesOn.every(Boolean);
+      o.lastWeekLosesThePeakEveryBlock = losesOff.every(Boolean);
+
+      /* FLOOR: the sheet the claim lives on still renders, and still tells the
+         athlete the targets climb. A "fix" that simply deleted the sentence
+         satisfies every assertion above and tells them nothing. */
+      const maxes = { plank: 90, push: 20, side: 60, squat: 30, hollow: 45,
+                      pull: 12, lower: 15, dyn: 40, power: 20, stamina: 18 };
+      const results = {}; TESTS.forEach(x => { results[x.id] = maxes[x.id] || 10; });
+      const rec = { date: todayISO(), level: 'Intermediate', score: 60,
+                    testCount: TESTS.length, maxes: Object.assign({}, maxes),
+                    results, subs: {}, protocol: TEST_PROTOCOL };
+      try { assessState = { idx: 0, results, reassess: 0 }; } catch (e) {}
+      commitAssessment({ score: 60, level: 'Intermediate', maxes, results }, rec);
+      const sheet = document.querySelector('#sheet').innerText;
+      o.sheetRendered = sheet.length > 300;
+      o.sheetSaysClimb = /climb through the block/i.test(sheet);
+      o.sheetSaysStepBack = /steps back off the peak/i.test(sheet);
+      o.sheetNamesCadence = /re-test after each/i.test(sheet);
+      closeSheet();
+
+      /* FLOOR: v500's own fix on the Program tab is untouched. */
+      go('program');
+      const prog = document.querySelector('.view.active').innerText;
+      o.progStepsBack = /steps back off the peak/i.test(prog);
+      return o;
+    });
+
+    t.eq('GUARD: the last week eases in every block', r506.lastWeekEasesEveryBlock, true,
+      JSON.stringify(r506));
+    t.eq('GUARD: and loses the peak set in every block even with deloads off',
+      r506.lastWeekLosesThePeakEveryBlock, true, JSON.stringify(r506));
+    t.eq('GUARD: the sweep really covered every block', r506.blocksSwept, r506.blocks,
+      JSON.stringify(r506));
+    t.ok('GUARD: and there is more than one block to cover', r506.blocks > 1,
+      JSON.stringify(r506));
+
+    t.ok('FLOOR: the results sheet still renders', r506.sheetRendered, JSON.stringify(r506));
+    t.ok('FLOOR: and still tells the athlete the targets climb', r506.sheetSaysClimb,
+      JSON.stringify(r506));
+    t.ok('and names the step back off the peak instead of a weekly rise',
+      r506.sheetSaysStepBack, JSON.stringify(r506));
+    t.ok('FLOOR: and still names the re-test cadence', r506.sheetNamesCadence,
+      JSON.stringify(r506));
+    t.ok('FLOOR: the Program tab keeps v500\'s own wording', r506.progStepsBack,
+      JSON.stringify(r506));
+    t.eq('and none of it threw', perr506.length, 0, perr506.slice(0, 2).join(' | '));
+    await ctx506.close();
+  }
+
   await tzb.close();
 
   srv.close();

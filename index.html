@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='505';
+const APP_VERSION='506';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11203,7 +11203,7 @@ function commitAssessment(a,rec){
     ${testBreakdownHTML(a)}
     <div class="card pad" style="margin-top:6px"><h3 style="font-size:14px">What this means</h3>
       <p class="sm muted">${levelBlurb(a.level)}</p>
-      <p class="sm muted">Your program is now built from these numbers. Targets start sub-maximal for perfect form, then climb every week. You'll re-test after each ${WEEKS_PER_CYCLE}-week block.</p>
+      <p class="sm muted">Your program is now built from these numbers. Targets start sub-maximal for perfect form and climb through the block, then the last week steps back off the peak. You'll re-test after each ${WEEKS_PER_CYCLE}-week block.</p>
     </div>
     <button class="btn primary" onclick="closeSheet();go('today')">${assessState.reassess?'Continue training →':'Start Week 1 →'}</button>
   `);
