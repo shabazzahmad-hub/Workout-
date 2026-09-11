@@ -15276,8 +15276,13 @@ export default async function () {
           openPlayer({ items, title: 'Quick core', free: true });
           await wait(200);
           let sets = 0, moves = 0;
-          for (let i = 0; i < 24 && PLAYER && PLAYER.phase !== 'done'; i++) {
-            playerSetDone(); await wait(120);
+          /* A session of more than one set RESTS between them, so marking sets
+             blindly parks in the rest phase and never reaches done — which is
+             how the first version of this floor read the PREVIOUS card. Skip
+             each rest the way the athlete does. */
+          for (let i = 0; i < 60 && PLAYER && PLAYER.phase !== 'done'; i++) {
+            if (PLAYER.phase === 'rest') plRestDone(); else playerSetDone();
+            await wait(90);
             if (PLAYER) { sets = PLAYER.setsDone; moves = PLAYER.items.length; }
           }
           const line = _share ? _share.l[1] : null;
