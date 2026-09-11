@@ -15267,20 +15267,30 @@ export default async function () {
         /* THE SHARE CARD, driven to the finish screen rather than built by
            hand: the defect was in the string plEnterDone() writes, and the
            canvas that draws it cannot be read back. */
+        /* playerTeardown() clears the overlay 400 ms LATER (v437), and a second
+           openPlayer() inside that window is torn down with the first — PLAYER
+           goes null, the loop below exits, and _share still holds the previous
+           card. So each case waits the window out, and reports the session it
+           actually finished rather than trusting the order. */
         const runCard = async items => {
           openPlayer({ items, title: 'Quick core', free: true });
           await wait(200);
-          for (let i = 0; i < 24 && PLAYER && PLAYER.phase !== 'done'; i++) { playerSetDone(); await wait(120); }
+          let sets = 0, moves = 0;
+          for (let i = 0; i < 24 && PLAYER && PLAYER.phase !== 'done'; i++) {
+            playerSetDone(); await wait(120);
+            if (PLAYER) { sets = PLAYER.setsDone; moves = PLAYER.items.length; }
+          }
           const line = _share ? _share.l[1] : null;
           try { playerQuit(); } catch (e) {}
-          await wait(250);
-          return line;
+          await wait(700);
+          return { line, sets, moves };
         };
-        out.cardOne = await runCard([{ exId: 'pushup', sets: 1, target: 10, unit: 'reps', rest: 45 }]);
-        out.cardMany = await runCard([
+        out.one = await runCard([{ exId: 'pushup', sets: 1, target: 10, unit: 'reps', rest: 45 }]);
+        out.many = await runCard([
           { exId: 'pushup', sets: 3, target: 10, unit: 'reps', rest: 45 },
           { exId: 'plank', sets: 3, target: 30, unit: 'time', rest: 45 },
         ]);
+        out.cardOne = out.one.line; out.cardMany = out.many.line;
 
         const strip = h => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         /* The two history rows, at one round and at five. */
@@ -15309,8 +15319,10 @@ export default async function () {
       return out;
     });
 
-    t.eq('GUARD: the one-set session really is one set and one move',
-         /^1 [a-z]/.test(String(r507.cardOne || '')), true, JSON.stringify(r507.cardOne));
+    t.eq('GUARD: the one-set session really finished one set and one move',
+         JSON.stringify([r507.one.sets, r507.one.moves]), '[1,1]', JSON.stringify(r507.one));
+    t.eq('GUARD: and the real session really finished six sets across two moves',
+         JSON.stringify([r507.many.sets, r507.many.moves]), '[6,2]', JSON.stringify(r507.many));
     t.eq('the share card says one set and one move, not "1 sets · 1 moves"',
          r507.cardOne, '1 set · 1 move', JSON.stringify(r507));
     t.eq('FLOOR: and a real session still says sets and moves',
