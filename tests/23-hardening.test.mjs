@@ -15233,8 +15233,12 @@ export default async function () {
       while ((m = re.exec(text))) {
         const line = text.slice(text.lastIndexOf('\n', m.index) + 1, (text.indexOf('\n', m.index) + 1 || text.length + 1) - 1);
         if (line.includes('errs.push(')) continue;                 // a validator message, not athlete copy
-        const look = text.slice(Math.max(0, m.index - 160), m.index);
-        if (/(===\s*1\s*\?|<=\s*1\s*\?|>=\s*2\s*\?|\?\s*'[^']*'\s*:)/.test(look)) continue;  // its own singular branch
+        /* Its own singular branch — scoped to the SAME LINE. A raw character
+           window reaches an unrelated ternary on the line above and excuses the
+           hit: seeded with a brand-new surface carrying the banned form, a
+           160-character lookback let it through. */
+        const look = text.slice(text.lastIndexOf('\n', m.index) + 1, m.index);
+        if (/(===\s*1\s*\?|<=\s*1\s*\?|>=\s*2\s*\?|\?\s*'[^']*'\s*:)/.test(look)) continue;
         out.push(line.trim().slice(0, 110));
       }
       return out;
@@ -15248,6 +15252,11 @@ export default async function () {
     t.ok('GUARD: and stays quiet on a count that hand-writes its own plural',
          scan507("toast(n+' round'+(n===1?'':'s'));").length === 0
          && scan507("toast(plural(n,'round'));").length === 0);
+    /* A ternary on the line ABOVE must not excuse the line below it. A raw
+       character window does exactly that, and a new surface written with the
+       banned form walked through it. */
+    t.ok('GUARD: a guard on a NEIGHBOURING line does not excuse the hit',
+         scan507("const a = n===1?'one':'many';\ntoast(n+' rounds done');").length === 1);
     t.ok('GUARD: the comment stripper really removed the comments',
          noCom507.length < src507.length * 0.85 && noCom507.length > 400000,
          JSON.stringify({ raw: src507.length, stripped: noCom507.length }));

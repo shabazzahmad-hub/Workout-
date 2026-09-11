@@ -22215,6 +22215,26 @@ sets across two moves"* printed `sets: 1, moves: 2` — one set across two moves
 which names the cause in one line. Without it the floor reports only that two
 strings disagree, and the obvious next move is to doubt the app.
 
+### The escaped mutant: a guard on the line ABOVE excused the line below
+
+Ten mutants, and **M10 escaped** — the one that matters most: a brand-new
+surface written with the banned form, which is the next unreachable one and
+which the source scan exists to catch.
+
+The scan skips a hit whose own expression carries a singular branch
+(`n===1?'':'s'`), and it looked back a **raw 160-character window** for one.
+That window reaches the line ABOVE — so the new function was excused by a
+ternary belonging to a different statement entirely.
+
+The lookback is scoped to the **same line** now. Measured both ways on the real
+file: **0 hits either way**, so the narrowing costs nothing, and the four
+genuinely guarded sites all carry their ternary on their own line. The guard
+that pins it is a synthetic two-line source — a ternary on line 1, the offence
+on line 2 — which must be reported.
+
+**A character window is not a scope**, and a filter written as one will excuse
+whatever happens to sit near it.
+
 ### And a wait loop that could never end
 
 Three shell waiters from an earlier round had been spinning for **6.6 hours**,
