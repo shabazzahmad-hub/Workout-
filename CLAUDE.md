@@ -21474,6 +21474,153 @@ nothing. The over-eager twins each fail one: marking every row, showing the
 joints only to a flagged athlete, and reading the map raw so a relieved wrist is
 warned about.
 
+## Three per-session promises, and two of them were the words (v502)
+
+A fresh axis: **every athlete-facing claim about what happens EVERY session**,
+against what the engine does. v474 built a detector for a cadence claim and
+swept three STATIC files; v500 pointed it at 31 rendered surfaces. Both were
+aimed at work RISING and at training EVERY DAY. **"Every session" is a third
+shape**, and it had three members.
+
+**The discriminator for which half moves is whether the app's own design
+agrees with the sentence.** Twice it did not and the copy moved. Once it did —
+the twin already implemented the promise — and the code moved.
+
+### The wizard said it saved and did not
+
+The step label under the progress bar reads, on **every one of the seven steps
+in both modes**:
+
+> Step 1 of 7 · v501 · **changes save as you go**
+
+`obCommitStep()` opened `if(!OB_EDIT)return;`. Measured on a first run — type a
+name, an age, a height and a weight on step 1, tap Next twice to reach step 3,
+then reload:
+
+| | first run | edit mode |
+|---|---|---|
+| in `STATE` after two Nexts | **nothing** | the edit |
+| in storage | **nothing** | the edit |
+| after a reload | **every box empty, back on step 1** | — |
+
+*One of a pair guarded and its twin not*, for the twelfth time in this file —
+and the first run is the half that needs it. Seven steps is a long time to hold
+a phone call off, and a PWA gets reclaimed.
+
+**The wizard already re-fills every box from `STATE`** — `onboardHTML()` reads
+`P` and `N` unconditionally, not behind the `edit` flag — so committing was the
+whole fix. Measured after: the reload brings all four values back into their
+boxes and the athlete is still on the wizard rather than onboarded.
+
+**The SUCCESS toast stays edit-only, and that is a decision.** The label already
+promises the save on every step, so six toasts across a first run is a note that
+always fires. In edit mode the athlete makes ONE targeted change and leaves, so
+there the toast IS the confirmation. **The FAILURE toast fires either way** —
+its own comment says a swallowed failure looks exactly like *"I typed it and
+nothing happened"*, which is the defect that function was written to end.
+
+### The bonus fires in four sessions of five, and the label said all of them
+
+`buildSession()` skips the focus bonus on a day already carrying three or more
+direct-core slots, with a comment saying one more core move is not the missing
+stimulus there. Measured across the whole programme:
+
+| | |
+|---|---|
+| sessions with a targeted bonus | **306 of 378 — 81%** |
+| misses that are the core-heavy rule | **72 of 72** |
+| what the wizard label said | *"drives a targeted bonus move **every session**"* |
+
+### And the core goal's note promised the one thing the rotation shares out
+
+> `core:` Midsection first — **every session adds an abs/oblique bonus** and
+> eats near maintenance.
+
+`focusBonus()` puts abs and obliques at the head of the priority list for that
+goal and then **ALTERNATES** them with the athlete's other focus areas — v322
+made it do that precisely so a secondary target is not dead input. On the
+wizard's own default targets (`abs` + `full`):
+
+| | |
+|---|---|
+| bonuses | 306 |
+| chosen by `abs` | **153** |
+| chosen by `full` | **153** |
+| **sessions with a midsection bonus** | **153 of 378 — two in five** |
+
+And the goal that promised it on every session gets **fewer** bonuses than the
+fat-loss goal does: `core` 306 of 378 against `lose` **336**, because
+`goalSlots('core')` fills more direct-core slots and trips the skip more often.
+**The promise failed hardest on the days the goal was most itself.**
+
+**Leading is not owning**, and two comments said otherwise — *"the focus bonus
+is forced onto abs/obliques regardless of the target picker"* and *"Each session
+gains ONE extra accessory"*. A comment claiming an invariant is not the
+invariant, for the eleventh time in this file, and both were corrected with the
+measurement written beside them rather than left.
+
+### The guards are the whole block, twice
+
+Without pinning that the step label really carries the promise, every assertion
+about the save is about a sentence that was never there. Without pinning that
+the bonus genuinely does NOT reach every session — **and that all 72 misses are
+the deliberate rule** — every assertion about the copy is about a rate that was
+never short of 100%, and the floors have nothing to stand on.
+
+**The floors carry the round**, and each over-eager twin fails one: a toast on
+every Next of a first run, a mid-wizard commit that onboards them, an edit mode
+that stops confirming its own save, the bonus deleted outright (which satisfies
+every *"it no longer claims every session"* assertion), and a core goal that
+stops leading with the midsection.
+
+**And the write must land before any edit-only branch — asserted on the
+SOURCE**, because a first run that commits and an edit that commits are the same
+two statements, and only the ORDER around the early return tells them apart. In
+edit mode both versions are byte-identical on screen.
+
+### The class scan, and the trap it had to avoid
+
+`every session` on its own matches plenty of ordinary copy that has nothing to
+do with the bonus — 76 hits across the file, almost all comments, coach lines
+and exercise prose. So the scan pairs the cadence with the word **bonus** inside
+one short window, strips comments first, and is proven **both ways** on a
+literal: it must catch the old wording and stay quiet on the new one. *A
+detector that can match ordinary app content is not measuring what you named* —
+the tenth entry under that rule.
+
+### And the deliberate break logged to the console
+
+The floor that proves a failed save still says so stubs `obReadForm()` to throw.
+`obCommitStep()` **logs** that failure, and the harness counts a console error
+as a page failure — so the suite went red naming *"page error"* rather than any
+check. `console.error` is muted across the break, the same way every check that
+breaks data in front of `validateData()` has to be. Fourth time this file has
+recorded it.
+
+### The escaped mutant was the athlete who asked for it themselves
+
+Eleven of twelve caught. The one that got through is the over-eager twin that
+**deletes the core goal's midsection lead** — and reading it back is what said
+it was a weak check rather than a bad mutant.
+
+`focusBonus()` builds its wheel by alternating `prio` (the lead plus
+`focusPrimary`) with the athlete's other areas, and with one other area the
+wheel takes only `prio[0]`. Measured, on the athlete the check used:
+
+| athlete | with the lead | without it |
+|---|---|---|
+| core goal, **#1 area abs** | `['abs','full']` | **`['abs','full']` — identical** |
+| core goal, **#1 area legs** | `['abs','full']` | `['legs','full']` — **no midsection key at all** |
+
+So the abs athlete's own answer supplied the lead's, and the mutant was
+equivalent on everything the block could see. *A guard is only visible when the
+value beside it cannot supply the answer* — and the discriminating athlete is
+the one the goal exists for: somebody who wants a strong core and names legs as
+their #1 area. With its own guard that the athlete really did not ask for the
+midsection, the mutant fails by name.
+
+**Suite 10: 305 → 342 checks.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

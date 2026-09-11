@@ -1680,6 +1680,303 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+  /* ---- v502: "changes save as you go" was true in one of the two modes ----
+     The step label under the progress bar promises it on EVERY one of the
+     seven steps, in BOTH the first-run wizard and the edit-profile path that
+     reuses it. obCommitStep() opened `if(!OB_EDIT)return;`, so on a first run
+     it was a no-op.
+
+     Measured: type a name, an age, a height and a weight on step 1, tap Next
+     twice to reach step 3, then reload. Nothing in STATE, nothing in storage,
+     and the boxes come back empty on step 1 — after the screen said, three
+     times, that it had saved. Edit mode, the twin, stored the same edit.
+
+     One of a pair guarded and its twin not, and the first run is the half that
+     needs it: seven steps is a long time to hold a phone call off, and a PWA
+     gets reclaimed. The wizard already re-fills every box from STATE
+     (onboardHTML() reads P/N unconditionally), so committing is all it took. */
+  {
+    const { browser, page, errors } = await launch(port);
+
+    /* GUARD: the promise is really on the screen, in both modes and on every
+       step. Without this, every assertion below is about a sentence that was
+       never there. */
+    const g = await page.evaluate(() => {
+      const o = {};
+      STATE.onboarded = false; OB_EDIT = false; render();
+      const lbl = () => (document.querySelector('#ob-steplbl') || {}).textContent || '';
+      o.firstRunStep1 = lbl();
+      // walk to step 3 without typing: the label must keep promising
+      const next = document.querySelector('#ob-next');
+      o.hasNext = !!next;
+      return o;
+    });
+    s.ok('GUARD: the first-run step label promises the save', /changes save as you go/.test(g.firstRunStep1), g);
+    s.ok('GUARD: the wizard mounted with a Next button to drive', g.hasNext, g);
+
+    // --- FIRST RUN: fill step 1, advance twice, reload ---
+    await page.evaluate(() => {
+      STATE.onboarded = false; OB_EDIT = false; render();
+      window.__said = [];
+      const t = window.toast; window.toast = (m, d) => { window.__said.push(String(m)); return t(m, d); };
+    });
+    await page.waitForSelector('#ob-age');
+    await page.evaluate(() => {
+      document.querySelector('#ob-name').value = 'Measured Athlete';
+      document.querySelector('#ob-age').value = '41';
+      document.querySelector('#ob-height').value = '178';
+      document.querySelector('#ob-weight').value = '88';
+    });
+    await page.click('#ob-next');
+    await page.waitForTimeout(120);
+    await page.click('#ob-next');
+    await page.waitForTimeout(120);
+
+    const mid = await page.evaluate(() => {
+      let st = {};
+      try { st = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch (e) { st = { THREW: String(e) }; }
+      return {
+        said: window.__said.slice(),
+        stepLabel: (document.querySelector('#ob-steplbl') || {}).textContent || '',
+        storedName: st.profile && st.profile.name,
+        storedAge: st.profile && st.profile.age,
+        storedHt: st.profile && st.profile.heightCm,
+        storedKg: st.nutrition && st.nutrition.weightKg,
+        storedOnboarded: st.onboarded,
+      };
+    });
+    s.ok('GUARD: the label still promises the save on a later step', /changes save as you go/.test(mid.stepLabel), mid);
+    s.eq('a first run stores the name typed on step 1', mid.storedName, 'Measured Athlete', mid);
+    s.eq('and the age', mid.storedAge, 41, mid);
+    s.eq('and the height', mid.storedHt, 178, mid);
+    s.eq('and the weight', mid.storedKg, 88, mid);
+    s.ok('and it does NOT onboard them part-way through', mid.storedOnboarded !== true, mid);
+    /* A NOTE THAT ALWAYS FIRES IS A NOTE NOBODY READS. The label already
+       promises the save on every step, so six toasts on the way through a
+       first run is noise. Edit mode is one targeted change and a departure,
+       so there the toast IS the confirmation. */
+    s.eq('FLOOR: and says nothing — the label is the confirmation on a first run', mid.said, [], mid);
+
+    await page.reload({ waitUntil: 'networkidle' });
+    await waitForBoot(page);
+    const after = await page.evaluate(() => {
+      const box = id => { const e = document.querySelector('#' + id); return e ? e.value : 'NO WIZARD'; };
+      return {
+        onboarded: STATE.onboarded, name: STATE.profile.name, age: STATE.profile.age,
+        ht: STATE.profile.heightCm, kg: STATE.nutrition.weightKg,
+        boxName: box('ob-name'), boxAge: box('ob-age'), boxHt: box('ob-height'), boxWt: box('ob-weight'),
+        repairNote: /needed a repair/i.test(document.body.innerText || ''),
+      };
+    });
+    s.eq('and a reload brings the name back into the box', after.boxName, 'Measured Athlete', after);
+    s.eq('and the age', after.boxAge, '41', after);
+    s.eq('and the height', after.boxHt, '178', after);
+    s.eq('and the weight', after.boxWt, '88', after);
+    s.ok('and they are still on the wizard rather than onboarded', after.onboarded !== true, after);
+    /* v390/v409: a repair that changes a settled state fires "we repaired your
+       data" at an athlete about nothing. A partial first-run commit must not. */
+    s.ok('FLOOR: and is not told their data needed repairing', !after.repairNote, after);
+
+    // --- FLOOR: a swallowed failure is the defect this function exists to end ---
+    const failToast = await page.evaluate(() => {
+      STATE.onboarded = false; OB_EDIT = false; render();
+      window.__said2 = [];
+      const t = window.toast; window.toast = (m, d) => { window.__said2.push(String(m)); return t(m, d); };
+      const real = window.obReadForm;
+      /* obCommitStep() logs the failure it reports, and the harness counts a
+         console error as a page failure - so the deliberate break is muted
+         across it, the same way every check that breaks data in front of
+         validateData() has to be. */
+      const ce = console.error; console.error = () => {};
+      window.obReadForm = () => { throw new Error('seeded'); };
+      try { obCommitStep(); } catch (e) {}
+      window.obReadForm = real;
+      console.error = ce;
+      window.toast = t;
+      return window.__said2.slice();
+    });
+    s.ok('FLOOR: a first run that CANNOT save says so', failToast.some(m => /could not save/i.test(m)), failToast);
+
+    // --- FLOOR: edit mode is unchanged — it still toasts and still stores ---
+    const edit = await page.evaluate(() => {
+      STATE.onboarded = true;
+      Object.assign(STATE.profile, { name: 'Base', age: 40, heightCm: 170, unit: 'cm', sex: 'male',
+        days: [1, 2, 3, 4, 5], gear: [], targets: ['abs'], limitations: [], parq: [], parqDone: true });
+      Object.assign(STATE.nutrition, { weightKg: 80, sex: 'male', age: 40, heightCm: 170,
+        activity: 1.45, diet: 'omnivore', meals: 3, allergens: [] });
+      save(); go('today'); openProfileEdit();
+      window.__said3 = [];
+      const t = window.toast; window.toast = (m, d) => { window.__said3.push(String(m)); return t(m, d); };
+      return true;
+    });
+    await page.waitForSelector('#ob-next');
+    await page.evaluate(() => { document.querySelector('#ob-age').value = '55'; });
+    await page.click('#ob-next');
+    await page.waitForTimeout(150);
+    const editOut = await page.evaluate(() => {
+      let st = {}; try { st = JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch (e) {}
+      return { said: window.__said3.slice(), age: st.profile && st.profile.age };
+    });
+    s.eq('FLOOR: edit mode still stores the change on Next', editOut.age, 55, editOut);
+    s.ok('FLOOR: and still says so, because that is one change and a departure',
+      editOut.said.some(m => /saved/i.test(m)), editOut);
+
+    /* The write must happen BEFORE any OB_EDIT branch. A source assertion,
+       because a first run that commits and an edit that commits are the same
+       two statements — only the ORDER around the early return tells them
+       apart, and it is byte-identical on screen in edit mode. */
+    const src502 = await page.evaluate(() => {
+      const sc = [...document.querySelectorAll('script:not([src])')]
+        .sort((a, b) => b.textContent.length - a.textContent.length)[0].textContent;
+      const i = sc.indexOf('function obCommitStep(){');
+      if (i < 0) return { found: false };
+      const body = sc.slice(i, i + 1400);
+      return {
+        found: true, readApp: sc.length > 200000,
+        write: body.indexOf('obReadForm();save();'),
+        gate: body.indexOf('if(!OB_EDIT)return;'),
+      };
+    });
+    s.ok('GUARD: the scan read the app and found obCommitStep', src502.found && src502.readApp, src502);
+    s.ok('the commit writes before any edit-only branch',
+      src502.write >= 0 && (src502.gate < 0 || src502.write < src502.gate), src502);
+
+    errors.forEach(e => s.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- v502: two more per-session cadence claims the engine contradicts ----
+     The same class, and here the app's own design is what says the SENTENCE is
+     the wrong half rather than the code.
+
+       the wizard's focus label   "drives a targeted bonus move every session"
+       the core goal note         "every session adds an abs/oblique bonus"
+
+     buildSession() skips the bonus on a day already carrying three or more
+     direct-core slots, with a comment saying one more core move is not the
+     missing stimulus there. Measured over the whole programme: 306 of 378,
+     and every one of the 72 misses is that rule.
+
+     And focusBonus() ALTERNATES the priority keys with the athlete's other
+     focus areas — v322 made it do that precisely so a secondary target is not
+     dead input. On the wizard's own default targets (abs + full) a core-goal
+     athlete's 306 bonuses split 153 abs / 153 full, so a midsection bonus
+     lands in 153 of 378 sessions: two in five, not every one. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+
+    const m = await page.evaluate(() => {
+      const N = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+      const CORE = { anterior: 1, oblique: 1, lower: 1 };
+      const run = (goal, focus, targets) => {
+        STATE.profile.goal = goal; STATE.nutrition.goal = goal;
+        STATE.profile.focusPrimary = focus; STATE.profile.targets = targets;
+        STATE.profile.troubleZones = [];
+        let bonus = 0, skipCoreHeavy = 0, skipOther = 0; const byKey = {};
+        for (let p = 0; p < N; p++) {
+          const sess = buildSession(p);
+          const b = (sess.main || []).find(x => x && x.slot === 'focus');
+          if (b) { bonus++; byKey[b.focusKey] = (byKey[b.focusKey] || 0) + 1; }
+          else {
+            const cs = (sess.main || []).filter(x => EX[x.exId] && CORE[EX[x.exId].region]).length;
+            if (cs >= 3) skipCoreHeavy++; else skipOther++;
+          }
+        }
+        const mid = (byKey.abs || 0) + (byKey.obliques || 0);
+        return { N, bonus, skipCoreHeavy, skipOther, byKey, mid, focusPrimary: focus };
+      };
+      return {
+        core: run('core', 'abs', ['abs', 'full']),
+        lose: run('lose', 'abs', ['abs', 'full']),
+        /* THE ATHLETE THE LEAD CAN BE SEEN ON. focusBonus() builds its wheel
+           from prio (the core goal's lead + focusPrimary) alternated with the
+           athlete's other areas, and with rest.length === 1 the wheel takes
+           only prio[0]. For an abs-focused athlete prio[0] is 'abs' whether or
+           not the lead is there, so that athlete cannot tell the two apart -
+           the value beside the guard supplies the answer.
+           A core-goal athlete whose #1 area is LEGS can: with the lead the
+           wheel is ['abs','full'], without it ['legs','full'] and no
+           midsection key exists at all. */
+        coreLegs: run('core', 'legs', ['legs', 'full']),
+      };
+    });
+
+    /* GUARDS. Without these the copy assertions below are about a rate that
+       was never short of 100%, and the floors have nothing to stand on. */
+    s.ok('GUARD: the bonus genuinely does NOT reach every session', m.core.bonus < m.core.N, m.core);
+    s.eq('GUARD: and every miss is the deliberate core-heavy rule', m.core.skipOther, 0, m.core);
+    s.ok('GUARD: a core-goal midsection bonus is a minority of sessions',
+      m.core.mid > 0 && m.core.mid < m.core.N / 2, m.core);
+
+    /* FLOORS. A fix that deleted the bonus, or that stopped the core goal
+       leading with the midsection, satisfies every "it no longer claims every
+       session" assertion. */
+    s.ok('FLOOR: the bonus still fires in most sessions', m.core.bonus > m.core.N * 0.6, m.core);
+    s.ok('FLOOR: the core goal still LEADS with the midsection', m.core.mid >= m.core.bonus * 0.4, m.core);
+    /* GUARD first: without it this floor is about an athlete who asked for the
+       midsection themselves, and the lead is invisible. */
+    s.ok('GUARD: and the discriminating athlete did NOT ask for the midsection',
+      m.coreLegs.focusPrimary !== 'abs' && m.coreLegs.focusPrimary !== 'obliques', m.coreLegs);
+    s.ok('FLOOR: so a core athlete whose #1 area is legs STILL gets midsection bonuses',
+      m.coreLegs.mid >= m.coreLegs.bonus * 0.4, m.coreLegs);
+    s.ok('FLOOR: and a non-core goal still gets a bonus too', m.lose.bonus > m.lose.N * 0.6, m.lose);
+
+    const copy = await page.evaluate(() => {
+      const o = {};
+      STATE.onboarded = false; OB_EDIT = false; render();
+      document.querySelectorAll('.ob-step').forEach(e => { e.style.display = ''; });
+      const w = document.querySelector('#v-today').innerText || '';
+      o.wizardEvery = /bonus move every session/i.test(w);
+      o.wizardMost = /bonus move in most sessions/i.test(w);
+      STATE.onboarded = true;
+      STATE.profile.goal = 'core'; STATE.nutrition.goal = 'core';
+      go('fuel'); render();
+      const f = document.querySelector('#v-fuel').innerText || '';
+      o.noteEvery = /every session adds an abs/i.test(f);
+      o.noteMost = /most sessions add a midsection bonus/i.test(f);
+      o.noteLeads = /midsection first/i.test(f);
+      return o;
+    });
+    s.ok('the wizard label no longer claims a bonus in every session', !copy.wizardEvery, copy);
+    s.ok('and says what it actually does', copy.wizardMost, copy);
+    s.ok('the core goal note no longer claims an abs bonus in every session', !copy.noteEvery, copy);
+    s.ok('and says what it actually does', copy.noteMost, copy);
+    s.ok('FLOOR: while still telling a core athlete the midsection leads', copy.noteLeads, copy);
+
+    /* THE CLASS, not the two instances: no athlete-facing string may pair a
+       per-session cadence with the bonus. Anchored on the two words together
+       within one short window, because "every session" on its own matches
+       plenty of ordinary copy that has nothing to do with the bonus. */
+    const scan = await page.evaluate(() => {
+      const sc = [...document.querySelectorAll('script:not([src])')]
+        .sort((a, b) => b.textContent.length - a.textContent.length)[0].textContent;
+      // quoted athlete-facing strings only: skip /* */ and // comment bodies
+      const noBlock = sc.replace(/\/\*[\s\S]*?\*\//g, ' ');
+      const noLine = noBlock.split('\n').map(l => {
+        const i = l.indexOf('//');
+        return i >= 0 ? l.slice(0, i) : l;
+      }).join('\n');
+      const bad = [];
+      const re = /every (?:session|workout)[^\n]{0,60}?bonus|bonus[^\n]{0,60}?every (?:session|workout)/gi;
+      let hit;
+      while ((hit = re.exec(noLine))) bad.push(hit[0].slice(0, 90));
+      // both-ways proof the detector can see one and does not see the fix
+      const seeBad = /every (?:session|workout)[^\n]{0,60}?bonus|bonus[^\n]{0,60}?every (?:session|workout)/i
+        .test("label:'drives a targeted bonus move every session'");
+      const seeGood = /every (?:session|workout)[^\n]{0,60}?bonus|bonus[^\n]{0,60}?every (?:session|workout)/i
+        .test("label:'drives a targeted bonus move in most sessions'");
+      return { bad, readApp: sc.length > 200000, seeBad, seeGood };
+    });
+    s.ok('GUARD: the scan read the app', scan.readApp, scan);
+    s.ok('GUARD: and its detector really catches the old wording', scan.seeBad, scan);
+    s.ok('GUARD: and stays quiet on the new wording', !scan.seeGood, scan);
+    s.eq('no athlete-facing copy claims a bonus in every session', scan.bad, [], scan);
+
+    errors.forEach(e => s.fail('page error', e));
+    await browser.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
