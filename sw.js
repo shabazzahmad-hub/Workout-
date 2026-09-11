@@ -10,7 +10,7 @@
    tiers are parsed by pulling every quoted asset name out of this file, comments
    included, so an illustrative path in a comment breaks CI by declaring
    an asset that does not exist. */
-const CACHE = 'coreforge-v502';
+const CACHE = 'coreforge-v503';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -46,9 +46,18 @@ const CORE = ['./', './index.html'];
 
 /* Everything the first screen needs. Cached during install but not atomically:
    a missing font must never cost the athlete the whole offline cache. */
+/* coach-sarge.jpg moved to FIRST_RUN when the install tier crossed 2048 KB at
+   2049. index.html grows every version, so this gate trips periodically by
+   design and the answer is always the same: moving a file between tiers costs
+   no download, because the same pack is fetched either way.
+   It earns the move because it is measured NOT to be first paint - neither the
+   first-run wizard (which uses hero.jpg) nor an onboarded athlete's Today tab
+   references it - while privacy.html and terms.html are linked from the
+   first-run screen, where consent is formed, and stay. 44 KB of headroom
+   rather than the 10 KB those two would have bought. */
 const SHELL_MIN = [
   './manifest.webmanifest','./archivo.woff2',
-  './hero.jpg','./coach-sarge.jpg',
+  './hero.jpg',
   './privacy.html','./terms.html'
 ];
 
@@ -78,6 +87,7 @@ const SHELL_MIN = [
    quoted string between the brackets, so one apostrophe in a comment inside
    them opens a quote and swallows the whole tier. */
 const FIRST_RUN = [
+  './coach-sarge.jpg',
   './icon-512-maskable.png',   // the OS launcher wants it after install, not for the first paint
   './icon-192-maskable.png','./icon-180-apple.png',   // same reasoning: home-screen icons, not first-paint
   './icon-512-v2.png','./icon-192-v2.png',   // the tab icon and the notification badge; neither is first paint

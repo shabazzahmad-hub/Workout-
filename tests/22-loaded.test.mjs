@@ -603,6 +603,185 @@ export default async function run() {
       r.safeNote === false, JSON.stringify({ ptr: r.plainPtr, note: r.safeNote }));
   }
 
+  /* ---- v503: the tree promised rungs the engine routes around for ever -----
+     The skill tree's state is pure ladder POSITION — i<cur "unlocked",
+     i===cur "you are here", i>cur "unlocks later" — and it asked nothing about
+     the three things that decide whether a movement can EVER reach this
+     athlete: a flagged joint (safeSwap), kit they do not own (gearSwap) and a
+     room they cannot cross (spaceSwap).
+
+     Measured over the whole 378-session programme, against the 29 locked rungs:
+
+       no flags, full gear        0 never arrive
+       shoulder + wrist flagged  13 never arrive
+       no gear at all             5
+       no gear, tight, 4 joints  26
+
+     And the present tense is worse than the future one. For the shoulder+wrist
+     athlete TWO rungs badged "you are here" and TWO badged "unlocked" are
+     movements the programme never gives them.
+
+     The engine is right, so the SCREEN moved, and it NAMES the blocker rather
+     than hiding the row. */
+  {
+    const r = await page.evaluate(() => {
+      const N = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+      const run = (lims, gear, tight) => {
+        STATE.profile.limitations = lims;
+        STATE.profile.gear = gear;
+        STATE.profile.tightSpace = !!tight;
+        STATE.profile.hasBar = gear.includes('bar');
+        STATE.profile.hasBench = gear.includes('bench');
+        /* Every movement the programme EVER prescribes for this athlete. This
+           is the ground truth the badge is measured against — not a second
+           reading of the predicates. */
+        const seen = new Set();
+        for (let p = 0; p < N; p++) {
+          const s = buildSession(p);
+          [...(s.main || []), s.finisher].filter(Boolean).forEach(m => seen.add(m.exId));
+        }
+        STATE.progressPtr = 0;
+        let blocked = 0, falseBlock = 0, lockedNeverArrives = 0, lockedNeverNamed = 0;
+        const falseNames = [], unnamed = [];
+        SKILL_TREES.forEach(t => {
+          const arr = LADDERS[t.lad] || [];
+          const cur = currentRung(t.lad);
+          arr.forEach((exId, i) => {
+            const b = skillBlockOf(exId);
+            if (b) {
+              blocked++;
+              /* THE ASSERTION THAT MATTERS. A badge saying a movement is ruled
+                 out, on one the athlete is given, is the same lie pointed the
+                 other way — and it is exactly what the first version of this
+                 fix shipped for Hanging Knee Raise. */
+              if (seen.has(exId)) { falseBlock++; if (falseNames.length < 4) falseNames.push({ ex: EX[exId].name, why: b.why }); }
+            }
+            if (i <= cur) return;   // only a LOCKED rung promises a future
+            if (seen.has(exId)) return;
+            lockedNeverArrives++;
+            if (!b) { lockedNeverNamed++; if (unnamed.length < 4) unnamed.push(EX[exId].name); }
+          });
+        });
+        STATE.progressPtr = 0;
+        go('program'); render();
+        const txt = document.querySelector('#v-program').innerText || '';
+        const html = document.querySelector('#v-program').innerHTML || '';
+        return {
+          blocked, falseBlock, falseNames, lockedNeverArrives, lockedNeverNamed, unnamed,
+          unlocksLater: (txt.match(/unlocks later/g) || []).length,
+          unlockedBadge: (txt.match(/\bunlocked\b/g) || []).length,
+          youAreHere: (txt.match(/you are here/g) || []).length,
+          flagged: (txt.match(/flagged — /g) || []).length,
+          noteClause: /marked rather than promised/.test(txt),
+          sampleFlag: (txt.match(/flagged — [a-z &]+/i) || [])[0] || null,
+          /* THE LABEL MUST NAME ONLY THE JOINTS THIS ATHLETE FLAGGED. Reverse
+             Plank loads shoulder, wrist AND lower back; a wrist-only athlete
+             must read "flagged — wrist" and nothing else. Dropping the
+             membership half of that filter names joints they never flagged,
+             which is v501's own chip-marker defect one surface over — and no
+             assertion on a SAMPLE label can see it, because the sample is
+             already correct for a single-joint movement. */
+          multiJoint: (() => {
+            const b = skillBlockOf('reverseplank');
+            return { label: b ? b.label : null, loads: JOINTS.filter(([k]) => (JOINT_RISK[k] || []).includes('reverseplank')).map(([, l]) => l.toLowerCase()) };
+          })(),
+          /* THE GLYPH AND THE COLOUR ARE PART OF THE FIX. A row reading
+             "flagged — wrist" in green with a tick still READS as unlocked, so
+             the state has to be painted as well as worded. Measured on the row
+             the athlete actually sees, found by its own onclick. */
+          rowPaint: (() => {
+            const m = html.match(/<button onclick="openExerciseInfo\('pushup'\)"[\s\S]{0,600}?<\/button>/);
+            const row = m ? m[0] : '';
+            return { found: !!row, hasTick: /\u2713/.test(row), hasWarn: /\u26a0/.test(row), green: /var\(--green\)/.test(row), gold: /var\(--gold\)/.test(row) };
+          })(),
+          sampleKit: (txt.match(/needs Pull-up bar/i) || [])[0] || null,
+          /* A blocked rung must still be TAPPABLE. Hiding it is the other wrong
+             fix: the athlete loses the how-to for a movement they may unlock by
+             buying a bar or clearing a flag. */
+          rows: (html.match(/onclick="openExerciseInfo\(/g) || []).length,
+        };
+      };
+      const GEAR_ALL = ['bar', 'bench', 'dip', 'kettlebell', 'dumbbell', 'medball', 'ruck',
+        'band', 'wheel', 'box', 'rope', 'sandbag', 'stability', 'balance', 'trainer'];
+      const out = {
+        clean: run([], GEAR_ALL, false),
+        joints: run(['shoulder', 'wrist'], ['bar', 'bench', 'dip'], false),
+        nogear: run([], [], false),
+        worst: run(['shoulder', 'wrist', 'knee', 'lowback'], [], true),
+      };
+      /* THE RELIEF IS WHAT PROVES jointRisky() RATHER THAN RAW JOINT_RISK.
+         With push-up bars a flagged wrist is relieved on specific presses, so
+         the map says risky and the predicate says no — the exact false alarm
+         v285 records a probe making by reading the map raw. */
+      STATE.profile.limitations = ['wrist'];
+      STATE.profile.gear = ['bar', 'parallettes'];
+      STATE.profile.hasBar = true; STATE.profile.hasBench = false;
+      out.relief = {
+        mapSaysRisky: (JOINT_RISK.wrist || []).includes('pushup'),
+        relieved: typeof wristRelieved === 'function' ? wristRelieved('pushup') : null,
+        predicate: jointRisky('pushup', ['wrist']),
+        blocked: !!skillBlockOf('pushup'),
+      };
+      return out;
+    });
+
+    /* GUARDS. Without these every assertion below is about a rule that never
+       fires, or about an unreachability that was never real. */
+    t.eq('GUARD: a fully-equipped, unflagged athlete has NO blocked rung', r.clean.blocked, 0, r.clean);
+    t.eq('GUARD: and nothing on their tree is promised and never delivered', r.clean.lockedNeverArrives, 0, r.clean);
+    t.ok('GUARD: a flagged athlete really does have rungs that never arrive', r.joints.lockedNeverArrives >= 10, r.joints);
+    t.ok('GUARD: and so does one with no kit', r.nogear.lockedNeverArrives >= 4, r.nogear);
+    t.ok('GUARD: the raw map really does call a wrist-flagged push-up risky', r.relief.mapSaysRisky, r.relief);
+    t.ok('GUARD: and the parallettes relief really is in force', r.relief.relieved === true, r.relief);
+
+    /* THE CLASS ASSERTION. Swept across four athlete shapes against the whole
+       programme rather than asserted on one movement. */
+    t.eq('no rung the tree marks as ruled out is ever prescribed — clean', r.clean.falseBlock, 0, r.clean.falseNames);
+    t.eq('— flagged', r.joints.falseBlock, 0, r.joints.falseNames);
+    t.eq('— no kit', r.nogear.falseBlock, 0, r.nogear.falseNames);
+    t.eq('— the most constrained legal athlete', r.worst.falseBlock, 0, r.worst.falseNames);
+
+    /* The driven cases. */
+    t.ok('a flagged athlete sees the rungs their joints rule out marked', r.joints.flagged >= 15, r.joints);
+    t.ok('and the mark NAMES the joint they flagged', /flagged — (shoulder|wrist)/.test(r.joints.sampleFlag || ''), r.joints);
+    /* GUARD first: the movement really does load a joint this athlete did NOT
+       flag, or the assertion below proves nothing. */
+    t.ok('GUARD: Reverse Plank loads a joint beyond the two flagged ones',
+      r.joints.multiJoint.loads.includes('lower back'), r.joints.multiJoint);
+    t.eq('and names ONLY the joints they flagged, not every joint the move loads',
+      r.joints.multiJoint.label, 'flagged — shoulder & wrist', r.joints.multiJoint);
+    /* The painted state, not only the words. */
+    t.ok('GUARD: the marked row was found on the rendered tree', r.joints.rowPaint.found, r.joints.rowPaint);
+    t.ok('a marked row carries the warning glyph, not the position tick', r.joints.rowPaint.hasWarn && !r.joints.rowPaint.hasTick, r.joints.rowPaint);
+    t.ok('and is painted as a warning rather than as live progress', r.joints.rowPaint.gold && !r.joints.rowPaint.green, r.joints.rowPaint);
+    t.ok('FLOOR: the same row on an unflagged athlete keeps its tick and its live colour',
+      r.clean.rowPaint.hasTick && r.clean.rowPaint.green && !r.clean.rowPaint.hasWarn, r.clean.rowPaint);
+    t.ok('an athlete with no kit is told which kit, in the picker’s own words', !!r.nogear.sampleKit, r.nogear);
+    t.ok('and the note above says how many are marked', r.joints.noteClause && r.nogear.noteClause, { j: r.joints.noteClause, n: r.nogear.noteClause });
+
+    /* FLOORS. Every over-eager twin fails one of these. */
+    t.eq('FLOOR: the unflagged, fully-equipped athlete is unchanged — locked', r.clean.unlocksLater, 29, r.clean);
+    t.eq('FLOOR: — unlocked', r.clean.unlockedBadge, 16, r.clean);
+    t.eq('FLOOR: — you are here', r.clean.youAreHere, 8, r.clean);
+    t.eq('FLOOR: and nothing on their screen is marked', r.clean.flagged, 0, r.clean);
+    t.ok('FLOOR: and the note says nothing about marks', !r.clean.noteClause, r.clean);
+    t.ok('FLOOR: the parallettes relief keeps the push-up reachable, so it is NOT marked',
+      r.relief.predicate === false && r.relief.blocked === false, r.relief);
+    t.ok('FLOOR: a marked rung is still tappable for its how-to', r.joints.rows >= 50, r.joints);
+    t.eq('FLOOR: and the row count does not change with the athlete', r.joints.rows, r.clean.rows,
+      { joints: r.joints.rows, clean: r.clean.rows });
+
+    /* THE ONE MEASURED RESIDUAL, pinned so it cannot grow silently. resolve()
+       swaps the Copenhagen plank out on the LEGACY hasBench flag rather than
+       through `equip`, so hasGearFor() cannot see it and that one rung still
+       reads "unlocks later" for a benchless athlete. Closing it needs either an
+       engine change or a second copy of gearSwap's ladder-walk rule, and the
+       first version of this fix proved the cost of guessing: it badged Hanging
+       Knee Raise "needs Pull-up bar" for a barless athlete who does get it. */
+    t.ok('the only rungs still unnamed are the recorded residual', r.nogear.lockedNeverNamed <= 1, r.nogear);
+    t.eq('and a flagged athlete has none at all', r.joints.lockedNeverNamed, 0, r.joints);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

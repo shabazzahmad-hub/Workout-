@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='502';
+const APP_VERSION='503';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3577,13 +3577,28 @@ function buildSession(ptr){
     let exId=arr[clamp(idx,0,arr.length-1)];
     if(!exId||!EX[exId])return exId;
     // swap out equipment moves the user can't do
+    /* THESE FIVE READ THE LEGACY hasBar/hasBench FLAGS, NOT THE GEAR ARRAY, so
+       hasGearFor() cannot see them at all — and the skill tree, which asks
+       hasGearFor(), therefore still promises a benchless athlete the Copenhagen
+       plank that this line has always swapped out. Measured: 84 appearances
+       with a bench, 0 without, and hasGearFor('copenhagen') true either way.
+
+       IT IS RECORDED RATHER THAN CLOSED, and the measurement is why. Hoisting
+       these into a map the tree could ask was tried and REVERTED: it badged
+       Hanging Knee Raise "needs Pull-up bar" for a barless athlete who
+       nonetheless DOES get it, because gearSwap()'s ladder-walk lands on it
+       from kneetoelbow above — so the badge would have been a false label of
+       exactly the kind this round removes. A truthful test needs the walk rule
+       a second time, and a second copy of an engine rule is the drift this file
+       fixes everywhere else. One rung, one athlete shape, measured and named.
+
+       kneetoelbow needs no override here — unlike hanglegraise, its
+       immediately-easier lowerL neighbour (kneeraise) needs no gear, so
+       gearSwap()'s own ladder-walk two lines down already lands there on its
+       own. Confirmed by mutation-testing: removing a line that duplicated
+       exactly that resolution changed nothing. */
     if(EX[exId].optional){
       if(exId==='kneeraise'&&!hasBar){exId='legraise';}
-      /* kneetoelbow needs no hardcoded override here — unlike hanglegraise
-         below, its immediately-easier lowerL neighbour (kneeraise) needs no
-         gear, so gearSwap()'s own ladder-walk two lines down already lands
-         there on its own. Confirmed by mutation-testing: removing a line
-         that duplicated exactly that resolution changed nothing. */
       if(exId==='hanglegraise'&&!hasBar){exId='vup';}
       if(exId==='dragonflag'&&!hasBar){exId='hollowrock';}
       if(exId==='dragonflagfull'&&!hasBar){exId='hollowrock';}
@@ -23564,9 +23579,54 @@ function currentRung(lad){
   const pos=posOf(ptr);
   return rungIndex(lad,pos.cycle,pos.week,levelOf(pos.cycle));
 }
+/* THE TREE BADGED EVERY LOCKED RUNG "unlocks later" AND THE ENGINE ROUTES
+   AROUND SOME OF THEM FOR EVER. The state here is pure ladder POSITION -
+   i<cur, i===cur, i>cur - and it asks nothing about the three things that
+   decide whether a movement can ever reach this athlete: a flagged joint
+   (safeSwap), kit they do not own (gearSwap) and a room they cannot cross
+   (spaceSwap). Measured over the whole 378-session programme, against every
+   rung the tree shows:
+
+     no flags, full gear       0 of 29 locked rungs never arrive
+     shoulder + wrist flagged  13 of 29 never arrive
+     no gear at all             5 of 29
+     no gear, tight, 4 joints  26 of 29
+
+   And the present tense is worse than the future one. For the shoulder+wrist
+   athlete TWO rungs badged "you are here" and TWO badged "unlocked" are
+   movements the programme never gives them - Bear Plank Hold, Tempo Push-Up,
+   Knee Push-Up and Push-Up. 17 of 53 rows mislabelled, on the athlete this app
+   takes the most care with.
+
+   THE ENGINE IS RIGHT, so the SCREEN is the half that moves - and it NAMES the
+   blocker rather than hiding the row, which is the call v322 made for missing
+   kit and v501 for a flagged joint. jointRisky() rather than raw JOINT_RISK, so
+   the parallettes relief still reads as reachable; gearNeededFor() supplies the
+   words in the gear picker's own labels. */
+function skillBlockOf(exId){
+  try{
+    if(!EX[exId])return null;
+    const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
+    if(jointRisky(exId,lims)){
+      /* The joint has to be one the athlete actually flagged AND one this
+         movement loads - the same two tests the library's chip marker needs,
+         for the same reason: jointRisky(exId,[k]) alone asks "IF they had
+         flagged k", which is nothing about this athlete. */
+      const j=JOINTS.filter(([k])=>lims.indexOf(k)>=0&&(JOINT_RISK[k]||[]).includes(exId)).map(([,l])=>l.toLowerCase());
+      return {why:'joint',dot:'⚠️',label:j.length?('flagged — '+j.join(' & ')):'flagged joint'};
+    }
+    if(!hasGearFor(exId)){const need=gearNeededFor(exId);return {why:'gear',dot:'🔒',label:need?('needs '+need):'needs kit you do not own'};}
+    if(spaceSwap(exId)!==exId)return {why:'space',dot:'🔒',label:'needs more room'};
+  }catch(e){}
+  return null;
+}
 function skillTreesHTML(){
+  /* A COUNT THAT ALWAYS FIRES IS A COUNT NOBODY READS, so the clause appears
+     only for an athlete who has something on this screen to explain. */
+  let _blocked=0;
+  try{SKILL_TREES.forEach(t=>(LADDERS[t.lad]||[]).forEach(k=>{if(skillBlockOf(k))_blocked++;}));}catch(e){_blocked=0;}
   let h=`<div class="section-label">Skill progression paths</div>
-    <div class="note info">Each path goes easy → hard. You start at your level and <b>unlock harder variations automatically</b> as you level up and move through the weeks. Tap any move for the how-to.</div>`;
+    <div class="note info">Each path goes easy → hard. You start at your level and harder variations unlock as you level up and move through the weeks.${_blocked?` <b>${_blocked} move${_blocked===1?'':'s'} here ${_blocked===1?'is':'are'} marked rather than promised</b> — your health answers or your kit rule ${_blocked===1?'it':'them'} out, and the programme routes around ${_blocked===1?'it':'them'}.`:''} Tap any move for the how-to.</div>`;
   const pos=STATE.baseline?posOf(Math.min(STATE.progressPtr,SESSIONS_PER_CYCLE*TOTAL_CYCLES-1)):{};
   SKILL_TREES.forEach(t=>{
     const arr=LADDERS[t.lad]||[];const cur=currentRung(t.lad);
@@ -23576,13 +23636,18 @@ function skillTreesHTML(){
       const state=i<cur?'done':(i===cur?'cur':'lock');
       // top of the ladder, fully prescribed to it, and nothing bodyweight left above it
       const maxed=state==='cur'&&i===arr.length-1&&atLadderCeiling(exId,pos);
-      const dot=maxed?'🎒':(state==='done'?'✓':(state==='cur'?'▶':'🔒'));
-      const col=maxed?'var(--gold)':(state==='done'?'var(--green)':(state==='cur'?'var(--fire-l)':'var(--muted)'));
-      const bg=state==='cur'?'color-mix(in srgb,var(--fire) 10%,transparent)':'transparent';
-      const badge=maxed?'add load':(state==='done'?'unlocked':(state==='cur'?'you are here':'unlocks later'));
+      /* A BLOCKED RUNG OUTRANKS ITS POSITION, in all three states. "unlocks
+         later" on a movement that never arrives is a promise with no code
+         behind it; "you are here" and "unlocked" on one are a claim about the
+         PRESENT, which is worse. */
+      const blk=skillBlockOf(exId);
+      const dot=blk?blk.dot:(maxed?'🎒':(state==='done'?'✓':(state==='cur'?'▶':'🔒')));
+      const col=blk?'var(--gold)':(maxed?'var(--gold)':(state==='done'?'var(--green)':(state==='cur'?'var(--fire-l)':'var(--muted)')));
+      const bg=(!blk&&state==='cur')?'color-mix(in srgb,var(--fire) 10%,transparent)':'transparent';
+      const badge=blk?blk.label:(maxed?'add load':(state==='done'?'unlocked':(state==='cur'?'you are here':'unlocks later')));
       h+=`<button onclick="openExerciseInfo('${exId}')" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:${bg};border:none;border-top:1px solid var(--line);padding:11px 4px;cursor:pointer">
         <span style="width:22px;text-align:center;color:${col};font-weight:900">${dot}</span>
-        <span class="grow" style="font-weight:${state==='cur'?'900':'700'};color:${state==='lock'?'var(--muted)':'var(--ink)'}">${ex.name}</span>
+        <span class="grow" style="font-weight:${state==='cur'?'900':'700'};color:${(blk||state==='lock')?'var(--muted)':'var(--ink)'}">${_ve(ex.name)}</span>
         <span class="tiny" style="color:${col};font-weight:800">${badge}</span>
       </button>`;
     });
