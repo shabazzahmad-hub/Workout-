@@ -21999,6 +21999,141 @@ over-eager twin fails one: relabelling the Progress tile, and dropping the
 phrase from the spoken recap, both satisfy every *"no rolling surface claims the
 week"* assertion and delete the only surfaces that mean it.
 
+## The one surface a rendered sweep cannot open (v506)
+
+A fresh axis: **every claim that something happens AUTOMATICALLY.** v355 and
+v391 swept promise sentences by pattern — *never / always / will / keeps /
+stays / counts* — and the verb family **automatically / adapts / adjusts /
+recalculates / scales** was not in that list. That is the v473 shape: a sweep
+of one pattern leaves the same claim alive in another.
+
+**The class came back clean, and measuring it is what left one thing to fix
+rather than five.** Five real automatic-behaviour claims, every one backed:
+
+| the claim | measured |
+|---|---|
+| *"the shopping list recalculates onto your numbers"* | `shopList()` reads `scaledDays()` |
+| *"offline it automatically falls back to the device voices"* | `neuralAvailable()` reads `navigator.onLine !== false` |
+| *"it rests you between sets automatically"* | both `runRepCadence()` callers pass the continuation |
+| *"it moves you through each stretch automatically"* | `runFlow()` advances on its own ticks |
+| *"reads how each week **felt** and auto-adjusts"* | **67 of 195 targets differ** between an all-easy block and an all-hard one |
+
+The last one is the one worth keeping as method. `weekAdjust()` returns ±0.05
+and the call site halves it, so ±2.5% — small enough to be swallowed by
+rounding, which is exactly the `voicePitch` trap. It is not: driven across
+weeks 2-6, a third of the programme's targets move.
+
+**Two sweeps of one class from opposite ends, and neither alone was
+complete** — the v411 lesson again. A source grep found the flow and
+rep-cadence claims and could not see the Settings one (the neural blurb
+renders only with the toggle on); a rendered sweep of 16 panes and 37 sheets
+found the Settings one and could not see the other two, because both paint
+only **inside a running session** and no `open*` function opens them.
+
+### The finding: v474's own detector, never pointed here
+
+v474 banned a claim that the work RISES on a fixed cadence and **built a
+detector for it**, because the last week of every block is a scheduled deload —
+measured there at 33-41% lower in all nine blocks. v474 swept three STATIC
+files; v500 pointed the same detector at **31 rendered surfaces** and fixed the
+Program subtitle.
+
+Neither could reach the **assessment-results sheet**. It is built inside
+`commitAssessment()` and painted only after a completed baseline battery or a
+re-test, so no tab-and-sheet sweep opens it — and it said:
+
+> Targets start sub-maximal for perfect form, then **climb every week**.
+
+Run over the comment-stripped app, v474's regex finds **exactly one hit in the
+whole file**, and it is that sentence. **A sweep is only as wide as the surface
+it enumerates**, for the fifth round running.
+
+**The words moved, not the code** — v502's discriminator. The deload is
+deliberate and two rounds say so, so the sentence takes v500's own branch-free
+framing (*"climb through the block, then the last week steps back off the
+peak"*), which is true in **both** deload states: measured, with automatic
+deloads OFF the last week still loses the peak set in every block.
+
+**So the check is a SOURCE scan rather than a rendered one.** The source
+reaches every surface, including the ones that paint only inside a flow, and
+the next unreachable surface fails there rather than on a phone. Measured: **1
+hit before the fix, 0 after.**
+
+**The stripping is not optional, and the guard is what makes the zero mean
+anything.** v474's and v500's own notes quote the banned claim, so a comment
+that quotes code breaks the scan for that code — the sixth time this file has
+recorded that trap. Four guards: the detector catches the claim it was written
+for, stays quiet on the replacement, the stripper really removed the comments,
+and the scan really read the app. Plus the one v500 already had — **the defect
+is real**, walked over all nine blocks in both deload states.
+
+**Four floors, and each over-eager twin fails one**: the sheet must still
+render, must still tell the athlete the targets climb (a "fix" that deleted the
+sentence satisfies every assertion above and tells them nothing), must still
+name the step back, and must still name the re-test cadence.
+
+### The re-test measurement, recorded rather than fixed
+
+Chasing a sibling claim — *"everything scales up from your new numbers"* —
+produced a reading that looked like a second finding and was not, and the
+correction is the point.
+
+`rebaseAdapt()` resets `adapt` to 1 at every re-test, and a block of honest
+ratings drives it to **1.252** (measured over 42 sessions at +0.006). So on the
+SAME session, with and without the re-test, a 10% improvement leaves **80 of 82
+targets lower** — and even a 35% improvement plus a level-up leaves **none
+higher**.
+
+**That is not the comparison an athlete makes.** They compare the new block
+against the last one, and measured that way nothing falls: block 2 week 1
+against block 1 week 1 is **2 up, 6 same, 0 down** on the 8 movements the two
+blocks share. The sibling claim *"every number starts higher than last block"*
+is therefore **true**, and so is the ambiguous one on the reading that matters.
+
+The drop is the design working: the code comment beside `rebaseAdapt()` already
+says keeping `adapt` would double-count, because the new max already contains
+every block of adaptation before it. **A fix with no defect behind it does not
+ship** — the v386 call, with the numbers written down so the next reader does
+not re-derive them.
+
+### Four copies of one detector, and why they stay
+
+This is the **fourth** hand-written copy of v474's regex, and two of the others
+live INSIDE a `page.evaluate()` where a Node import is not visible — so hoisting
+it means serialising the pattern into every evaluate, which trades one drift
+risk for a less readable check. **The copies stay; what closes the drift is an
+assertion that they are identical**, because a detector whose whole job is
+catching drift is the worst thing in this suite to let drift. Measured: four
+copies, one pattern, and the extraction is guarded so an empty result cannot
+read as agreement.
+
+**Ten mutants, all ten resolved as intended.** Six are the over-eager twins and
+each fails a different floor: the claim deleted outright, the step back dropped,
+the cadence dropped, the detector widened until it matches ordinary copy, v500's
+own subtitle reverted, and the scheduled deload removed from the engine (which
+fails the "the defect is real" guard with nine failures). **M7 is the one worth
+keeping**: a brand-new surface written with the banned claim — the next
+unreachable one — is caught by the source scan and by nothing else, which is the
+whole reason the check is a source scan.
+
+**And one mutant is a catch pointed the other way.** Placing the banned claim in
+a COMMENT must leave the suite GREEN: if it went red the stripper would be
+broken, and the check would be flagging v474's and v500's own notes rather than
+the app. It stayed green.
+
+**M5 first read as a BAD ANCHOR**, because the anchor was written from memory —
+v500's subtitle says *"then week ${WEEKS_PER_CYCLE} steps back off the peak"*,
+not *"the last week"*. A `BAD ANCHOR` line is a measurement that has not
+happened, never a pass; re-seeded verbatim it fails seven checks by name.
+
+### And a page constant is still not visible in Node
+
+`TOTAL_CYCLES` in a Node-side assertion made the suite report *"the test file
+itself threw"* rather than naming a check. Carry it out in the payload — the
+**fourteenth** time. It is carried out beside the loop count now, so the two
+are compared against each other with a floor that there is more than one block
+to cover, rather than against a constant restated in the check.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
