@@ -6430,6 +6430,281 @@ export default async function run() {
     await ctx.close();
   }
 
+
+  /* ============================================================================
+     v500 — THE LAST WEEK OF A BLOCK, DESCRIBED AS THE HARDEST
+
+     v474 banned "gets harder every week" from the manifest, the <meta>
+     description and package.json, and built a detector for it. It swept only
+     those three STATIC files. Run the SAME detector over 31 RENDERED surfaces
+     and it finds one sentence: the Program tab's own subtitle, "The load climbs
+     every week" — measured on block 1 at 3436 units and 116 sets in week 5
+     against 2091 and 69 in week 6, a 39% cut, and 33-41% across all nine.
+
+     Seven members of one class, all about the last two weeks of a block:
+       1  the Program subtitle, "the load climbs every week"
+       2  the week-6 label, "Peak+ 🔺", on the week the app takes a third off
+       3  the progression note, "Weeks 2–6 raise reps & hold times"
+       4  the Today headline at week 6, "load increased"
+       5  the Today note at week 6, "the highest load of the block"
+       6  the Today icon, 📈
+       7  the week-5 note, "Peak weeks begin" — there has only ever been one
+
+     AND IT IS WRONG FOR THE ATHLETE WHO TURNED DELOADS OFF TOO, which the first
+     attempt assumed it was not. prescribe() adds the peak set on
+     `week>=5 && week<WEEKS_PER_CYCLE` — week 5 ONLY, whatever the setting — so
+     the last week loses it in every one of the nine blocks: 116-124 sets down
+     to 97-108. So "climbs every week" needed no branch after all.
+     ============================================================================ */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    const perr = [];
+    pg.on('pageerror', e => perr.push(String(e).slice(0, 200)));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    await seedAthlete(pg);
+
+    const w = await pg.evaluate(() => {
+      const o = {};
+      /* v474's OWN detector, copied verbatim from 01-data. The point of this
+         block is that it was never pointed at a rendered screen. */
+      const RISE = /\b(?:harder|heavier|tougher|more|increases?|climbs?|rises?|progresses?)\s+(?:\w+\s+){0,2}every\s+(?:week|day|session|workout|time)\b/i;
+      o.riseWorks = RISE.test('the load climbs every week')
+                 && RISE.test('The first block is core & abs. The load climbs every week.');
+      o.riseQuiet = !RISE.test('The load climbs through the block, then week 6 steps back off the peak.');
+
+      /* GUARD: the defect is real. Measured over the WHOLE week, because total
+         volume is not comparable across session types. */
+      const wk = (c, n, off) => {
+        const prev = STATE.settings.autoDeload;
+        if (off) STATE.settings.autoDeload = false; else delete STATE.settings.autoDeload;
+        let sets = 0, units = 0;
+        for (let d = 0; d < SESSIONS_PER_WEEK; d++) {
+          const s = buildSession(c * SESSIONS_PER_CYCLE + (n - 1) * SESSIONS_PER_WEEK + d);
+          [...s.main, s.finisher].forEach(m => { if (m) { sets += m.sets; units += m.sets * m.target; } });
+        }
+        if (prev === undefined) delete STATE.settings.autoDeload; else STATE.settings.autoDeload = prev;
+        return { sets, units };
+      };
+      const P = WEEKS_PER_CYCLE - 1, L = WEEKS_PER_CYCLE;
+      o.onEases = [], o.offLoses = [];
+      for (let c = 0; c < TOTAL_CYCLES; c++) {
+        const a = wk(c, P, false), b = wk(c, L, false);
+        const x = wk(c, P, true),  y = wk(c, L, true);
+        o.onEases.push(b.units < a.units * 0.85);
+        o.offLoses.push(y.sets < x.sets);
+      }
+      o.blocks = TOTAL_CYCLES;
+      o.onEasesAll  = o.onEases.every(Boolean);
+      o.offLosesAll = o.offLoses.every(Boolean);
+      o.b1 = { p: wk(0, P, false), l: wk(0, L, false), lOff: wk(0, L, true) };
+
+      /* GUARD: the peak set is week 5 only, which is what makes the last week
+         lighter for BOTH athletes. */
+      o.peakSetWeek = (() => {
+        const setsAt = n => wk(0, n, true).sets;
+        return { w4: setsAt(L - 2), w5: setsAt(P), w6: setsAt(L) };
+      })();
+
+      /* ---- the rendered surfaces, in both athlete states ---- */
+      const prog = () => {
+        go('program');
+        const v = document.querySelector('#v-program');
+        return {
+          sub: v.querySelector('.vsub').textContent,
+          labels: [...v.querySelectorAll('.section-label')].map(e => e.textContent.trim()).slice(0, WEEKS_PER_CYCLE),
+          note: [...v.querySelectorAll('.note.info')].map(e => e.textContent.trim())[0] || ''
+        };
+      };
+      const banner = n => {
+        const s = buildSession((n - 1) * SESSIONS_PER_WEEK);
+        return `${overloadIcon(s)} Week ${n} — ${overloadHeadline(s)}. ${overloadNote(s)}`;
+      };
+      delete STATE.settings.autoDeload;
+      o.on = { prog: prog(), w4: banner(L - 2), w5: banner(P), w6: banner(L) };
+      STATE.settings.autoDeload = false;
+      o.off = { prog: prog(), w4: banner(L - 2), w5: banner(P), w6: banner(L) };
+      delete STATE.settings.autoDeload;
+
+      o.onRise = RISE.test(o.on.prog.sub);
+      o.offRise = RISE.test(o.off.prog.sub);
+
+      /* FLOOR: deloadOn() must be untouched — the fix is about the words. */
+      o.deloadUnchanged = {
+        w5: deloadOn(posOf((P - 1) * SESSIONS_PER_WEEK)),
+        w6: deloadOn(posOf((L - 1) * SESSIONS_PER_WEEK))
+      };
+      STATE.settings.autoDeload = false;
+      o.deloadOffW6 = deloadOn(posOf((L - 1) * SESSIONS_PER_WEEK));
+      delete STATE.settings.autoDeload;
+
+      /* And the predicate's own contract, because it is consulted from four
+         places and answers about a FUTURE week rather than about today. */
+      o.pred = { last: scheduledDeloadWeek(L), mid: scheduledDeloadWeek(3), zero: scheduledDeloadWeek(0) };
+      STATE.settings.autoDeload = false;
+      o.predOff = scheduledDeloadWeek(L);
+      delete STATE.settings.autoDeload;
+      return o;
+    });
+
+    /* ---- guards: without these, every assertion below is about a rule that
+       was never wrong ---- */
+    t.ok('guard: v474’s own detector really catches the old subtitle', w.riseWorks, JSON.stringify(w).slice(0, 200));
+    t.ok('guard: and stays quiet on the sentence that replaced it', w.riseQuiet, JSON.stringify(w).slice(0, 200));
+    t.eq('guard: the sweep walked every block', w.onEases.length, w.blocks, String(w.onEases.length));
+    t.ok('guard: with deloads ON the last week really eases in every block',
+      w.onEasesAll, JSON.stringify(w.b1));
+    t.ok('guard: with deloads OFF it still loses the peak set in every block',
+      w.offLosesAll, JSON.stringify(w.b1));
+    t.ok('guard: the peak set is added in week 5 and gone by week 6',
+      w.peakSetWeek.w5 > w.peakSetWeek.w4 && w.peakSetWeek.w6 < w.peakSetWeek.w5,
+      JSON.stringify(w.peakSetWeek));
+
+    /* ---- the fix ---- */
+    t.ok('the Program subtitle no longer claims the load climbs every week',
+      !w.onRise, w.on.prog.sub);
+    t.ok('and it does not claim it to the deloads-off athlete either',
+      !w.offRise, w.off.prog.sub);
+    t.ok('it names the step back off the peak instead',
+      /steps back off the peak/.test(w.on.prog.sub), w.on.prog.sub);
+
+    const lastOn = w.on.prog.labels[w.on.prog.labels.length - 1];
+    const lastOff = w.off.prog.labels[w.off.prog.labels.length - 1];
+    const peakOn = w.on.prog.labels[w.on.prog.labels.length - 2];
+    t.ok('the last week is labelled a deload, not Peak+', /Deload/.test(lastOn) && !/Peak/.test(lastOn), lastOn);
+    t.ok('and it carries the moon rather than the up-arrow', lastOn.includes('\u{1F319}') && !lastOn.includes('\u{1F53A}'), lastOn);
+    t.ok('with deloads off it is a back-off week, still not Peak+', /Back-off/.test(lastOff) && !/Peak/.test(lastOff), lastOff);
+    t.ok('and that carries no up-arrow either', !lastOff.includes('\u{1F53A}'), lastOff);
+
+    t.ok('the progression note stops raising at the peak week',
+      /Weeks 2–5 raise reps/.test(w.on.prog.note), w.on.prog.note.slice(0, 190));
+    t.ok('and names the one week the extra set is added in',
+      /add a set in week 5/.test(w.on.prog.note), w.on.prog.note.slice(0, 190));
+    t.ok('it says what the last week does for a deload athlete',
+      /Week 6 eases back/.test(w.on.prog.note), w.on.prog.note.slice(0, 240));
+    t.ok('and what it does for a deloads-off one',
+      /Week 6 drops that extra set/.test(w.off.prog.note), w.off.prog.note.slice(0, 240));
+
+    t.ok('the Today banner never says the load increased in the last week',
+      !/load increased/.test(w.on.w6) && !/load increased/.test(w.off.w6),
+      JSON.stringify([w.on.w6, w.off.w6]));
+    t.ok('nor calls it the highest load of the block',
+      !/highest load/.test(w.on.w6) && !/highest load/.test(w.off.w6),
+      JSON.stringify([w.on.w6, w.off.w6]));
+    t.ok('a deload week says so and carries the moon',
+      /load eased/.test(w.on.w6) && w.on.w6.startsWith('\u{1F319}'), w.on.w6);
+    t.ok('and a back-off week names the set that comes off, with a falling chart',
+      /peak set comes off/.test(w.off.w6) && w.off.w6.startsWith('\u{1F4C9}'), w.off.w6);
+    t.ok('it still names the heaviest week, and the block by its week count',
+      /Week 5 was the heaviest of the 6-week block/.test(w.off.w6), w.off.w6);
+
+    t.ok('the peak-week note no longer claims there are several peak weeks',
+      /Peak week — an extra set/.test(w.on.w5) && !/Peak weeks/.test(w.on.w5), w.on.w5);
+
+    /* ---- floors: each over-eager twin fails one of these ---- */
+    t.ok('FLOOR: week 5 keeps its own name and its up-arrow',
+      /Peak/.test(peakOn) && peakOn.includes('\u{1F53A}'), peakOn);
+    t.ok('FLOOR: week 5 still reports an increase, in both states',
+      /load increased/.test(w.on.w5) && /load increased/.test(w.off.w5),
+      JSON.stringify([w.on.w5, w.off.w5]));
+    t.ok('FLOOR: a mid-block week is untouched, in both states',
+      /load increased/.test(w.on.w4) && w.on.w4 === w.off.w4 && w.on.w4.startsWith('\u{1F4C8}'),
+      JSON.stringify([w.on.w4, w.off.w4]));
+    t.eq('FLOOR: weeks 1-4 are labelled exactly as before',
+      w.on.prog.labels.slice(0, 4).join(' | '),
+      'Week 1 · Foundation | Week 2 · Build | Week 3 · Develop | Week 4 · Intensify',
+      JSON.stringify(w.on.prog.labels));
+    t.eq('FLOOR: and identically for the deloads-off athlete',
+      w.off.prog.labels.slice(0, 4).join(' | '), w.on.prog.labels.slice(0, 4).join(' | '),
+      JSON.stringify(w.off.prog.labels));
+    t.eq('FLOOR: deloadOn() is unchanged — the fix is about the words',
+      [w.deloadUnchanged.w5, w.deloadUnchanged.w6, w.deloadOffW6].join(','), 'false,true,false',
+      JSON.stringify(w.deloadUnchanged));
+
+    /* The predicate answers about a FUTURE week, so its own contract is pinned
+       rather than only its effects — it is consulted from four narrow places. */
+    t.eq('scheduledDeloadWeek answers for the block, not for today',
+      [w.pred.last, w.pred.mid, w.pred.zero, w.predOff].join(','), 'true,false,false,false',
+      JSON.stringify(w.pred));
+
+    /* THE SWEEP IS THE CHECK, NOT ONE TAB. v474's detector was built and
+       pointed at three static files; this points it at everything rendered. */
+    const sweep = await pg.evaluate(() => {
+      const RISE = /\b(?:harder|heavier|tougher|more|increases?|climbs?|rises?|progresses?)\s+(?:\w+\s+){0,2}every\s+(?:week|day|session|workout|time)\b/i;
+      const hits = [], seen = [];
+      const scan = (where, txt) => {
+        if (!txt) return;
+        seen.push(where);
+        const m = txt.match(RISE);
+        if (m) hits.push({ where, match: m[0] });
+      };
+      ['today', 'program', 'progress', 'fuel', 'quick', 'guide', 'ref'].forEach(tb => {
+        try { go(tb); scan('tab:' + tb, document.querySelector('.view.active').textContent); } catch (e) {}
+      });
+      go('today');
+      ['brief', 'warmup', 'workout', 'cooldown'].forEach(x => {
+        try { setTodayTab(x); scan('today:' + x, document.querySelector('#v-today').textContent); } catch (e) {}
+      });
+      go('progress');
+      ['summary', 'body', 'strength', 'awards'].forEach(x => {
+        try { setProgressTab(x); scan('progress:' + x, document.querySelector('#v-progress').textContent); } catch (e) {}
+      });
+      go('ref');
+      ['food', 'moves'].forEach(x => {
+        try { setRefTab(x); scan('ref:' + x, document.querySelector('#v-ref').textContent); } catch (e) {}
+      });
+      ['openSettings', 'openMealPlan', 'openProfileEdit', 'openForcePrep', 'openEndurance',
+       'openCombat', 'openSpecial', 'openBuilder', 'openQuickAdd', 'openTDEE', 'openRestSheet',
+       'openMobility', 'openHealthCheck', 'openClearance', 'openStrengthStd', 'openCoachVoices',
+       'openSkipping', 'openGrip'].forEach(fn => {
+        try {
+          if (typeof window[fn] === 'function') {
+            window[fn]();
+            const sh = document.querySelector('#sheet');
+            scan('sheet:' + fn, sh && sh.textContent);
+            closeSheet();
+          }
+        } catch (e) {}
+      });
+      return { hits, scanned: seen.length };
+    });
+    t.ok('guard: the sweep read a real spread of surfaces', sweep.scanned >= 25, String(sweep.scanned));
+    t.eq('no rendered surface claims a fixed rate of progression',
+      sweep.hits.length, 0, JSON.stringify(sweep.hits));
+
+    /* Reverting a consumer to its own `wk===WEEKS_PER_CYCLE` is byte-identical
+       on the default athlete, so only the source can see it. */
+    const src500 = await pg.evaluate(() => {
+      const raw = [...document.querySelectorAll('script:not([src])')]
+        .map(s => s.textContent).sort((a, b) => b.length - a.length)[0];
+      const clean = raw.replace(/\/\*[\s\S]*?\*\//g, ' ')
+                       .split('\n').map(l => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+      return {
+        ok: clean.length > 500000,
+        decl: (clean.match(/function scheduledDeloadWeek\(/g) || []).length,
+        asks: (clean.match(/scheduledDeloadWeek\(/g) || []).length,
+        engineAsks: /return \(p&&scheduledDeloadWeek\(p\.week\)\)/.test(clean),
+        modeDecl: (clean.match(/function lastWeekMode\(/g) || []).length,
+        modeAsks: (clean.match(/lastWeekMode\(/g) || []).length
+      };
+    });
+    t.ok('guard: the source scan read the app with its comments stripped', src500.ok, JSON.stringify(src500));
+    t.eq('the calendar deload rule is declared exactly once', src500.decl, 1, JSON.stringify(src500));
+    t.ok('and the engine asks it rather than restating it', src500.engineAsks, JSON.stringify(src500));
+    /* MEASURED, not guessed: three consumers — deloadOn(), the week label and
+       the progression note. The first version of this line demanded four and
+       failed on correct code. */
+    t.eq('all three consumers ask it rather than testing the week itself',
+      src500.asks - src500.decl, 3, JSON.stringify(src500));
+    t.eq('the last-week state is decided in exactly one place', src500.modeDecl, 1, JSON.stringify(src500));
+    t.ok('and the icon, the headline and the note all read it',
+      src500.modeAsks - src500.modeDecl >= 3, JSON.stringify(src500));
+
+    t.eq('and none of it threw', perr.length, 0, perr.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+
   await tzb.close();
 
   srv.close();
