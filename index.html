@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='501';
+const APP_VERSION='502';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3103,13 +3103,20 @@ function prescribe(exId,pos){
   return {sets,target,unit:ex.unit,rest,tempo};
 }
 
-/* Focus-area pools for the targeted bonus slot. Each session gains ONE extra
+/* Focus-area pools for the targeted bonus slot. MOST sessions gain ONE extra
    accessory drawn from the area the athlete most wants to improve (quiz:
-   focusPrimary, falling back to their focus areas). Gear- and injury-filtered. */
+   focusPrimary, falling back to their focus areas). Gear- and injury-filtered.
+   Not every session: buildSession() skips the bonus on a day that already
+   carries three or more direct-core slots, because one more core move is not
+   the missing stimulus there. Measured over the whole programme, 306 of 378. */
 /* Primary training goals. 'shred' and 'core' sit alongside the original four:
    shred = a harder cut (steeper deficit, more protein, higher-rep metabolic work),
-   core  = midsection-first (near-maintenance calories, strength reps, and the
-   focus bonus is forced onto abs/obliques regardless of the target picker). */
+   core  = midsection-first (near-maintenance calories, strength reps, and
+   abs/obliques LEAD the focus-bonus priority list whatever else is targeted).
+   Leading is not owning: focusBonus() alternates the priority keys with the
+   athlete's other focus areas, deliberately, so a secondary target is not dead
+   input. Measured on the wizard's own default targets (abs + full), 153 of the
+   306 bonuses came from abs/obliques -- two sessions in five, not every one. */
 const GOALS=[['lose','🔥 Lose fat'],['shred','🔪 Shred'],['recomp','⚖️ Tone up'],['leanrecomp','🪞 Lean recomp'],['core','🎯 Strong core & abs'],['maintain','💪 Maintain'],['gain','📈 Build muscle']];
 /* ---- LEAN RECOMP: Tone up's volume with a real deficit (v363) --------------
    Asked for directly: "increase the rep sets like in Tone up but drop belly
@@ -3169,7 +3176,7 @@ const GOAL_NOTE={
   shred:'Aggressive lean-out — steeper deficit, more protein, higher-rep conditioning. Best in short blocks.',
   recomp:'Reshape your body with the scale held steady — fat down and muscle up at the same weight.',
   leanrecomp:'Fat loss with no drop in training volume — the same sessions and reps Tone up gives you, eating ~12% below maintenance.',
-  core:'Midsection first — every session adds an abs/oblique bonus and eats near maintenance.',
+  core:'Midsection first — most sessions add a midsection bonus, and you eat near maintenance.',
   maintain:'Hold your weight and let the training reshape you.',
   gain:'Build muscle on a slight surplus with heavier, lower-rep work.',
 };
@@ -3272,7 +3279,8 @@ const CORRECTIVE_POOL={shoulder:['superman'],knee:['glutebridge'],lowback:['bird
 function focusBonus(pos,used){
   try{
     const p=STATE.profile||{};
-    // the core goal forces a midsection bonus first, whatever else is targeted
+    // the core goal LEADS the priority list with the midsection; the wheel
+    // below still alternates it with the athlete's other areas
     const lead=(p.goal==='core')?['abs','obliques']:[];
     const trouble=(Array.isArray(p.troubleZones)?p.troubleZones:[]).filter(troubleZoneKey).map(z=>TROUBLE_POOL[z]);
     /* Priority order, then ROTATION. The loop below returns on the first key
@@ -4306,7 +4314,7 @@ function onboardHTML(){
       <div class="daypick" id="ob-timeline" style="flex-wrap:wrap">${TIMELINE_OPTS.map(o=>`<button data-w="${o.w}"${on(P.timelineWeeks,o.w)}>${o.label}</button>`).join('')}<button data-w="0"${(!P.timelineWeeks?' class="on"':'')}>No deadline</button></div></div>`)}
 
   ${step(3,'Focus &amp; priority',`
-    <div class="field"><label>#1 area you most want to improve <span class="tiny muted">· drives a targeted bonus move every session</span></label>
+    <div class="field"><label>#1 area you most want to improve <span class="tiny muted">· drives a targeted bonus move in most sessions</span></label>
       <div class="daypick" id="ob-focus" style="flex-wrap:wrap">${FOCI.map(([k,l])=>`<button data-f="${k}"${on(P.focusPrimary||'abs',k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Other focus areas <span class="tiny muted">· tap all that apply</span></label>
       <div class="daypick" id="ob-targets" style="flex-wrap:wrap">${FAREAS.map(([k,l])=>`<button data-t="${k}"${mon(P.targets&&P.targets.length?P.targets:['abs','full'],k)}>${l}</button>`).join('')}</div></div>
@@ -4455,17 +4463,27 @@ function wireOnboard(){
   showStep(1);
 }
 /* Every step's inputs live in the DOM at once (steps are just hidden), so the
-   whole form can be read from any step. In edit mode we commit on each Next —
-   typing a new waist on step 1 and tapping Next used to persist NOTHING unless
-   you walked all the way to step 6 and pressed Save changes. */
+   whole form can be read from any step. BOTH MODES commit on each Next and each
+   Back — typing a new waist on step 1 and tapping Next used to persist NOTHING
+   unless you walked all the way to step 6 and pressed Save changes, and the
+   fix for that was gated on OB_EDIT while the step label promised
+   "changes save as you go" on every step of both. */
 function finishOnboard(){ obReadForm(); obFinishNav(); }
 /* Commit the whole form as you move between steps. Deliberately NOT silent:
    a swallowed failure here looks exactly like "I typed it and nothing happened",
    which is the bug this was written to end. */
 function obCommitStep(){
-  if(!OB_EDIT)return;
   try{
     obReadForm();save();
+    /* THE SUCCESS TOAST IS EDIT-ONLY, and that is deliberate rather than an
+       oversight. The step label already promises "changes save as you go" on
+       every one of the seven, so six toasts on the way through a first run is
+       a note that always fires and therefore a note nobody reads. In edit mode
+       the athlete makes ONE targeted change and leaves, so the toast IS the
+       confirmation that it landed. The FAILURE toast below fires either way:
+       a swallowed failure looks exactly like "I typed it and nothing
+       happened", which is the defect this function was written to end. */
+    if(!OB_EDIT)return;
     const w=currentWaistShow();
     toast(w!=null?('Saved ✓ · waist '+w+' '+STATE.profile.unit):'Saved ✓');
   }catch(e){
