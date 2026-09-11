@@ -7011,6 +7011,145 @@ export default async function run() {
     await ctx.close();
   }
 
+  /* ------------------------------------------------------------------
+     v505 — SIX SURFACES SAID "THIS WEEK" AND MEANT THE LAST SEVEN DAYS
+
+     weeklyRecap()'s own comment has stated the rule since it was written:
+     "One definition of 'this week'." It was its own rolling 7-day loop while
+     the Progress tile used a Monday-anchored week, so on a Monday the sheet
+     said "5 workouts this week" and the tile said 1/5 — and the coach read the
+     5 out loud. That was fixed for the recap and six more surfaces were left.
+
+     The NUMBERS are defensible everywhere — "2 easy sessions in any 7 days" is
+     a normal target, a 7-day total is a fine summary, and acwr()'s acute window
+     MUST roll or it shrinks to one day every Monday. So the WORDS moved.
+     ------------------------------------------------------------------ */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    const perr = [];
+    pg.on('pageerror', e => perr.push(String(e).slice(0, 200)));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    await seedAthlete(pg);
+
+    const w = await pg.evaluate(() => {
+      const o = {};
+      const strip = s => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const iso = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+
+      /* THE DAYS THAT SEPARATE THE TWO WINDOWS. A rolling seven days reaches
+         back further than the calendar week on every day but Sunday, so the
+         gap is whatever sits between the week start and seven days ago. On a
+         Sunday there is none — the block says so rather than asserting on two
+         windows that legitimately agree. */
+      const dow = (new Date().getDay() + 6) % 7;          // 0 = Monday
+      const gap = []; for (let i = dow + 1; i < 7; i++) gap.push(iso(i));
+      o.gapDays = gap.length;
+
+      STATE.nutrition.days = {}; STATE.logs = {}; STATE.runs = []; STATE.quickLog = {};
+      STATE.skipLog = []; STATE.ruckLog = []; STATE.gripLog = []; STATE.boxLog = [];
+      gap.forEach(d => {
+        STATE.nutrition.days[d] = { jackVal: 45, jackUnit: 'min', jackLvl: 'steady' };
+        STATE.skipLog.push({ date: d, mins: 20 });
+        STATE.ruckLog.push({ date: d, mins: 30, dist: 4 });
+        STATE.gripLog.push({ date: d, mins: 10 });
+        STATE.boxLog.push({ date: d, mins: 15 });
+      });
+
+      /* GUARD: the two windows really do disagree on this athlete. Without it
+         every assertion below passes on two windows that happen to agree. */
+      o.calendarSessions = sessionsThisWeek();
+      o.rollingRides = ridesThisWeek().rides;
+      o.rollingRuckMin = actStats('ruck').last7;
+      o.rollingSkipMin = skipStats().last7;
+
+      /* The surfaces that MEAN the calendar week keep the phrase. */
+      o.tileSaysThisWeek = /This week/.test(strip(homeSummaryHTML()));
+      o.recapSpoken = (() => { weeklyRecap(); const t = _recapSpeak; closeSheet(); return t; })();
+
+      /* The surfaces that ROLL now say so, and no longer claim the week. */
+      const bar = strip(rideTargetHTML());
+      o.bar = { last7: /in the last 7 days/.test(bar), thisWeek: /this week/i.test(bar) };
+
+      const sheet = fn => { fn(); const t = strip(document.querySelector('#sheet').innerHTML); closeSheet(); return t; };
+      const rd = t => ({ last7: /Min last 7 days/.test(t), thisWeek: /this week/i.test(t) });
+      o.sheets = { ruck: rd(sheet(openRuck)), grip: rd(sheet(openGrip)),
+                   box: rd(sheet(openBox)), skip: rd(sheet(openSkipping)) };
+
+      /* acwr()'s acute window rolls by design — one day on a Monday otherwise
+         — so its banner names the window it uses. Exercised directly, because
+         a real spike needs four weeks of logged sets behind it. */
+      o.spike = (() => {
+        const src = String(deloadBanner) + String(briefSegments);
+        return { claimsWeek: /logged sets this week/.test(src),
+                 namesSeven: /logged sets over the last 7 days/.test(src) };
+      })();
+
+      return o;
+    });
+
+    if (w.gapDays === 0) {
+      t.ok('SUNDAY: the two windows coincide today, so the disagreement cannot be built', true);
+    } else {
+      t.eq('GUARD: the calendar week sees none of it', w.calendarSessions, 0, JSON.stringify(w));
+      t.ok('GUARD: and the rolling window sees all of it', w.rollingRides >= 2, JSON.stringify(w));
+      t.ok('GUARD: so the two windows genuinely disagree on this athlete',
+        w.rollingRuckMin > 0 && w.rollingSkipMin > 0, JSON.stringify(w));
+    }
+
+    t.ok('the Progress tile keeps the phrase, because it means the calendar week', w.tileSaysThisWeek);
+    t.ok('and the spoken recap keeps it too', /this week/.test(w.recapSpoken), w.recapSpoken.slice(0, 80));
+
+    t.ok('the conditioning bar names the window it uses', w.bar.last7, JSON.stringify(w.bar));
+    t.ok('and no longer claims the calendar week', !w.bar.thisWeek, JSON.stringify(w.bar));
+
+    ['ruck', 'grip', 'box', 'skip'].forEach(k => {
+      t.ok(`the ${k} sheet names the window it uses`, w.sheets[k].last7, JSON.stringify(w.sheets[k]));
+      t.ok(`and the ${k} sheet no longer claims the calendar week`, !w.sheets[k].thisWeek, JSON.stringify(w.sheets[k]));
+    });
+
+    t.ok('the load-spike copy names the seven days it measures', w.spike.namesSeven, JSON.stringify(w.spike));
+    t.ok('and does not call a rolling window this week', !w.spike.claimsWeek, JSON.stringify(w.spike));
+
+    /* THE RULE IS THE CLASS, not these six. A rolling reader that renders the
+       phrase again fails here rather than on a phone — and a PROGRAM week is
+       not in the class, so the scan is anchored on the rolling readers' own
+       render sites rather than on the phrase alone. */
+    const src = await pg.evaluate(() => {
+      const scripts = [...document.querySelectorAll('script:not([src])')];
+      const s = scripts.map(x => x.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const noCom = s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+      const body = name => {
+        const i = noCom.indexOf('function ' + name + '(');
+        if (i < 0) return '';
+        let d = 0, started = false;
+        for (let j = i; j < noCom.length; j++) {
+          if (noCom[j] === '{') { d++; started = true; }
+          else if (noCom[j] === '}') { d--; if (started && d === 0) return noCom.slice(i, j + 1); }
+        }
+        return noCom.slice(i);
+      };
+      return {
+        readTheApp: noCom.includes('function weekStartD'),
+        rollingSayWeek: ['ridesThisWeek', 'actStats', 'skipStats', 'rideTargetHTML']
+          .filter(n => /this week/i.test(body(n))),
+        calendarUsesWeekStart: /function sessionsThisWeek\(\)\{const s=weekStartD/.test(noCom),
+        recapAsksIt: /function weeklyRecap[\s\S]{0,400}sessionsThisWeek\(\)/.test(noCom),
+        minThisWeekGone: !/Min this week/.test(noCom)
+      };
+    });
+    t.ok('GUARD: the scan read the app itself', src.readTheApp, JSON.stringify(src));
+    t.eq('no rolling reader renders the phrase any more', JSON.stringify(src.rollingSayWeek), '[]', JSON.stringify(src));
+    t.ok('the calendar week is still anchored on the week start', src.calendarUsesWeekStart, JSON.stringify(src));
+    t.ok('and the recap still asks for it rather than rolling its own',
+      src.recapAsksIt, JSON.stringify(src));
+    t.ok('no sheet label survives', src.minThisWeekGone, JSON.stringify(src));
+
+    t.eq('and none of it threw', perr.length, 0, perr.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+
   await tzb.close();
 
   srv.close();

@@ -21916,6 +21916,89 @@ plain SIGTERM left both `run.mjs` and five Chromium processes running, which is
 the one-heavy-run-at-a-time rule broken by the cleanup rather than by the start.
 **Check the process list after a kill, not the exit code.**
 
+## Six surfaces said "this week" and meant the last seven days (v505)
+
+`weeklyRecap()`'s own comment has stated the rule since it was written:
+
+> **One definition of "this week".** This was its own rolling 7-day loop while
+> the Progress tile 20 lines below used a Monday-anchored week, so on a Monday
+> the recap sheet said "5 workouts this week" and the tile said 1/5 — and the
+> coach read the 5 out loud.
+
+That was fixed for the recap. **Six more surfaces were left.** Measured on one
+athlete at one moment, every session done last Saturday and Sunday and nothing
+since:
+
+| surface | window | said |
+|---|---|---|
+| Progress ▸ Summary tile | calendar | **0** this week |
+| the weekly recap, **SPOKEN** | calendar | **0** workouts this week |
+| the day-90 frequency row | calendar | 0 this week |
+| **the conditioning bar** | **rolling 7** | **2/2 this week — met** |
+| **ruck / grip / box / skipping sheets** | **rolling 7** | **60 / 20 / 30 / 40 Min this week** |
+| **the load-spike banner** | **rolling 7** | *"your logged sets this week"* |
+
+So the athlete reads *"target met this week"* on Today and *"0 this week"* on
+Progress, and hears *"0 workouts this week"* from the coach — three answers to
+one question, on one morning.
+
+**THE WORDS MOVED, NOT THE NUMBERS, and that is v502's discriminator applied
+per surface.** Every number here is defensible: *"2 easy sessions in any 7
+days"* is a normal target, a 7-day total is a fine summary, and **`acwr()`'s
+acute window MUST roll** or it shrinks to one day every Monday and the
+acute-to-chronic ratio stops meaning anything. What was wrong is that all six
+called a rolling window the calendar week. A fix with no defect behind it does
+not ship, and changing those numbers would have been one.
+
+**The rule, written at `weekStartD()` where the next reader will find it:**
+
+- says *"this week"* → uses `weekStartD()`, the calendar week
+- rolls seven days → says *"last 7 days"*, never *"this week"*
+
+**A PROGRAM week is a third thing and is not in the class.** *"Volume drops on
+purpose this week"*, *"the taper starting this week"*, *"What moves this week"*
+are positions in the plan, not date ranges — 27 occurrences of the phrase in
+live code and most of them are these. A scan that forbade the phrase outright
+would report every one of them, so the class check is anchored on the **rolling
+readers' own render sites** rather than on the phrase alone.
+
+**`actStats().week` and `skipStats().week` were renamed to `last7`**, because a
+field called `week` holding seven rolling days is the next reader's trap rather
+than this one's.
+
+### Why changing the bar's WINDOW was considered and rejected
+
+A weekly target that never resets is a real weakness — an athlete who rides
+twice on Monday reads "met" for eight days. The calendar week would fix that.
+It was rejected on two measurements rather than on taste:
+
+- **The number is not wrong, only the label was.** "2 in any 7 days" is a
+  legitimate target framing, and the app has never claimed otherwise anywhere
+  except in that one phrase.
+- **It would make twenty checks weekday-dependent.** Suite 07 seeds
+  `ridesThisWeek()` at `today − 1` and `today − 3`, which v494 recorded as
+  deliberately weekday-independent. Under a calendar week both fall outside the
+  window on a Monday, and **two sessions "this week" cannot be built on a Monday
+  at all** — so the checks would need a fixed clock installed. That is the v347
+  Monday-failure trap bought for a change nobody measured a need for.
+
+Recorded rather than done, with the numbers beside it, so the next reader does
+not re-derive it.
+
+### The guard is the whole block
+
+The two windows only disagree on days that are not Sunday, so the block
+computes the gap days itself and **says so when there are none** rather than
+asserting on two windows that legitimately agree. Three guards pin that the
+calendar week really sees none of the seeded work and the rolling window really
+sees all of it — without them every assertion below is about two windows that
+happen to match.
+
+**The floors are the three surfaces that were already right**, and each
+over-eager twin fails one: relabelling the Progress tile, and dropping the
+phrase from the spoken recap, both satisfy every *"no rolling surface claims the
+week"* assertion and delete the only surfaces that mean it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

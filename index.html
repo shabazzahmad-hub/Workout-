@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='504';
+const APP_VERSION='505';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9750,12 +9750,14 @@ function logAct(k,mins,extra){
    TIME". The boot repair cleans the rows, and v404's storage listener replaces
    STATE without one, so the reader needs its own guard. Two guards, two doors. */
 const _actNum=v=>{const n=+v;return isFinite(n)&&n>0?n:0;};
+/* `last7` is a ROLLING seven days and is labelled that way on all four
+   sheets — see weekStartD() for the rule. */
 function actStats(k){
   const l=actLog(k);const wk=[];const now=new Date();
   for(let i=0;i<7;i++){const d=new Date();d.setDate(now.getDate()-i);wk.push(localISO(d));}
-  const week=l.filter(x=>wk.includes(x.date));
+  const last7=l.filter(x=>wk.includes(x.date));
   return {n:l.length,total:Math.round(l.reduce((a,x)=>a+_actNum(x.mins),0)),
-    week:Math.round(week.reduce((a,x)=>a+_actNum(x.mins),0)),
+    last7:Math.round(last7.reduce((a,x)=>a+_actNum(x.mins),0)),
     /* dist is canonical km for every row saveRuck() has ever written — it
        converts on the way in and tags `unit` only to record what was TYPED.
        The legacy repair keyed off `_km`, which is written nowhere in this file,
@@ -9811,7 +9813,7 @@ function openRuck(){
   openSheet(`<h3>🎒 Ruck March</h3>
     <p class="muted sm" style="margin:2px 0 12px">Loaded pack, brisk pace. Big aerobic base with almost no joint impact — start at 10% of bodyweight and build.</p>
     <div class="grid2" style="margin-bottom:12px">
-      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.last7}</div><div class="l">Min last 7 days</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${r1((s.dist||0)*(imp?0.621371:1))}</div><div class="l">Total ${imp?'mi':'km'}</div></div>
     </div>
     <button class="btn t-teal" onclick="openActTimer('ruck')">⏱️ Start ruck — stopwatch</button>
@@ -9840,7 +9842,7 @@ function openGrip(){
   openSheet(`<h3>🧗 Grip &amp; Hang</h3>
     <p class="muted sm" style="margin:2px 0 12px">Grip is the first thing that fails on pull-ups, toes-to-bar and carries. Train it directly — this also sets your <b>Dead Hang</b> standard.</p>
     <div class="grid2" style="margin-bottom:12px">
-      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.last7}</div><div class="l">Min last 7 days</div></div>
       <div class="stat"><div class="n" style="color:var(--gold)">${pr?fmtTime(pr):'—'}</div><div class="l">Best hang</div></div>
     </div>
     ${actRiskNoteHTML('deadhang','Hanging loads the shoulders, elbows and wrists under your full bodyweight')}
@@ -9872,7 +9874,7 @@ function openBox(){
   openSheet(`<h3>🥊 Shadow Boxing</h3>
     <p class="muted sm" style="margin:2px 0 12px">No gear, no noise, no jumping — the session you can run in a hotel room. Rounds build the engine, footwork and rotational core.</p>
     <div class="grid2" style="margin-bottom:12px">
-      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.last7}</div><div class="l">Min last 7 days</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${s.total}</div><div class="l">Min all time</div></div>
     </div>
     <div class="section-label" style="margin-top:0">Rounds</div>
@@ -10003,12 +10005,13 @@ function logSkip(mins,rounds){
   capLog('skipLog');
   save();toast('🪢 '+mins+' min of skipping logged');try{checkAchievements();}catch(e){}
 }
+/* `last7` rolls, like actStats() — see weekStartD(). */
 function skipStats(){
   const l=skipLog();const now=new Date();const wk=[];
   for(let i=0;i<7;i++){const d=new Date();d.setDate(now.getDate()-i);wk.push(localISO(d));}
-  const week=l.filter(x=>wk.includes(x.date));
+  const last7=l.filter(x=>wk.includes(x.date));
   return {sessions:l.length,total:l.reduce((a,x)=>a+_actNum(x.mins),0),
-    week:week.reduce((a,x)=>a+_actNum(x.mins),0),last:l[0]||null};
+    last7:last7.reduce((a,x)=>a+_actNum(x.mins),0),last:l[0]||null};
 }
 function removeSkip(i){const l=skipLog();if(rowAt(l,i)){l.splice(i,1);save();openSkipping();}}
 function skipHistoryHTML(){
@@ -10023,7 +10026,7 @@ function openSkipping(){
   openSheet(`<h3>🪢 Skipping</h3>
     <p class="muted sm" style="margin:2px 0 12px">Grab the rope any time — run a timed block or just start the clock. Everything you log is kept here.</p>
     <div class="grid2" style="margin-bottom:12px">
-      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.week}</div><div class="l">Min this week</div></div>
+      <div class="stat"><div class="n" style="color:var(--fire-l)">${s.last7}</div><div class="l">Min last 7 days</div></div>
       <div class="stat"><div class="n" style="color:var(--teal)">${s.total}</div><div class="l">Min all time</div></div>
     </div>
     <div class="section-label" style="margin-top:0">Timed blocks</div>
@@ -11936,7 +11939,7 @@ function briefSegments(){
   const _inTaper=(()=>{try{return prepTaperEase();}catch(e){return false;}})();
   const _dl=(!_inTaper&&typeof deloadReason==='function')?deloadReason():null;
   const _dlSay=(_dl==='deload')?" Today's load is eased — this is a deload, so sets and targets come down on purpose and you rebuild stronger."
-    :(_dl==='spike')?" Today's load is eased — your logged sets this week are well above your recent average, so we back off and let it settle."
+    :(_dl==='spike')?" Today's load is eased — your logged sets over the last 7 days are well above your recent average, so we back off and let it settle."
     :'';
   segs.push({icon:'🔥',title:"Today's session",
     say:`Today is ${sess.session.name}. ${sess.session.focus}. That's ${sess.main.length+1} exercises, about ${vol.minutes} minutes of work.${_dlSay}`});
@@ -16190,7 +16193,7 @@ function deloadBanner(){
   const msg=taperOnly
     ? '🎯 <b>Taper — lighter load on purpose.</b> Your evaluation is close, so sets and targets ease off. You cannot gain fitness in the last weeks; you can only arrive tired. The running and the rucking come down with it.'
     : spikeOnly
-    ? '📈 <b>Weekly volume spiked — lighter load.</b> Your logged sets this week are well above your recent average. Targets are eased so you recover and rebuild stronger.'
+    ? '📈 <b>Weekly volume spiked — lighter load.</b> Your logged sets over the last 7 days are well above your recent average. Targets are eased so you recover and rebuild stronger.'
     : '🌙 <b>Deload week — lighter load.</b> Sets and targets are eased so you recover and rebuild stronger.';
   return `<div class="note info" style="margin-top:12px">${msg} <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="toggleDeload()">End deload</button></div>`;
 }
@@ -19076,6 +19079,31 @@ function scrubLogRows(map){
 }
 function isDateISO(v){if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
   const d=new Date(v+'T00:00:00');return !isNaN(d)&&localISO(d)===v;}
+/* ONE DEFINITION OF "THIS WEEK", AND ONE NAME FOR THE OTHER WINDOW.
+   weeklyRecap()'s own comment has stated the first half since it was written:
+   the recap was its own rolling 7-day loop while the Progress tile used a
+   Monday-anchored week, so on a Monday the sheet said "5 workouts this week"
+   and the tile said 1/5 — and the coach read the 5 out loud. That was fixed
+   for the recap and SIX more surfaces were left saying "this week" over a
+   rolling seven days. Measured on one athlete at one moment, with every
+   session done last Saturday and Sunday and nothing since:
+
+     Progress tile            0 this week      <- calendar, correct
+     the weekly recap, SPOKEN 0 this week      <- calendar, correct
+     the conditioning bar     2/2 this week    <- rolling
+     ruck / grip / box / skip 60/20/30/40 min this week   <- rolling
+     the load-spike banner    "your logged sets this week" <- rolling
+
+   The NUMBERS are all defensible — "2 easy sessions in any 7 days" is a normal
+   target and a 7-day total is a fine summary, and acwr()'s acute window MUST
+   roll or it shrinks to one day every Monday. It is the WORDS that were wrong,
+   so the words moved. The rule, for anything added later:
+
+     says "this week"      -> uses weekStartD(), the calendar week
+     rolls seven days      -> says "last 7 days", never "this week"
+
+   A PROGRAM week is a third thing and is not in this class: "volume drops on
+   purpose this week" is a position in the plan, not a date range. */
 function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x;}
 /* Quick sessions were taught to the streak, the heatmap and the 28-day count
    but not to this one, so a travel week of five Quick sessions showed "5 day
@@ -20736,6 +20764,9 @@ const RIDE_TARGET={n:2,min:35};
    only, so an athlete doing the same work with jumping jacks — the portable
    option, and now the default — saw a permanently empty progress bar for
    conditioning he had actually done. */
+/* A ROLLING SEVEN DAYS, and the bar says so — see weekStartD(). A weekly
+   target that never resets would be the other defect, but this one is read as
+   "2 easy sessions in any 7 days" and its heading now states that. */
 function ridesThisWeek(){
   const n=nut();let rides=0,mins=0,kcal=0;
   const perMode={};CARDIO_MODES.forEach(k=>perMode[k]=0);
@@ -20773,7 +20804,7 @@ function rideTargetHTML(){
      names could only ever describe two of the four. */
   const breakdown=CARDIO_MODES.filter(k=>r.perMode[k]>0)
     .map(k=>`${r.perMode[k]} ${CARDIO_INFO[k].verb}`).join(' · ');
-  return `<div class="section-label">Easy conditioning · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} this week</span></div>
+  return `<div class="section-label">Easy conditioning · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} in the last 7 days</span></div>
   <div class="card pad">
     <div class="pbar" style="margin:2px 0 10px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     <div class="row" style="justify-content:space-between;align-items:baseline">
