@@ -22235,6 +22235,15 @@ on line 2 — which must be reported.
 **A character window is not a scope**, and a filter written as one will excuse
 whatever happens to sit near it.
 
+**The narrowing made the scan STRICTER, so the nine already caught stay
+caught.** This file's rule is that a check LOOSENED to stop racing must be
+re-mutated, because loosening is how a check stops being able to fail. A
+tightened filter is the other direction: it can only report more, never less.
+
+**And the re-seeded anchor had to be taken verbatim from the file.** Retyping
+the guard line by hand gave `BAD ANCHOR (0)` — a measurement that has not
+happened, never a pass.
+
 ### And a wait loop that could never end
 
 Three shell waiters from an earlier round had been spinning for **6.6 hours**,
