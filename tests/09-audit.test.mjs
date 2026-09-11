@@ -6705,6 +6705,312 @@ export default async function run() {
     await ctx.close();
   }
 
+  /* ------------------------------------------------------------------
+     v504 — A BULK PACED BY THE DATE, UNDER A SENTENCE SAYING IT IS NOT
+
+     projWhyHTML()'s gain branch has said since v318: "this date comes from the
+     steady surplus your Gain goal prescribes, which is the same whichever
+     timeline you pick." v318 fixed the WORDS and never looked at the NUMBER.
+
+     The cut arm carried three bounds — wanted, byRate, byDeficit — and the
+     bulk arm carried Math.min(wanted, 0.5): a flat constant unrelated to the
+     athlete, in the same expression. One of a pair guarded and its twin not.
+
+     And the same round found the twin claim on two more surfaces: the wizard's
+     own timeframe label and programVsGoalHTML() both promised the timeframe
+     "sets your calories, protein, steps and conditioning", which is false for
+     three of seven goals. The Fuel pacing note one tab over has been gated on
+     timelineDeficit() all along, with a comment saying why.
+     ------------------------------------------------------------------ */
+  {
+    const ctx = await tzb.newContext();
+    const pg = await ctx.newPage();
+    const perr = [];
+    pg.on('pageerror', e => perr.push(String(e).slice(0, 200)));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    await seedAthlete(pg);
+
+    const w = await pg.evaluate(() => {
+      const o = {};
+      const strip = s => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const wkOf = txt => { const m = txt.match(/(\d+)\s*wk/i); return m ? +m[1] : null; };
+      /* ONE body throughout, so every figure below is comparable: 86 kg,
+         178 cm, 41, male, activity 1.45. `store` is whether the athlete has
+         tapped Calculate — with no stored target there is no known surplus. */
+      const set = (g, weeks, goalLb, store) => {
+        STATE.profile = { ...STATE.profile, goal: g, timelineWeeks: weeks || null, age: 41,
+          heightCm: 178, sex: 'male', goalWeightLb: goalLb, conditioning: 'moderate', unit: 'kg' };
+        STATE.nutrition = { ...STATE.nutrition, goal: g, age: 41, heightCm: 178, sex: 'male',
+          weightKg: 86, activity: 1.45 };
+        delete STATE.nutrition.proteinTarget;
+        STATE.measurements = [{ date: todayISO(), weight: 86 }];
+        const p = kcalTargetPreview();
+        STATE.nutrition.kcalTarget = store ? p.target : null;
+        STATE.nutrition.tdee = store ? p.tdee : null;
+        return p;
+      };
+
+      /* GUARD 1: the food really does prescribe a surplus, and that surplus
+         really does support a rate. Without this every assertion below is
+         about a number with nothing behind it. */
+      const g0 = set('gain', 24, 205, true);
+      o.tdee = g0.tdee; o.target = g0.target;
+      o.surplus = g0.target - g0.tdee;
+      o.supported = Math.round((g0.target - g0.tdee) * 7 / 7700 * 1000) / 1000;
+
+      /* GUARD 2: THE OLD RULE, re-derived here, really did chart faster than
+         the food. `Math.min(wanted, 0.5)` on a 7 kg gap: 12 weeks wants 0.583
+         and clamps to 0.5, against a surplus that carries 0.236. A check that
+         skipped this would pass just as well on a rule that was never wrong. */
+      const diff = 93 - 86;
+      o.oldAt12 = Math.min(diff / 12, 0.5);
+      o.oldAt24 = Math.min(diff / 24, 0.5);
+      o.oldMovesWithTheDate = o.oldAt12 !== o.oldAt24;
+      o.oldBeatsTheFood = o.oldAt12 > o.supported;
+
+      /* GUARD 3: the sentence the number has to keep really is on the card. */
+      o.claim = strip(projectionHTML()).includes('the same whichever timeline you pick');
+
+      /* THE FIX: the charted bulk is what the surplus carries, at every
+         timeline AND with none — `wanted` does not enter at all. */
+      o.gainWk = [0, 12, 24, 52].map(x => { set('gain', x, 205, true); return wkOf(strip(projectionHTML())); });
+      o.gainRate = (() => {
+        set('gain', 12, 205, true);
+        const m = strip(projectionHTML()).match(/~([\d.]+)kg\/wk/);
+        return m ? parseFloat(m[1]) : null;
+      })();
+
+      /* THE 0.5 CEILING IS LOAD-BEARING AND REACHABLE. normalizeState()
+         repairs kcalTarget into 800-8000, so an imported 8000 against a 2570
+         TDEE is a 5430 kcal surplus — 4.9 kg/wk uncapped. It was the bulk
+         arm's only bound before this round and it stays as the sanity ceiling
+         it always was. Exercised directly, because no ordinary athlete can
+         reach it. */
+      (() => {
+        set('gain', 24, 205, true);
+        STATE.nutrition.kcalTarget = 8000;
+        const txt = strip(projectionHTML());
+        const m = txt.match(/~([\d.]+)kg\/wk/);
+        o.absurdRate = m ? parseFloat(m[1]) : null;
+        o.absurdWk = wkOf(txt);
+        o.absurdUncapped = Math.round((8000 - 2570) * 7 / 7700 * 100) / 100;
+      })();
+
+      /* FLOOR: with no stored target there is no known surplus, so the generic
+         rate stands exactly as it did — and is still the same at every date. */
+      o.gainNoStore = [0, 12, 24, 52].map(x => { set('gain', x, 205, false); return wkOf(strip(projectionHTML())); });
+
+      /* FLOOR: THE CUT IS BYTE-IDENTICAL. Pinned as VALUES rather than against
+         the app's own expression, or a mutant moves both sides together. */
+      o.loseWk = [0, 12, 24, 52].map(x => { set('lose', x, 165, true); return wkOf(strip(projectionHTML())); });
+
+      /* FLOOR: THE FLOORED CUT — the one cut whose stored target sits ABOVE
+         its own TDEE, because the safety floor raised it. v355 measured that
+         athlete: 45 kg, 150 cm, 70, sedentary, TDEE 1052 against a 1200 floor.
+         So `kcalTarget - tdee` is POSITIVE on a fat-loss goal, which is the
+         only state where the bulk pacing's `!losing` guard can fire at all.
+         Without this case the guard is invisible: an ordinary cut's gap is
+         negative, so `sfc > 0` is false and the guard answers for nothing.
+         Measured, dropping it moves this athlete 17 wk -> 38 wk. */
+      (() => {
+        const P = STATE.profile, N = STATE.nutrition;
+        P.sex = N.sex = 'female'; P.age = N.age = 70;
+        P.heightCm = N.heightCm = 150; N.weightKg = 45;
+        P.activity = N.activity = 1.2;
+        P.goal = N.goal = 'lose'; P.goalWeightLb = Math.round(40 / 0.453592);
+        P.timelineWeeks = null;
+        STATE.measurements = [{ date: todayISO(), weight: 45 }];
+        const p = kcalTargetPreview();
+        N.tdee = p.tdee; N.kcalTarget = p.target;
+        o.flooredCut = { floored: p.floored, gap: p.target - p.tdee,
+          wk: wkOf(strip(projectionHTML())) };
+      })();
+
+      /* THE PREDICATE'S OWN CONTRACT. timelineDrivesTargets() is consulted
+         from three narrow branches, and nothing reachable makes it throw — so
+         rather than record a fail-open mutant as equivalent, the contract is
+         pinned directly. It must UNDER-claim on a throw: a label that promises
+         targets the goal does not set is the defect this round removed. */
+      o.failsClosed = (() => {
+        const real = weightStableGoal;
+        try {
+          weightStableGoal = () => { throw new Error('boom'); };
+          const stubTook = (() => { try { weightStableGoal('lose'); return false; } catch (e) { return true; } })();
+          return { stubTook, value: timelineDrivesTargets('lose') };
+        } finally { weightStableGoal = real; }
+      })();
+
+      /* FLOOR: v309's crash-diet branch still fires, and v318's
+         two-settings-disagree branch still fires. */
+      set('lose', 8, 165, true);
+      o.crashSaysUnsafe = strip(projectionHTML()).includes('faster than is safe');
+      set('gain', 24, 165, true);
+      o.disagreeNamed = strip(projectionHTML()).includes('Your two settings disagree');
+
+      /* ---- the twin claim, on three surfaces ---- */
+      const goals = ['lose', 'shred', 'core', 'leanrecomp', 'recomp', 'maintain', 'gain'];
+      o.drives = goals.map(g => [g, timelineDrivesTargets(g)]);
+      o.labels = goals.map(g => [g, timelineFieldNote(g)]);
+      o.notes = goals.map(g => {
+        set(g, 24, g === 'gain' ? 205 : 165, true);
+        return [g, strip(programVsGoalHTML())];
+      });
+      /* FLOOR: no timeframe at all -> the note is silent, whatever the goal. */
+      set('lose', 0, 165, true);
+      o.noTlSilent = programVsGoalHTML() === '';
+      /* FLOOR: the third member was already right and must stay so — a real
+         deficit for a driving goal, nothing at all for the three others. */
+      o.fuel = ['lose', 'gain', 'recomp', 'maintain'].map(g => {
+        set(g, 24, g === 'gain' ? 205 : 165, true);
+        return [g, timelineDeficit()];
+      });
+      return o;
+    });
+
+    t.eq('GUARD: the gain goal really does prescribe a surplus', w.surplus, 260, JSON.stringify({ t: w.target, d: w.tdee }));
+    t.eq('GUARD: and that surplus carries 0.236 kg a week', w.supported, 0.236);
+    t.ok('GUARD: the old rule really was paced by the date, not the food', w.oldMovesWithTheDate, JSON.stringify(w));
+    t.ok('GUARD: and at 12 weeks it charted more than the food carries', w.oldBeatsTheFood, `${w.oldAt12} vs ${w.supported}`);
+    t.eq('GUARD: it charted 0.5 kg a week against a surplus worth 0.236', w.oldAt12, 0.5);
+    t.ok('GUARD: the card really claims the date comes from the surplus', w.claim);
+
+    t.eq('a bulk is charted at the rate the surplus carries', w.gainRate, 0.2, JSON.stringify(w.gainWk));
+    t.eq('and the date is the same whichever timeframe is picked', new Set(w.gainWk).size, 1, JSON.stringify(w.gainWk));
+    t.eq('which is the 30 weeks that surplus really takes', w.gainWk[1], 30, JSON.stringify(w.gainWk));
+    t.ok('so the number under the sentence no longer contradicts it',
+      w.gainWk.every(x => x === 30), JSON.stringify(w.gainWk));
+
+    t.ok('GUARD: an imported target really would chart 4.9 kg a week uncapped',
+      w.absurdUncapped > 4.9, String(w.absurdUncapped));
+    t.eq('an absurd stored surplus is still held at the sanity ceiling', w.absurdRate, 0.5, JSON.stringify(w));
+    t.eq('which is the fastest bulk the chart will ever draw', w.absurdWk, 14, JSON.stringify(w));
+
+    t.eq('FLOOR: with no stored target the generic rate stands', w.gainNoStore[0], 33, JSON.stringify(w.gainNoStore));
+    t.eq('FLOOR: and it is still the same at every timeframe', new Set(w.gainNoStore).size, 1, JSON.stringify(w.gainNoStore));
+
+    t.eq('FLOOR: the cut is untouched at every timeframe', JSON.stringify(w.loseWk), JSON.stringify([19, 20, 25, 52]));
+
+    t.ok('GUARD: the floored cut really does store a target above its own TDEE',
+      w.flooredCut.floored && w.flooredCut.gap > 0, JSON.stringify(w.flooredCut));
+    t.eq('FLOOR: and it is still paced by the cut\'s own bounds, not by that gap',
+      w.flooredCut.wk, 17, JSON.stringify(w.flooredCut));
+
+    t.ok('GUARD: the thrown-predicate case really does throw', w.failsClosed.stubTook, JSON.stringify(w.failsClosed));
+    t.eq('the timeframe rule under-claims when it cannot answer', w.failsClosed.value, false, JSON.stringify(w.failsClosed));
+    t.ok('FLOOR: and a cut the date cannot safely reach still says so', w.crashSaysUnsafe);
+    t.ok('FLOOR: and two settings pointing opposite ways are still named', w.disagreeNamed);
+
+    /* THE TWIN CLAIM. Three of seven goals, measured — and the goal picker is
+       the field directly above the timeframe on the same wizard step. */
+    t.eq('the timeframe drives targets on exactly the four goals it moves',
+      JSON.stringify(w.drives),
+      JSON.stringify([['lose', true], ['shred', true], ['core', true], ['leanrecomp', true],
+        ['recomp', false], ['maintain', false], ['gain', false]]));
+    t.ok('the wizard label promises the four only where they move',
+      w.labels.filter(([, v]) => /sets your calories/.test(v)).map(([g]) => g).join() === 'lose,shred,core,leanrecomp',
+      JSON.stringify(w.labels));
+    t.ok('and says plainly it is not used on the other three',
+      w.labels.filter(([, v]) => /not used on this goal/.test(v)).map(([g]) => g).join() === 'recomp,maintain,gain',
+      JSON.stringify(w.labels));
+    t.ok('the Program note makes the same distinction',
+      w.notes.filter(([, v]) => /it sets your calories/.test(v)).map(([g]) => g).join() === 'lose,shred,core,leanrecomp',
+      JSON.stringify(w.notes.map(([g, v]) => [g, v.slice(0, 60)])));
+    t.ok('and names the timeframe as unused on the other three',
+      w.notes.filter(([, v]) => /is not used on this goal/.test(v)).map(([g]) => g).join() === 'recomp,maintain,gain',
+      JSON.stringify(w.notes.map(([g, v]) => [g, v.slice(0, 60)])));
+    t.ok('FLOOR: with no timeframe set the note says nothing at all', w.noTlSilent);
+    t.eq('FLOOR: the Fuel pacing note, already right, is unchanged',
+      JSON.stringify(w.fuel), JSON.stringify([['lose', 511], ['gain', null], ['recomp', null], ['maintain', null]]));
+
+    /* THE ROUTE, not the helper: the label has to repaint when the athlete
+       taps a goal, because the picker sits directly above it. Driven on a
+       genuinely fresh wizard, both directions. */
+    const ctx2 = await tzb.newContext();
+    const pg2 = await ctx2.newPage();
+    await pg2.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg2);
+    const lab = await pg2.evaluate(() => {
+      const q = s => document.querySelector(s);
+      const tap = g => {
+        const b = document.querySelector(`#ob-goal button[data-g="${g}"]`);
+        if (!b) return 'NO BUTTON ' + g;
+        b.click();
+        return (q('#ob-tlnote') || {}).textContent || null;
+      };
+      return { mounted: !!q('#ob-tlnote'), before: (q('#ob-tlnote') || {}).textContent || null,
+        gain: tap('gain'), back: tap('lose'), recomp: tap('recomp') };
+    });
+    t.ok('GUARD: the wizard really mounts the timeframe label', lab.mounted, JSON.stringify(lab));
+    t.ok('tapping a goal that does not use it repaints the label',
+      /not used on this goal/.test(lab.gain || ''), JSON.stringify(lab));
+    t.ok('and tapping back to one that does puts the promise back',
+      /sets your calories/.test(lab.back || ''), JSON.stringify(lab));
+    t.ok('and it holds for every non-driving goal',
+      /not used on this goal/.test(lab.recomp || ''), JSON.stringify(lab));
+    await ctx2.close();
+
+    /* THE FIRST RENDER, which the tap cases cannot see. An athlete who has
+       already picked a bulk and reopens their profile reads the label BEFORE
+       touching the goal picker — so hardcoding the initial text is invisible
+       to every assertion above, which taps first and reads second. That is
+       the reachable half: they see a claim about a timeframe their goal does
+       not use, until they tap a goal they may not want to change. */
+    const ctx3 = await tzb.newContext();
+    const pg3 = await ctx3.newPage();
+    await pg3.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg3);
+    await seedAthlete(pg3);
+    const first = await pg3.evaluate(() => {
+      /* The editor has to be CLOSED between the two reads. openProfileEdit()
+         on one that is already open repaints nothing, so the second read would
+         be the first render's DOM — measured, and the same trap as any block
+         that does not build the state it asserts on. */
+      const read = g => {
+        OB_EDIT = false; render();
+        STATE.profile.goal = g; STATE.nutrition.goal = g;
+        go('today'); openProfileEdit();
+        const el = document.querySelector('#ob-tlnote');
+        return el ? el.textContent : 'NO ELEMENT';
+      };
+      return { gain: read('gain'), lose: read('lose'), again: read('gain') };
+    });
+    t.ok('GUARD: the profile editor really mounts the label', first.gain !== 'NO ELEMENT', JSON.stringify(first));
+    t.ok('reopening a profile on a bulk reads the honest label before any tap',
+      /not used on this goal/.test(first.gain), JSON.stringify(first));
+    t.ok('FLOOR: and reopening on a cut still reads the promise',
+      /sets your calories/.test(first.lose), JSON.stringify(first));
+    t.ok('and it tracks the stored goal on every reopen, not only the first',
+      /not used on this goal/.test(first.again), JSON.stringify(first));
+    await ctx3.close();
+
+    /* THE RULE IS ASKED FOR, NOT MERELY DECLARED. timelineRateKgWk() reverting
+       to its own inline test is byte-identical on every screen, so only the
+       source can see it — the WEIGHTS_PATTERNS lesson. */
+    const src = await pg.evaluate(() => {
+      const scripts = [...document.querySelectorAll('script:not([src])')];
+      const src = scripts.map(s => s.textContent).sort((a, b) => b.length - a.length)[0] || '';
+      const noCom = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+      return {
+        readTheApp: noCom.includes('function timelineRateKgWk'),
+        decl: (noCom.match(/function timelineDrivesTargets\s*\(/g) || []).length,
+        asks: (noCom.match(/timelineDrivesTargets\s*\(/g) || []).length,
+        inlineRuleGone: !/weightStableGoal\([^)]*\)\s*\|\|\s*\w+\.goal\s*===\s*'gain'/.test(noCom),
+        bulkCapGone: !/losing\?Math\.min\(wanted,byRate,byDeficit\):Math\.min\(wanted,0\.5\)/.test(noCom),
+        surplusBound: /bySurplus/.test(noCom)
+      };
+    });
+    t.ok('GUARD: the scan read the app itself', src.readTheApp, JSON.stringify(src));
+    t.eq('the timeframe rule is declared exactly once', src.decl, 1, JSON.stringify(src));
+    t.ok('and all three claims ask it rather than restating it', src.asks - src.decl >= 3, JSON.stringify(src));
+    t.ok('the inline copy inside timelineRateKgWk() is gone', src.inlineRuleGone, JSON.stringify(src));
+    t.ok('and the bulk no longer takes its pace from the date', src.bulkCapGone, JSON.stringify(src));
+    t.ok('the surplus is what bounds it instead', src.surplusBound, JSON.stringify(src));
+
+    t.eq('and none of it threw', perr.length, 0, perr.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+
   await tzb.close();
 
   srv.close();

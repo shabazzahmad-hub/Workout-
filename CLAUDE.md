@@ -21760,6 +21760,162 @@ afterwards. v410's own half-applied move left a file in two tiers at once.
 
 **Suite 22: 69 → 99 checks.**
 
+## A bulk paced by the date, under a sentence saying it is not (v504)
+
+A fresh axis: **the setup wizard's own field labels, against what the answer
+really drives.** Chasing step 2's timeframe label found something larger one
+screen over, and the measurement is what redirected the round.
+
+`projWhyHTML()`'s gain branch has said since v318:
+
+> this date comes from the steady surplus your Gain goal prescribes, **which is
+> the same whichever timeline you pick**. Muscle does not arrive faster for
+> being asked.
+
+**v318 fixed the WORDS and never looked at the NUMBER under them.** The cut arm
+of the rate cap carried three bounds — `wanted`, `byRate`, `byDeficit` — and the
+bulk arm carried `Math.min(wanted, 0.5)`: a flat constant unrelated to the
+athlete, **in the same expression.** Measured on 86 kg bulking to 93 kg, on the
+260 kcal surplus the goal prescribes, which supports **0.236 kg/wk**:
+
+| the athlete picked | the chart promised | the food gives |
+|---|---|---|
+| no timeframe | 0.2 kg/wk · 33 wk | 0.236 |
+| **12 weeks** | **0.5 kg/wk · 14 wk** | **0.236 — more than double** |
+| 24 weeks | 0.3 kg/wk · 24 wk | 0.236 |
+| 52 weeks | 0.1 kg/wk · 52 wk | 0.236 |
+
+So one card gave two answers: a line paced by the date, and a sentence directly
+under it saying the date is not what paces it. At 12 weeks the athlete is told
+to expect **6 kg** and the food delivers **2.8**.
+
+**The surplus decides now, and `wanted` does not enter at all** — which is what
+makes the sentence's second half true rather than nearly true. It is the mirror
+of `byDeficit`, which has bounded the cut since v309.
+
+### Bounding it inside the timeline block was not enough
+
+The first version added `bySurplus` to the existing `Math.min` and left it
+where it was. That fixed 12 and 24 weeks and left **52 weeks still paced by the
+date** (0.135 kg/wk), and it left a new seam: the same athlete on the same food
+read **33 weeks with no date and 30 with one**, on a chart whose own caption
+says the date does not set it. The same disagreement, one branch over.
+
+So the bulk is hoisted **out** of the timeline block entirely and that block is
+now `if(losing&&tlw>0)`. Measured after: **30 weeks at every timeframe and at
+none**, and the cut is byte-identical (19 / 20 / 25 / 52).
+
+**With no stored target there is no known surplus**, so `bySurplus` is 0 and the
+generic rate stands exactly as it did — 33 weeks, and still the same at every
+timeframe. That is a pinned floor, and it is what the over-eager twin fails.
+
+### The twin claim, on the two surfaces nobody had asked
+
+The same axis found the label that started the round. The wizard's step-2 field
+label and `programVsGoalHTML()` both promised the timeframe *"sets your
+calories, protein, steps and conditioning"*. Measured on one body across 0, 12,
+24 and 52 weeks:
+
+| goal | what the timeframe really sets |
+|---|---|
+| lose, core | all four |
+| shred, leanrecomp | kcal, steps, conditioning (protein already top tier) |
+| **recomp** | **nothing** — 2570 / 180 g / 8000 / moderate at every timeframe |
+| **maintain** | **nothing** — 2570 / 155 g / 7000 / moderate |
+| **gain** | **nothing** — 2830 / 155 g / 7000 / moderate |
+
+Three of seven goals, and **the goal picker is the field directly above it on
+the same wizard step.**
+
+**The Fuel pacing note one tab over has been gated on `timelineDeficit()` all
+along**, with a comment saying why, and `projWhyHTML()` already told the truth
+for `gain`. *One of a pair guarded and its twin not*, three members wide — and
+the two that claimed were the two nobody had asked.
+
+**The rule was stated inline, once, inside `timelineRateKgWk()`**, which is why
+nothing else could ask it. `timelineDrivesTargets(goal)` is the one predicate
+now, and it **fails closed toward under-claiming**: on a throw the label
+describes a date rather than promising targets it may not set.
+
+**The label repaints on a goal tap**, beside the goal blurb that already
+repaints there, so the two answers on that one step cannot disagree about the
+picker sitting between them. **The check taps the real button**, both
+directions — the fix is a handler, and calling the helper cannot see one.
+
+**And the bulk fix is what makes the label fix exact rather than approximate.**
+Before it, the timeframe genuinely did move the gain projection, so *"not used
+on this goal"* would have been arguable. After it, it is a fact.
+
+### The guards are the whole block
+
+Without re-deriving the OLD rule inside the check and pinning that
+`Math.min(7/12, 0.5)` really is **0.5** against a surplus worth **0.236**,
+every assertion below is about a rule that was never wrong. Three more pin that
+the goal really does prescribe a 260 kcal surplus, that the surplus really
+carries 0.236 kg/wk, and that the sentence the number has to keep really is on
+the card.
+
+**Four floors, and each over-eager twin fails one**: the cut untouched at every
+timeframe, a cut the date cannot safely reach still saying so (v309's crash
+diet), two settings pointing opposite ways still named (v318), and the Fuel
+pacing note — already right — unchanged.
+
+**Pin the VALUE, not the identity.** Every projected-weeks figure is written as
+a literal rather than against the app's own expression, or a mutant moves both
+sides together.
+
+### Three escapes, and the first is the one worth keeping
+
+Sixteen mutants, thirteen caught first time. All three escapes were weak
+checks rather than bad mutants, and reading each back is what said so.
+
+**The `!losing` guard is only visible on a FLOORED CUT.** Removing it escaped
+every assertion, because on an ordinary cut `kcalTarget - tdee` is NEGATIVE —
+so `sfc > 0` is false, `bySurplus` is 0, and the guard answers for nothing.
+The one athlete whose stored target sits ABOVE their own TDEE is the small
+sedentary one v355 already measured: 45 kg, 150 cm, 70, TDEE **1052** against
+a **1200** floor. Measured on her, the mutant moves the projection **17 weeks
+to 38** — a cut paced by its own surplus. *A guard is only visible when the
+value beside it cannot supply the answer*, and here the neighbour was the sign
+of a subtraction.
+
+**The tap cases could not see a hardcoded FIRST render.** Every label
+assertion tapped a goal and then read, so the initial text was never measured
+— and the reachable half is the athlete who has already picked a bulk and
+reopens their profile: they read a claim about a timeframe their goal does not
+use, until they tap a goal they may not want to change.
+
+**And the predicate's own contract is pinned directly**, rather than the
+fail-open mutant recorded as equivalent — the v338 `prepDatePassed()` shape. A
+stubbed `weightStableGoal()` that throws must leave `timelineDrivesTargets()`
+answering **false**: a label promising targets the goal does not set is the
+defect this round removed, so the throw has to under-claim.
+
+**And the first-render case built a state the app does not produce.**
+`openProfileEdit()` on an editor that is ALREADY open repaints nothing — it
+sets `OB_EDIT=true` and calls `render()`, which leaves the mounted wizard
+alone — so the second read was the first render's DOM and the floor failed on
+correct code. A real athlete closes the editor between, and so does the check.
+
+### Two probe errors, and the first cost a wrong reading
+
+- **`kcalTargetPreview()` returns `{tdee,bmr,floor,adj,floored,target}`** — the
+  field is `target`, not `kcal`. Storing `p.kcal` left `nutrition.kcalTarget`
+  null, so `byDeficit` was 0 and the CUT read as timeline-independent too (19
+  weeks at every timeframe). That looked exactly like a second finding.
+  **Confirm the control's real shape before believing the result** — the
+  thirteenth entry.
+- **The harness lives at `tests/lib/harness.mjs`**, not `tests/harness.mjs`.
+
+### And a detached runner survived its own kill
+
+`nohup bash -c 'npm test' &` inside a background task is the shape this file
+already forbids — the outer shell exits at once and the harness calls the task
+finished. Killing it then needed **`kill -9` plus `pkill -9 -f headless_shell`**:
+plain SIGTERM left both `run.mjs` and five Chromium processes running, which is
+the one-heavy-run-at-a-time rule broken by the cleanup rather than by the start.
+**Check the process list after a kill, not the exit code.**
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

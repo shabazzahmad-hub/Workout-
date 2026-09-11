@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='503';
+const APP_VERSION='504';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -4325,7 +4325,7 @@ function onboardHTML(){
       <div class="field" style="flex:1;margin:0"><label>Goal weight (<span id="ob-gwtu">${wu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwt" type="number" inputmode="decimal" placeholder="${im?'175':'79'}" value="${gwtD}"></div>
       <div class="field" style="flex:1;margin:0"><label>Goal waist (<span id="ob-gwsu">${hu}</span>) <span class="tiny muted">· optional</span></label><input id="ob-goalwaist" type="number" inputmode="decimal" placeholder="${im?'32':'81'}" value="${gwsD}"></div>
     </div>
-    <div class="field"><label>Timeframe <span class="tiny muted">· sets your calories, protein, steps and conditioning</span></label>
+    <div class="field"><label>Timeframe <span class="tiny muted" id="ob-tlnote">${timelineFieldNote(P.goal||'lose')}</span></label>
       <div class="daypick" id="ob-timeline" style="flex-wrap:wrap">${TIMELINE_OPTS.map(o=>`<button data-w="${o.w}"${on(P.timelineWeeks,o.w)}>${o.label}</button>`).join('')}<button data-w="0"${(!P.timelineWeeks?' class="on"':'')}>No deadline</button></div></div>`)}
 
   ${step(3,'Focus &amp; priority',`
@@ -4390,9 +4390,10 @@ function wireOnboard(){
   single('#ob-focus');single('#ob-cond');single('#ob-mob');single('#ob-timeline');
   multi('#ob-targets');multi('#ob-gear');multi('#ob-trouble');multi('#ob-inj');multi('#ob-parq');multi('#ob-alg');
   single('#ob-space');
-  // keep the goal blurb in sync with the chip the athlete just picked
+  // keep the goal blurb AND the timeframe label in sync with the chip just picked
   $$('#ob-goal button').forEach(b=>b.addEventListener('click',()=>{
-    const n=$('#ob-goalnote');if(n)n.textContent=GOAL_NOTE[b.dataset.g]||'';}));
+    const n=$('#ob-goalnote');if(n)n.textContent=GOAL_NOTE[b.dataset.g]||'';
+    const t=$('#ob-tlnote');if(t)t.textContent=timelineFieldNote(b.dataset.g);}));
   // keep unit labels in sync when metric/imperial toggled
   // Toggling cm/in must CONVERT the numbers already typed, not just relabel them —
   // otherwise finishOnboard reads e.g. 178 as inches and stores a 452 cm athlete.
@@ -14485,6 +14486,15 @@ function programVsGoalHTML(){
     const w=STATE.profile&&STATE.profile.timelineWeeks;
     if(!(w>0))return '';
     const lbl=timelineLabel(w);if(!lbl)return '';
+    /* The same claim the wizard label made, on a second surface — and the Fuel
+       pacing note one tab over has been gated on timelineDeficit() all along,
+       with a comment saying why. One of a pair guarded and its twin not, three
+       members wide, and the two that claimed were the two nobody had asked. */
+    if(!timelineDrivesTargets())
+      return `<div class="note info" style="margin-top:10px"><b>Your ${lbl} timeframe is not used on this goal.</b>
+      Your calories, protein, steps and conditioning come from the goal itself, and they are the same whichever timeframe you pick.
+      This program is the <b>training</b> underneath: ${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions taken at your own pace.
+      <div class="tiny muted" style="margin-top:6px">Switch to a fat-loss goal on <b>Fuel</b> and the timeframe starts setting them.</div></div>`;
     return `<div class="note info" style="margin-top:10px"><b>Your goal date and this program are two different clocks.</b>
       The <b>${lbl}</b> you picked is about your <b>weight</b> — it sets your calories, protein, steps and conditioning.
       This program is the <b>training</b> underneath it: ${SESSIONS_PER_CYCLE*TOTAL_CYCLES} sessions taken at your own pace, and it keeps going after you hit your goal weight.
@@ -19490,10 +19500,36 @@ function projectionHTML(){
       <div class="tiny muted" style="margin-top:6px">Want the scale to move to ${disp(tkg)}${wu} instead? Set your Fuel goal to <b>Fat loss</b> and a date appears here.</div></div>`;
   let rate=losing?Math.max(0.2,Math.min(1.0,kg*0.007)):Math.max(0.15,Math.min(0.4,kg*0.0025));
   let weeks=Math.max(1,Math.ceil(diff/rate));
+  /* A BULK IS PACED BY THE FOOD, NEVER BY THE DATE — and the line below this
+     chart has said so since v318: "this date comes from the steady surplus
+     your Gain goal prescribes, which is the same whichever timeline you pick."
+     v318 fixed the WORDS and never looked at the NUMBER under them.
+
+     The cut arm carried three bounds and the bulk arm one flat constant
+     unrelated to the athlete, inside the timeline block below — one of a pair
+     guarded and its twin not, in the same expression. Measured on 86 kg
+     bulking to 93 kg on a 260 kcal surplus, which supports 0.236 kg/wk:
+
+       no timeline   charted 0.2 kg/wk   33 wk
+       12 weeks      charted 0.5 kg/wk   14 wk   <- more than double the food
+       24 weeks      charted 0.3 kg/wk   24 wk
+       52 weeks      charted 0.1 kg/wk   52 wk
+
+     So one card gave two answers: a line paced by the date, and a sentence
+     saying the date is not what paces it. It is hoisted OUT of the timeline
+     block rather than merely bounded inside it, because a bound left in there
+     still left the same athlete on the same food reading 33 weeks with no date
+     and 30 with one — the same disagreement, one branch over. 0.5 stays as the
+     sanity ceiling it always was, and with no stored target bySurplus is 0, so
+     the generic rate above stands exactly as it does today. */
+  const sfc=(!losing&&nut().tdee&&nut().kcalTarget)?Math.max(0,nut().kcalTarget-nut().tdee):0;
+  const bySurplus=sfc>0?Math.min(sfc*7/7700,0.5):0;
+  if(bySurplus>0){rate=bySurplus;weeks=Math.max(1,Math.ceil(diff/rate));}
   // Honour the timeline the athlete chose in the quiz ("sets your projection pace"),
   // clamped to what is physically sane so it can't promise a crash diet.
+  // CUT ONLY: see the bulk note above.
   const tlw=STATE.profile.timelineWeeks;
-  if(tlw>0){
+  if(losing&&tlw>0){
     const wanted=diff/tlw;
     /* The Math.max(1.0, ...) floor let anyone under 100 kg be shown up to 1 kg/wk
        — 1.67%/wk for a 60 kg athlete, contradicting the app's own 0.5-1% advice
@@ -19505,7 +19541,7 @@ function projectionHTML(){
        0.9 kg/wk, and a floored athlete eating above her TDEE was promised half
        a kilo a week from a 343 kcal surplus. */
     const byDeficit=dfc>0?dfc*7/7700:0;
-    const capped=losing?Math.min(wanted,byRate,byDeficit):Math.min(wanted,0.5);
+    const capped=Math.min(wanted,byRate,byDeficit);
     /* WHICH cap bound is the whole explanation, and the app used to throw it
        away. Reported from the phone: a 190 lb athlete asking for 165 lb in 24
        weeks was told "your 24-week target needs a faster pace than is safe".
@@ -19518,7 +19554,7 @@ function projectionHTML(){
        as a promise in UI text with no code behind it, and it leaves the
        athlete with nothing to do. Safety is checked FIRST, because when it
        really is the binding limit that is the more important thing to say. */
-    if(losing&&wanted>0){
+    if(wanted>0){
       if(wanted>byRate)projBind='safety';
       else if(byDeficit>0&&wanted>byDeficit)projBind='deficit';
       else if(byDeficit<=0)projBind='nodeficit';
@@ -23066,6 +23102,36 @@ function dietBreakBanner(){
        there is nothing to pace toward and the goal's own deficit stands.
    Returns null when it does not apply, so every caller can tell "no opinion"
    from "zero". */
+/* WHETHER THE TIMEFRAME IS AN INPUT AT ALL, for the goal the athlete picked.
+   The rule was stated inline, ONCE, inside timelineRateKgWk() — which is why
+   nothing else could ask it, and why two surfaces went on claiming the
+   timeframe drove targets it does not touch. Measured on one 86 kg body, kcal
+   / protein / steps / conditioning across 0, 12, 24 and 52 weeks:
+
+     lose, core           all four move
+     shred, leanrecomp    kcal, steps, conditioning (protein already top tier)
+     recomp, maintain     NOTHING — 2570/180/8000/moderate at every timeframe
+     gain                 NOTHING — 2830/155/7000/moderate
+
+   Three of seven goals: the picker changes nothing, and the GOAL picker is the
+   field directly above it on the same wizard step.
+
+   FAILS CLOSED toward under-claiming: on a throw the answer is "no", so the
+   label describes a date rather than promising targets it may not set. */
+function timelineDrivesTargets(g){
+  try{
+    const goal=(g!==undefined)?g:nut().goal;
+    return !weightStableGoal(goal)&&goal!=='gain';
+  }catch(e){return false;}
+}
+/* The wizard's own field label, which promised all four to every goal. It
+   repaints on a goal tap beside the goal blurb, so the two answers on that one
+   step cannot disagree about the picker sitting between them. */
+function timelineFieldNote(g){
+  return timelineDrivesTargets(g)
+    ? '\u00b7 sets your calories, protein, steps and conditioning'
+    : '\u00b7 not used on this goal \u2014 it eats the same whichever you pick';
+}
 function timelineDeficit(){
   const rate=timelineRateKgWk();
   return rate===null?null:Math.max(0,Math.round(rate*7700/7));
@@ -23078,7 +23144,7 @@ function timelineRateKgWk(){
     const wks=STATE.profile.timelineWeeks;
     if(!(wks>0))return null;
     const n=nut();
-    if(weightStableGoal(n.goal)||n.goal==='gain')return null;
+    if(!timelineDrivesTargets(n.goal))return null;
     const kg=latestWeightKg(),tkg=projTargetKg();
     if(!(kg>0)||!(tkg>0)||tkg>=kg)return null;
     return Math.min((kg-tkg)/wks,kg*0.01);
