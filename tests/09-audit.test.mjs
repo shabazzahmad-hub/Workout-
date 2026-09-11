@@ -6805,6 +6805,42 @@ export default async function run() {
          the app's own expression, or a mutant moves both sides together. */
       o.loseWk = [0, 12, 24, 52].map(x => { set('lose', x, 165, true); return wkOf(strip(projectionHTML())); });
 
+      /* FLOOR: THE FLOORED CUT — the one cut whose stored target sits ABOVE
+         its own TDEE, because the safety floor raised it. v355 measured that
+         athlete: 45 kg, 150 cm, 70, sedentary, TDEE 1052 against a 1200 floor.
+         So `kcalTarget - tdee` is POSITIVE on a fat-loss goal, which is the
+         only state where the bulk pacing's `!losing` guard can fire at all.
+         Without this case the guard is invisible: an ordinary cut's gap is
+         negative, so `sfc > 0` is false and the guard answers for nothing.
+         Measured, dropping it moves this athlete 17 wk -> 38 wk. */
+      (() => {
+        const P = STATE.profile, N = STATE.nutrition;
+        P.sex = N.sex = 'female'; P.age = N.age = 70;
+        P.heightCm = N.heightCm = 150; N.weightKg = 45;
+        P.activity = N.activity = 1.2;
+        P.goal = N.goal = 'lose'; P.goalWeightLb = Math.round(40 / 0.453592);
+        P.timelineWeeks = null;
+        STATE.measurements = [{ date: todayISO(), weight: 45 }];
+        const p = kcalTargetPreview();
+        N.tdee = p.tdee; N.kcalTarget = p.target;
+        o.flooredCut = { floored: p.floored, gap: p.target - p.tdee,
+          wk: wkOf(strip(projectionHTML())) };
+      })();
+
+      /* THE PREDICATE'S OWN CONTRACT. timelineDrivesTargets() is consulted
+         from three narrow branches, and nothing reachable makes it throw — so
+         rather than record a fail-open mutant as equivalent, the contract is
+         pinned directly. It must UNDER-claim on a throw: a label that promises
+         targets the goal does not set is the defect this round removed. */
+      o.failsClosed = (() => {
+        const real = weightStableGoal;
+        try {
+          weightStableGoal = () => { throw new Error('boom'); };
+          const stubTook = (() => { try { weightStableGoal('lose'); return false; } catch (e) { return true; } })();
+          return { stubTook, value: timelineDrivesTargets('lose') };
+        } finally { weightStableGoal = real; }
+      })();
+
       /* FLOOR: v309's crash-diet branch still fires, and v318's
          two-settings-disagree branch still fires. */
       set('lose', 8, 165, true);
@@ -6854,6 +6890,14 @@ export default async function run() {
     t.eq('FLOOR: and it is still the same at every timeframe', new Set(w.gainNoStore).size, 1, JSON.stringify(w.gainNoStore));
 
     t.eq('FLOOR: the cut is untouched at every timeframe', JSON.stringify(w.loseWk), JSON.stringify([19, 20, 25, 52]));
+
+    t.ok('GUARD: the floored cut really does store a target above its own TDEE',
+      w.flooredCut.floored && w.flooredCut.gap > 0, JSON.stringify(w.flooredCut));
+    t.eq('FLOOR: and it is still paced by the cut\'s own bounds, not by that gap',
+      w.flooredCut.wk, 17, JSON.stringify(w.flooredCut));
+
+    t.ok('GUARD: the thrown-predicate case really does throw', w.failsClosed.stubTook, JSON.stringify(w.failsClosed));
+    t.eq('the timeframe rule under-claims when it cannot answer', w.failsClosed.value, false, JSON.stringify(w.failsClosed));
     t.ok('FLOOR: and a cut the date cannot safely reach still says so', w.crashSaysUnsafe);
     t.ok('FLOOR: and two settings pointing opposite ways are still named', w.disagreeNamed);
 
@@ -6905,6 +6949,40 @@ export default async function run() {
     t.ok('and it holds for every non-driving goal',
       /not used on this goal/.test(lab.recomp || ''), JSON.stringify(lab));
     await ctx2.close();
+
+    /* THE FIRST RENDER, which the tap cases cannot see. An athlete who has
+       already picked a bulk and reopens their profile reads the label BEFORE
+       touching the goal picker — so hardcoding the initial text is invisible
+       to every assertion above, which taps first and reads second. That is
+       the reachable half: they see a claim about a timeframe their goal does
+       not use, until they tap a goal they may not want to change. */
+    const ctx3 = await tzb.newContext();
+    const pg3 = await ctx3.newPage();
+    await pg3.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg3);
+    await seedAthlete(pg3);
+    const first = await pg3.evaluate(() => {
+      /* The editor has to be CLOSED between the two reads. openProfileEdit()
+         on one that is already open repaints nothing, so the second read would
+         be the first render's DOM — measured, and the same trap as any block
+         that does not build the state it asserts on. */
+      const read = g => {
+        OB_EDIT = false; render();
+        STATE.profile.goal = g; STATE.nutrition.goal = g;
+        go('today'); openProfileEdit();
+        const el = document.querySelector('#ob-tlnote');
+        return el ? el.textContent : 'NO ELEMENT';
+      };
+      return { gain: read('gain'), lose: read('lose'), again: read('gain') };
+    });
+    t.ok('GUARD: the profile editor really mounts the label', first.gain !== 'NO ELEMENT', JSON.stringify(first));
+    t.ok('reopening a profile on a bulk reads the honest label before any tap',
+      /not used on this goal/.test(first.gain), JSON.stringify(first));
+    t.ok('FLOOR: and reopening on a cut still reads the promise',
+      /sets your calories/.test(first.lose), JSON.stringify(first));
+    t.ok('and it tracks the stored goal on every reopen, not only the first',
+      /not used on this goal/.test(first.again), JSON.stringify(first));
+    await ctx3.close();
 
     /* THE RULE IS ASKED FOR, NOT MERELY DECLARED. timelineRateKgWk() reverting
        to its own inline test is byte-identical on every screen, so only the

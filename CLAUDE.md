@@ -21864,6 +21864,39 @@ pacing note — already right — unchanged.
 a literal rather than against the app's own expression, or a mutant moves both
 sides together.
 
+### Three escapes, and the first is the one worth keeping
+
+Sixteen mutants, thirteen caught first time. All three escapes were weak
+checks rather than bad mutants, and reading each back is what said so.
+
+**The `!losing` guard is only visible on a FLOORED CUT.** Removing it escaped
+every assertion, because on an ordinary cut `kcalTarget - tdee` is NEGATIVE —
+so `sfc > 0` is false, `bySurplus` is 0, and the guard answers for nothing.
+The one athlete whose stored target sits ABOVE their own TDEE is the small
+sedentary one v355 already measured: 45 kg, 150 cm, 70, TDEE **1052** against
+a **1200** floor. Measured on her, the mutant moves the projection **17 weeks
+to 38** — a cut paced by its own surplus. *A guard is only visible when the
+value beside it cannot supply the answer*, and here the neighbour was the sign
+of a subtraction.
+
+**The tap cases could not see a hardcoded FIRST render.** Every label
+assertion tapped a goal and then read, so the initial text was never measured
+— and the reachable half is the athlete who has already picked a bulk and
+reopens their profile: they read a claim about a timeframe their goal does not
+use, until they tap a goal they may not want to change.
+
+**And the predicate's own contract is pinned directly**, rather than the
+fail-open mutant recorded as equivalent — the v338 `prepDatePassed()` shape. A
+stubbed `weightStableGoal()` that throws must leave `timelineDrivesTargets()`
+answering **false**: a label promising targets the goal does not set is the
+defect this round removed, so the throw has to under-claim.
+
+**And the first-render case built a state the app does not produce.**
+`openProfileEdit()` on an editor that is ALREADY open repaints nothing — it
+sets `OB_EDIT=true` and calls `render()`, which leaves the mounted wizard
+alone — so the second read was the first render's DOM and the floor failed on
+correct code. A real athlete closes the editor between, and so does the check.
+
 ### Two probe errors, and the first cost a wrong reading
 
 - **`kcalTargetPreview()` returns `{tdee,bmr,floor,adj,floored,target}`** — the
