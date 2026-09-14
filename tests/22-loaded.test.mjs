@@ -815,6 +815,20 @@ export default async function run() {
       seed([NEW, OLD]);                       // what an import can carry
       OUT.jumbled = (lastLift('dbbench') || {}).loadKg;
       OUT.jumbledHint = loadProgression('dbbench', {}).lastLoadKg;
+      /* THE CASE THAT TELLS A DATE FROM A LOAD. Every seed above has the
+         newest row as the HEAVIEST too, so a sort by loadKg answers all of
+         them correctly — a guard is only visible when the value beside it
+         cannot supply the answer, and a mutant sorting by load escaped the
+         first version of this block clean.
+         An athlete who DELOADS is the ordinary case where the two disagree:
+         the newest lift is the lighter one, and "last time" has to be that,
+         not the heavy one they stepped back from. Seeded out of order, so
+         this one case separates by-date from by-position, from by-load, and
+         from a descending sort at once. */
+      seed([{ date: '2026-09-01', exId: 'dbbench', loadKg: 30, reps: 8, rir: 2 },
+            { date: '2026-01-01', exId: 'dbbench', loadKg: 50, reps: 8, rir: 2 }]);
+      OUT.deloaded = (lastLift('dbbench') || {}).loadKg;
+      OUT.deloadedHint = loadProgression('dbbench', {}).lastLoadKg;
       /* SAME DAY KEEPS THE ORDER IT WAS PUSHED IN. liftLog rows carry no `at`,
          so the date is the only key they have and a stable sort is what makes
          two lifts logged in one day still read in the order they happened. */
@@ -835,6 +849,9 @@ export default async function run() {
     t.eq('and a jumbled one hands back the newest lift too, not the last row',
       lift.jumbled, 40, lift);
     t.eq('the next-load hint is anchored on it', lift.jumbledHint, 40, lift);
+    t.eq('a DELOADED athlete reads their lighter newest lift, not their heaviest',
+      lift.deloaded, 30, lift);
+    t.eq('and the hint is anchored on that', lift.deloadedHint, 30, lift);
     t.eq('FLOOR: two lifts on ONE day keep the order they were pushed in',
       lift.sameDay, 32, lift);
     t.eq('FLOOR: another movement\'s rows are not read as this one\'s',
