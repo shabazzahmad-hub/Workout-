@@ -4926,7 +4926,7 @@ export default async function run() {
          and `points` was in this one and not that one. */
       const BAD = new RegExp('(?<![\\/\\d.])(?<!\\b(?:Week|Day|Block|Phase|Cycle|Level|Session|Round|Test|Step|Set) )\\b1 ('
         + NOUNS.join('|') + ')\\b', 'g');
-      const out = { hits: [], surfaces: 0 };
+      const out = { hits: [], surfaces: 0, seen: [] };
       out.sees = !!'you did 1 sets today'.match(BAD);
       out.quiet = !'0/1 sets done'.match(BAD) && !'1 set today'.match(BAD)
         && !'Week 1 sets your baseline volumes'.match(BAD);
@@ -4954,6 +4954,7 @@ export default async function run() {
       try { normalizeState(); } catch (e) { }
       const look = (label, txt) => {
         out.surfaces++;
+        out.seen.push(label);
         for (const m of (txt || '').matchAll(BAD))
           out.hits.push({ label, hit: m[0], ctx: txt.slice(Math.max(0, m.index - 60), m.index + 30).replace(/\s+/g, ' ') });
       };
@@ -5006,8 +5007,19 @@ export default async function run() {
     t.ok('guard: the score line really rendered a delta of one point',
       /\b1 point\b/.test(rend.scoreLine || ''),
       JSON.stringify({ scoreLine: rend.scoreLine }));
+    /* OPENED IS NOT READ. The first version of this guard counted the sheets
+       the loop had OPENED, and a mutant that opened all fourteen and passed
+       none of them to the detector satisfied it — on correct code the two
+       are indistinguishable, because no sheet carries the defect any more.
+       Measured: the builder and favourite fixes are caught by this sweep and
+       by nothing else. Measure the payload, not the container — applied to a
+       guard: the sweep records the label of every surface it really READ. */
     t.ok('guard: the sweep really opened the sheets', rend.sheets >= 8,
       JSON.stringify({ sheets: rend.sheets }));
+    t.ok('guard: and really READ the builder sheet, not merely opened it',
+      (rend.seen || []).indexOf('sheet:openBuilder') >= 0,
+      JSON.stringify({ sheets: rend.sheets,
+        read: (rend.seen || []).filter(x => x.indexOf('sheet:') === 0).length }));
     /* THE RE-TEST RESULTS SCREEN, driven rather than swept. A delta of one
        point takes the singular in both directions; twelve keeps the plural,
        so a fix that simply dropped the s is caught here. */

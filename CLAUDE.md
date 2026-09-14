@@ -22388,6 +22388,38 @@ A twelve-point gain still says **points**, a three-move session still says
 intact. The over-eager twin — `plural()` with the `s` dropped — fails exactly
 there.
 
+### Two escaped mutants, and both were guards that counted a container
+
+Thirteen seeded, eleven caught by name first time. Both escapes were weak
+checks of mine rather than bad mutants, and they are the same lesson twice.
+
+**A sort by LOAD answered every case, because every case agreed with it.**
+The seeds all had the newest lift as the HEAVIEST too, so `loadKg` and `date`
+gave the same row and a mutant sorting by load walked through clean. *A guard
+is only visible when the value beside it cannot supply the answer* — and here
+the neighbour was my own choice of numbers.
+
+The case that separates them is an athlete who **deloads**: the newest lift is
+the lighter one, and *"last time"* has to be that rather than the heavy weight
+they have stepped back from — which is v221's own concern about what the
+next-load hint is anchored on. Seeded out of order, one case now separates
+by-date from by-position, from by-load and from a descending sort at once.
+
+**And the sheet sweep stopped READING what it opened.** The guard beside it
+counted the sheets it had OPENED (`sheets >= 8`), so a mutant that opened all
+fourteen and passed none of them to the detector satisfied it — and on correct
+code the two are indistinguishable, because no sheet carries the defect any
+more. It would have made the builder and favourite fixes invisible; measured,
+those two are caught by the sheet sweep and by nothing else.
+
+*Measure the payload, not the container*, applied to a GUARD: the sweep now
+records the label of every surface it really read, and the guard names one.
+A count of what was opened is a statement about the loop, not about the scan.
+
+Re-seeded against both, **thirteen mutants and all thirteen caught by name** —
+including the deload case, which separates a date sort from a load sort, a
+position read and a descending sort in one.
+
 ## The last lift, by position rather than by date (v508)
 
 ```js
