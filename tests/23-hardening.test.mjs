@@ -13,6 +13,7 @@
    block above left mounted. */
 import { serve, launch, suite, waitForBoot, seedAthlete } from './lib/harness.mjs';
 import { readFileSync } from 'node:fs';
+import { PLURAL_NOUNS, PLURAL_NOUNS_RE } from './lib/plural-nouns.mjs';
 
 export default async function () {
   const t = suite('hardening — audit fixes');
@@ -15220,7 +15221,11 @@ export default async function () {
     const noCom507 = src507
       .replace(/\/\*[\s\S]*?\*\//g, m => '\n'.repeat((m.match(/\n/g) || []).length))
       .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-    const NOUNS507 = '(?:sets|moves|reps|rounds|exercises|sessions|days|weeks|months|minutes|seconds|meals|tests|blocks|movements|photos|cups|grams)';
+    /* ONE NOUN LIST, ASKED. It used to be written out here, 18 nouns long,
+       while the rendered sweep in suite 09 carried its own 24 — and `points`
+       was in that one and not this one, so a real defect on Progress >
+       Strength was invisible to this scan for want of a noun. */
+    const NOUNS507 = '(?:' + PLURAL_NOUNS_RE + ')';
     /* A count joined straight onto a PLURAL noun. A site that hand-writes the
        plural correctly reads `+' week'+(n===1?'':'s')` — a SINGULAR noun — so
        it does not match, and a site that goes through plural() concatenates no
@@ -15238,7 +15243,13 @@ export default async function () {
            hit: seeded with a brand-new surface carrying the banned form, a
            160-character lookback let it through. */
         const look = text.slice(text.lastIndexOf('\n', m.index) + 1, m.index);
-        if (/(===\s*1\s*\?|<=\s*1\s*\?|>=\s*2\s*\?|\?\s*'[^']*'\s*:)/.test(look)) continue;
+        /* ONLY A CONDITION ABOUT ONE EXCUSES A HIT. The fourth arm was a
+           catch-all for any same-line ternary whose then-branch is a string,
+           and it excused `d===0?'No change':arrow(d)+' points'` — a guard
+           about ZERO, which lets d===1 straight through to "1 points".
+           Measured: dropping it costs nothing. All six sites the excuse
+           carries today match one of the three narrow forms. */
+        if (/(===\s*1\s*\?|<=\s*1\s*\?|>=\s*2\s*\?)/.test(look)) continue;
         out.push(line.trim().slice(0, 110));
       }
       return out;
@@ -15257,6 +15268,59 @@ export default async function () {
        banned form walked through it. */
     t.ok('GUARD: a guard on a NEIGHBOURING line does not excuse the hit',
          scan507("const a = n===1?'one':'many';\ntoast(n+' rounds done');").length === 1);
+    /* A TERNARY THAT IS NOT ABOUT ONE IS NOT A GUARD. This is the shape that
+       hid the defect: a same-line condition about ZERO reads as a singular
+       branch to a catch-all and is not one. */
+    t.ok('GUARD: a same-line ternary about ZERO does not excuse the hit',
+         scan507("x = d===0?'No change':arrow(d)+' points';").length === 1);
+    t.ok('GUARD: but a real singular branch still does, all three forms',
+         scan507("x = n===1?'one':(n+' rounds');").length === 0
+         && scan507("x = n<=1?'one':(n+' rounds');").length === 0
+         && scan507("x = n>=2?(n+' rounds'):'one';").length === 0);
+    /* The shared list is what makes the two detectors one rule. Asserted by
+       VALUE: the noun this round's defect was written in has to be in it. */
+    t.ok('GUARD: the shared noun list carries the noun that fell through the gap',
+         PLURAL_NOUNS.indexOf('points') >= 0 && PLURAL_NOUNS.indexOf('calories') >= 0,
+         JSON.stringify(PLURAL_NOUNS.length));
+    /* THE RULE HAS TO BE ASKED FOR, NOT MERELY DECLARED. A shared list that a
+       fourth detector writes out by hand is the drift this round removed, and
+       the drift is invisible on today's data because a hand-written copy still
+       reports the same hits — only the source can see it.
+
+       There were THREE copies, not two: the sweep of the SPOKEN brief carried
+       its own 17, the narrowest of them, on the one surface an athlete cannot
+       double-check by looking. */
+    {
+      /* EVERY word of the alternation has to be one of these nouns. The first
+         version asked for three of them and reported two rules that are not
+         this one: the duration scan of v473 pairs each unit with its SINGULAR
+         (`week` beside `weeks`), and the asset-count scan of v460 mixes in
+         words this list does not carry. A detector that can match ordinary
+         suite content is not measuring what you named — and this one matched
+         its OWN guard string, so the guard is built from the list at run time
+         rather than written out as a literal. */
+      const scanText = txt => {
+        const out = [];
+        for (const m of txt.matchAll(/\(\s*(?:\?:)?([a-z]{3,}(?:\|[a-z]{3,}){2,})\s*\)/g)) {
+          const words = m[1].split('|');
+          if (words.every(w => PLURAL_NOUNS.indexOf(w) >= 0)) out.push(m[1].slice(0, 60));
+        }
+        return out;
+      };
+      const three = PLURAL_NOUNS.slice(0, 3).join('|');
+      t.ok('GUARD: a hand-written noun list is reported',
+           scanText('const B = /\\b1 (' + three + ')\\b/;').length === 1);
+      t.ok('GUARD: a units list that carries its singulars is NOT this rule',
+           scanText('const B = /(week|weeks|day|days)/;').length === 0);
+      t.ok('GUARD: and an unrelated alternation is not either',
+           scanText('const B = /(red|green|blue|gold)/;').length === 0);
+      const own = [];
+      for (const f of ['tests/09-audit.test.mjs', 'tests/23-hardening.test.mjs'])
+        scanText(readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' '))
+          .forEach(h => own.push(f.split('/').pop() + ': ' + h));
+      t.eq('no detector writes out a noun list of its own', own.length, 0,
+           JSON.stringify(own.slice(0, 4)));
+    }
     t.ok('GUARD: the comment stripper really removed the comments',
          noCom507.length < src507.length * 0.85 && noCom507.length > 400000,
          JSON.stringify({ raw: src507.length, stripped: noCom507.length }));

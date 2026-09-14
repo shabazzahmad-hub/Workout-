@@ -22260,6 +22260,201 @@ which cannot match itself:
 while kill -0 <pid> 2>/dev/null; do sleep 10; done
 ```
 
+## One class, three detectors, three noun lists (v508)
+
+The plural class has had three rounds — v459 closed a count written as a
+LITERAL, v489 a count built by CONCATENATION, v507 the concatenation sites no
+rendered sweep reaches. It has **three** detectors, and until this round each
+carried its own noun list:
+
+| detector | nouns | knows `points`? |
+|---|---|---|
+| the rendered sweep, suite 09 (v459) | 24 | **yes** |
+| the source scan, suite 23 (v507) | 18 | **no** |
+| the SPOKEN brief sweep, suite 09 (v459) | 17 | **no** |
+
+**The third one was found by sweeping rather than by reading**, after the
+write-up of this round had already claimed there were two — a scan of the
+suites for an alternation whose every word is one of these nouns, which is now
+a check of its own.
+
+`points` fell straight down the gap. Measured on a re-test that scored one
+point higher than the last one — which is the most likely non-zero delta a
+0-100 average can produce:
+
+| surface | said |
+|---|---|
+| Progress ▸ Summary | **▲ +1 points since your last comparable test** |
+| the re-test results screen | **▲ +1 points vs last test — your core is getting stronger 💪** |
+| the same, on the way down | **▼ -1 points vs last test** |
+
+**No detector could have caught it, and each failed for its own reason.**
+
+- **The source scan did not know the noun.** `arrow(d)+' points'` is the
+  CONCATENATION shape v507's scan was written for; `points` was simply not in
+  its 18.
+- **It was excused a second time anyway.** The scan skips a hit whose own line
+  carries a singular branch, and the fourth arm of that test was a catch-all
+  for *any* same-line ternary with a string in it. The line reads
+  `d===0?'No change':arrow(d)+' points'` — a guard about **ZERO**, which lets
+  `d===1` straight through. v507 narrowed that excuse from a 160-character
+  window to the same line; the hole left is that a same-line ternary which is
+  not about ONE still excuses.
+- **The rendered sweep knew the noun and had nothing to read.** Its seed was
+  `scoreHistory:[{score:70}]` — ONE entry, and no `testCount`, so
+  `scoreTrendHTML()` returned early twice over and the line never rendered.
+  *A sweep is only as wide as the VALUES it seeds* — v507's own sentence,
+  landing on v507's own sibling check one round later.
+- **And the re-test screen is on no surface at all.** `scoreDeltaHTML()` is
+  built inside `commitAssessment()` and painted only after a completed
+  battery, so no tab, pane or sheet sweep can open it. v506's finding, again.
+
+### The catch-all excuse arm was measured, not argued
+
+My first reading was that the excuse was useless, because the form it names in
+its own guard (`n+' round'+(n===1?'':'s')`) has a SINGULAR noun and cannot
+match the regex at all. Measuring corrected that: it carries **six** real
+sites, each a whole ternary whose else-branch legitimately holds a plural
+(`ok===1?'Photo saved':ok+' photos saved'`). So the excuse earns its keep.
+
+What it does not need is the catch-all. **All six match one of the three
+narrow forms** (`===1?`, `<=1?`, `>=2?`), so dropping the fourth arm costs
+nothing — 0 hits either way under v507's own noun list — and it is what let the
+defect through. The narrow arms stay; the catch-all goes, with a guard that a
+same-line ternary about ZERO is reported and all three real forms are not.
+
+### One list, asked — and a check that there is no fourth
+
+`tests/lib/plural-nouns.mjs` is now the only copy. Suite 23 builds its regex
+from it; both sweeps in suite 09 take it as an argument into the page, so none
+of the three can drift again. **Abbreviations stay out** — "1 kcal", "1 min",
+"1 kg" are correct English, and a detector that reported them would be
+measuring something it was not named for.
+
+A hand-written fourth copy would be **invisible on today's data**, because it
+reports the same hits — only the source can see it. So a check scans the two
+suites for an alternation whose every word is one of these nouns, and requires
+zero.
+
+**Its first version reported three false alarms, and one was its own guard
+string.** *Every* word has to be in the list, not three of them: v473's
+duration scan pairs each unit with its SINGULAR (`week` beside `weeks`) and
+v460's asset-count scan mixes in words this list does not carry, so both are
+excused by that rule and neither is this class. And the guard's synthetic
+source is now BUILT from the list at run time rather than written out, because
+a detector that reads the file it lives in will read its own examples — the
+same trap as a comment that quotes the code it forbids.
+
+### Two more, on the sheet the sweep never opened
+
+The same seeding gap hid a second pair. The custom builder read **"Your
+session · 1 moves"** and a one-move favourite **"1 moves ▶"** — both reachable
+in two taps with no import at all, and both in a SHEET, which that sweep
+covered not at all. It opens fourteen now.
+
+### The interpolation shape, swept and deliberately not scanned
+
+`${n} moves` is a fourth shape, and neither source scan matches it. Measured
+across the file with the shared noun list, a ratio exemption and a text-ternary
+exemption: **52 sites**, and beyond the two above every one is provably never
+one — a constant (`TESTS.length`, `TOTAL_CYCLES`), a window (`c.trend.days` is
+21+), a rate, or a target.
+
+No third scan was added, and the reason is that it would duplicate a better
+check. **47 of the 52 are on a rendered surface**, so the rendered detector is
+the honest test for that shape: it reads what the athlete sees and needs no
+allowlist at all. The source scan exists for what a rendered sweep cannot reach
+— the canvas (v507) and `commitAssessment()`'s screen — and both of those use
+concatenation, which it already covers. Converting 52 provably-never-one sites
+to satisfy a duplicate scan is a large mechanical diff with no defect behind
+it.
+
+**The other five are SPOKEN and not shown at all** — the morning brief's `say`
+fields carry the session's exercise count and minutes, the calorie and protein
+targets, and the water cups. No rendered sweep can read a spoken line, which is
+v315's rule about a spoken figure being the one nobody can double-check by
+looking, and it is why the third detector exists at all. Measured, none of the
+five can be one: a session is at least two movements, `waterTargetCups()`
+clamps to 6-16, and the two targets are in the hundreds — and every noun they
+use is in that detector's 17, so they are genuinely covered.
+
+What the round does instead is give the rendered detector the seeds and the
+surfaces it needed, which is what was actually missing.
+
+### The floors
+
+A twelve-point gain still says **points**, a three-move session still says
+**moves**, and `plural()`'s own display argument keeps the formatted count
+intact. The over-eager twin — `plural()` with the `s` dropped — fails exactly
+there.
+
+## The last lift, by position rather than by date (v508)
+
+```js
+function lastLift(exId){
+  const rows=liftLog().filter(r=>r&&r.exId===exId);
+  return rows.length?rows[rows.length-1]:null;
+}
+```
+
+The last SLOT, not the latest DAY. `holdLast()` two thousand lines away sorts
+by time before it takes the last row, and every other ordered list in this app
+was given the same treatment after the same defect — v430 sorted the
+measurements, v499 the score history. *One of a pair guarded and its twin not* —
+the shape this file records more often than any other — and this is the twin
+that feeds a prescription.
+
+Measured on a backup whose 40 kg September row sits above its 20 kg January
+one:
+
+| | before | after |
+|---|---|---|
+| `lastLift()` | the **20 kg** row | the 40 kg row |
+| the load box pre-fills | 20 | 40 |
+| the sheet says | *"last time 20 kg × 8"* | last time 40 kg × 8 |
+| `loadProgression().lastLoadKg` | **20** | 40 |
+
+So the sheet pre-fills an old load into the box the athlete taps Save on, says
+*"last time"* about a lift that was not last, and anchors the next-load hint on
+the wrong one. v221's own rule is that `LOAD_STEP_KG` never auto-decreases
+because a silent regression stacks a second deload; this is the mirror — a
+silent step from a wrong anchor, in whichever direction the stale row points.
+
+**Nothing in the app writes out of order.** `saveLiftLog()` stamps `todayISO()`
+and pushes, so the door is an import — the same threat model every repair in
+this file is written against: `importData()` takes arbitrary JSON and the boot
+repair filters `liftLog` without sorting it. A latent-class fix, and the class
+was swept rather than guessed.
+
+**The date is the only key those rows have** — unlike `holdLog`, `grindLog` and
+`hiitLog`, a lift row carries no `at`. `sort` is stable, so two lifts logged on
+one day keep the order they were pushed in, and a check pins that.
+
+### The rest of the class, swept
+
+Every stored list read by position, against what guarantees its order:
+
+| list | positional reader | ordered by |
+|---|---|---|
+| `holdLog` | `holdLast`, `holdTrend` | sorted on `at` |
+| `grindLog` | `grindStreak` | sorted on `at` |
+| `photos` | the gallery, `photoPair` | sorted on `id`, which starts with the date |
+| `measurements` | `latestWeightKg` and four more | sorted at the boot (v430) |
+| `scoreHistory` | the ring, the level chip, the trend | sorted at the boot (v499) |
+| `footLog` | `footLatest` | picked by date (v392) |
+| `hiitLog`, `pain` | counts and sums | order-independent |
+| **`liftLog`** | **`lastLift`** | **nothing — fixed here** |
+
+**The activity history rows were measured and deliberately left.**
+`actHistoryHTML()` and `skipHistoryHTML()` take `.slice(0,8)` of a head-newest
+list and label it *"Recent sessions"*, so an out-of-order import shows the
+wrong eight. Sorting them is not one line: `removeAct(k,i)` and `removeSkip(i)`
+index the RAW list by the row's position, so sorting before slicing would
+renumber the rows and delete the wrong one — the exact trap `openBuilder()`'s
+own comment already records for `customFav`. Every row prints its own date
+beside it, so the cost is a display order rather than a wrong number. Recorded
+rather than closed by guessing.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

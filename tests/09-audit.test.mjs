@@ -18,6 +18,7 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { ROOT } from './lib/harness.mjs';
+import { PLURAL_NOUNS } from './lib/plural-nouns.mjs';
 
 export default async function run() {
   const t = suite('audit fixes');
@@ -4842,8 +4843,13 @@ export default async function run() {
 
        The RATIO form is deliberately excluded — "0/3 sets" is correct English
        and a fix that touched it would be a different bug. */
-    const pl = await page.evaluate(() => {
-      const BAD = /(?<![\/\d])\b1 (sets|exercises|moves|minutes|calories|grams|cups|reps|seconds|weeks|days|blocks|sessions|tests|meals|rounds|movements)\b/;
+    const pl = await page.evaluate((NOUNS) => {
+      /* THE THIRD COPY OF THE LIST, and the narrowest of the three: 17
+         nouns against the rendered sweep's 24 and the source scan's 18.
+         This is the detector that reads the SPOKEN brief, which no other
+         sweep can, so a noun missing here is a noun missing from the one
+         surface an athlete cannot double-check by looking. */
+      const BAD = new RegExp('(?<![\\/\\d])\\b1 (' + NOUNS.join('|') + ')\\b');
       const out = { spoke: [], oneSet: 0, finNot1: 0, sessions: 0, multi: '' };
       const keepPtr = STATE.progressPtr;
       for (let p = 0; p < SESSIONS_PER_CYCLE * TOTAL_CYCLES; p++) {
@@ -4866,7 +4872,7 @@ export default async function run() {
       }
       STATE.progressPtr = keepPtr;
       return out;
-    });
+    }, PLURAL_NOUNS);
     /* GUARDS. Without the first, "the brief never says 1 sets" is satisfied by
        a programme that never prescribes one; without the second, the block is
        reading no briefs at all. */
@@ -4910,12 +4916,16 @@ export default async function run() {
        an empty result is only worth having with ONE of every record seeded —
        the state between empty and full is where a count is 1 — and with the
        detector proven both ways. A ratio ("0/1 sets") must stay quiet. */
-    const rend = await page.evaluate(() => {
+    const rend = await page.evaluate((NOUNS) => {
       /* "Week 1 sets your baseline volumes" is ORDINARY COPY — that "sets" is a
          VERB — and the first version of this detector reported it as a defect.
          A detector that can match ordinary app content is not measuring what you
          named, so a count used as an ORDINAL label is excluded by name. */
-      const BAD = /(?<![\/\d.])(?<!\b(?:Week|Day|Block|Phase|Cycle|Level|Session|Round|Test|Step|Set) )\b1 (sets|exercises|moves|minutes|calories|grams|cups|reps|seconds|weeks|days|blocks|sessions|tests|meals|rounds|movements|photos|badges|entries|stretches|hours|points|glasses)\b/g;
+      /* THE SAME NOUN LIST THE SOURCE SCAN IN SUITE 23 ASKS. It used to be
+         written out here and written out again there, 24 nouns against 18,
+         and `points` was in this one and not that one. */
+      const BAD = new RegExp('(?<![\\/\\d.])(?<!\\b(?:Week|Day|Block|Phase|Cycle|Level|Session|Round|Test|Step|Set) )\\b1 ('
+        + NOUNS.join('|') + ')\\b', 'g');
       const out = { hits: [], surfaces: 0 };
       out.sees = !!'you did 1 sets today'.match(BAD);
       out.quiet = !'0/1 sets done'.match(BAD) && !'1 set today'.match(BAD)
@@ -4925,7 +4935,19 @@ export default async function run() {
       STATE.progressPtr = 1;
       STATE.logs = { 0: { done: true, completedAt: todayISO(), feel: 'ok', ex: { [ex]: { sets: [true], done: false } } } };
       STATE.measurements = [{ date: todayISO(), weight: 86, waist: 96 }];
-      STATE.scoreHistory = [{ date: todayISO(), score: 70, level: 'Intermediate' }];
+      /* A DELTA OF EXACTLY ONE POINT, which is the value that discriminates.
+         This seed used to be ONE entry with no testCount — so scoreTrendHTML()
+         returned early twice over (it needs two entries, scored on today's
+         denominator) and the line never rendered at all. The detector above
+         has always known the noun; it had nothing to read.
+         A sweep is only as wide as the VALUES it seeds. */
+      STATE.scoreHistory = [
+        { date: '2026-01-01', score: 70, level: 'Intermediate', testCount: TESTS.length },
+        { date: todayISO(),   score: 71, level: 'Intermediate', testCount: TESTS.length }];
+      /* ONE move in the scratch list and ONE in a saved favourite — both live
+         in a SHEET, which this sweep did not open either. */
+      try { _custom = ['plank']; } catch (e) { }
+      STATE.customFav = [{ name: 'One mover', items: ['plank'] }];
       STATE.holdLog = [{ date: todayISO(), id: 'plank', secs: 61, fresh: true, ex: 'plank' }];
       STATE.skipLog = [{ date: todayISO(), mins: 1, at: 0 }];
       STATE.photos = [{ id: 'p1', date: todayISO(), pose: 'front' }];
@@ -4941,17 +4963,63 @@ export default async function run() {
       ['brief', 'warmup', 'workout', 'cooldown']
         .forEach(pn => { try { go('today'); setTodayTab(pn); look('today:' + pn, strip()); } catch (e) { } });
       ['summary', 'body', 'strength', 'awards']
-        .forEach(pn => { try { go('progress'); setProgressTab(pn); look('progress:' + pn, strip()); } catch (e) { } });
+        .forEach(pn => { try { go('progress'); setProgressTab(pn); const tx = strip();
+          if (/since your last comparable test/.test(tx)) out.scoreLine = (tx.match(/[▲▼][^\n]{0,50}since your last comparable test/) || [''])[0];
+          look('progress:' + pn, tx); } catch (e) { } });
       try { look('history', sessionHistoryHTML().replace(/<[^>]*>/g, ' ')); } catch (e) { }
+      /* THE SHEETS. Every count the athlete reads on a sheet was outside this
+         sweep, and the custom builder is where a one-move session lands. */
+      out.sheets = 0;
+      ['openSettings', 'openMealPlan', 'openForcePrep', 'openEndurance', 'openCombat',
+       'openSpecial', 'openBuilder', 'openQuickAdd', 'openTDEE', 'openRestSheet',
+       'openMobility', 'openStrengthStd', 'openSkipping', 'openGrip'].forEach(fn => {
+        try {
+          if (typeof window[fn] !== 'function') return;
+          window[fn]();
+          const sh = document.querySelector('#sheet');
+          if (sh) { out.sheets++; look('sheet:' + fn, sh.innerText); }
+          closeSheet();
+        } catch (e) { }
+      });
+      /* THE SURFACE NO SWEEP CAN OPEN. scoreDeltaHTML() is built inside
+         commitAssessment() and painted only after a completed battery, so it
+         is on no tab, no pane and no sheet. It is driven directly. */
+      try {
+        out.retestUp   = scoreDeltaHTML({ score: 71 }).replace(/<[^>]*>/g, ' ');
+        out.retestDown = scoreDeltaHTML({ score: 69 }).replace(/<[^>]*>/g, ' ');
+        out.retestBig  = scoreDeltaHTML({ score: 82 }).replace(/<[^>]*>/g, ' ');
+        look('sheet:scoreDeltaHTML', out.retestUp);
+        look('sheet:scoreDeltaHTML', out.retestDown);
+      } catch (e) { out.retestErr = String(e); }
       const k = JSON.parse(keep);
       STATE.logs = k.l; STATE.measurements = k.m; STATE.progressPtr = k.p;
       try { go('today'); } catch (e) { }
       return out;
-    });
+    }, PLURAL_NOUNS);
     t.ok('guard: the plural detector sees a mismatch and ignores a ratio',
       rend.sees && rend.quiet, JSON.stringify({ sees: rend.sees, quiet: rend.quiet }));
     t.ok('guard: and it read a real spread of surfaces', rend.surfaces >= 15,
       JSON.stringify({ surfaces: rend.surfaces }));
+    /* GUARDS ON THE SEEDS THEMSELVES. Without these, "no surface says 1
+       <plural>" is satisfied by a sweep whose score line never rendered and
+       whose builder was never opened — which is exactly how it passed. */
+    t.ok('guard: the score line really rendered a delta of one point',
+      /\b1 point\b/.test(rend.scoreLine || ''),
+      JSON.stringify({ scoreLine: rend.scoreLine }));
+    t.ok('guard: the sweep really opened the sheets', rend.sheets >= 8,
+      JSON.stringify({ sheets: rend.sheets }));
+    /* THE RE-TEST RESULTS SCREEN, driven rather than swept. A delta of one
+       point takes the singular in both directions; twelve keeps the plural,
+       so a fix that simply dropped the s is caught here. */
+    t.ok('the re-test screen says "+1 point", not "+1 points"',
+      /\+1 point\b/.test(rend.retestUp || '') && !/1 points/.test(rend.retestUp || ''),
+      JSON.stringify(rend.retestUp));
+    t.ok('and "-1 point" on the way down too',
+      /1 point\b/.test(rend.retestDown || '') && !/1 points/.test(rend.retestDown || ''),
+      JSON.stringify(rend.retestDown));
+    t.ok('FLOOR: a twelve-point gain still says points',
+      /12 points\b/.test(rend.retestBig || ''),
+      JSON.stringify(rend.retestBig));
     t.eq('no rendered surface says "1 <plural>" either', rend.hits.length, 0,
       JSON.stringify(rend.hits.slice(0, 3)));
 

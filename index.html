@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='507';
+const APP_VERSION='508';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -7980,7 +7980,19 @@ function weightsTargetFor(k){
    the same movement comes up. */
 function liftLog(){return Array.isArray(STATE.liftLog)?STATE.liftLog:(STATE.liftLog=[]);}
 function lastLift(exId){
-  const rows=liftLog().filter(r=>r&&r.exId===exId);
+  /* BY DATE, NOT BY POSITION. holdLast() two thousand lines away sorts
+     before it takes the last row and this did not — one of a pair guarded
+     and its twin not. The rows carry no `at`, so the date is the only
+     ordering key they have, and sort is stable, so two lifts logged on one
+     day keep the order they were pushed in.
+     Nothing in the app writes out of order: saveLiftLog() stamps todayISO()
+     and pushes. importData() accepts arbitrary JSON and the boot repair
+     filters without sorting, so that is the door — the same one v430 sorted
+     the measurements for and v499 the score history. What it costs there is
+     not cosmetic: this row pre-fills the load box, prints "last time", and
+     anchors loadProgression()'s next-load hint. */
+  const rows=liftLog().filter(r=>r&&r.exId===exId)
+    .sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   return rows.length?rows[rows.length-1]:null;
 }
 /* Byte-for-byte the same conversion as weightToKg/weightShow (line ~542) —
@@ -11303,10 +11315,10 @@ function scoreDeltaHTML(a){
      moment in the program — greeted a stronger athlete with a red drop. */
   const pr=hist[hist.length-2];
   if(testCountOf(pr)!==TESTS.length)
-    return `<div class="note info" style="text-align:center">Scoring changed since your last test (${testCountOf(pr)} tests, now ${TESTS.length}) — this score starts a fresh comparison.</div>`;
+    return `<div class="note info" style="text-align:center">Scoring changed since your last test (${plural(testCountOf(pr),'test')}, now ${TESTS.length}) — this score starts a fresh comparison.</div>`;
   const prev=scoreVal(pr);if(prev==null)return '';const d=a.score-prev;
   if(d===0)return '';
-  return `<div class="note ${d>0?'fire':'warn'}" style="text-align:center">${d>0?'▲ +'+d:'▼ '+d} points vs last test${d>0?' — your core is getting stronger 💪':''}</div>`;
+  return `<div class="note ${d>0?'fire':'warn'}" style="text-align:center">${plural(d,'point',d>0?'▲ +'+d:'▼ '+d)} vs last test${d>0?' — your core is getting stronger 💪':''}</div>`;
 }
 function levelBlurb(l){
   if(l==='Beginner')return 'You\'re building your foundation — we\'ll master the core positions first, so every rep counts and nothing hurts your back.';
@@ -14845,7 +14857,7 @@ function scoreTrendHTML(){
   const arrow=v=>v>0?'▲ +'+v:'▼ '+v;
   const col=d>0?'var(--green)':d<0?'var(--pink)':'var(--muted)';
   const runTxt=(cur.length>2&&run!==d)?`<span class="muted"> · ${run===0?'level with your first':arrow(run)+' since your first'}</span>`:'';
-  return `<div class="tiny" style="margin-top:10px;color:${col}">${d===0?'No change':arrow(d)+' points'} since your last comparable test${runTxt}</div>`;
+  return `<div class="tiny" style="margin-top:10px;color:${col}">${d===0?'No change':plural(d,'point',arrow(d))} since your last comparable test${runTxt}</div>`;
 }
 function measureChartHTML(){
   const ms=STATE.measurements.filter(m=>m.waist>0);
@@ -15949,11 +15961,11 @@ function openBuilder(){
     .map((f,i)=>({f,i})).filter(x=>x.f&&Array.isArray(x.f.items));
   openSheet(`<h3>🛠️ Custom workout</h3>
     <p class="muted sm" style="margin:2px 0 10px">Tap moves to build your own session. Runs guided; won't affect your program.</p>
-    ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${_custom.length} moves</div>${_custom.map(k=>`<div class="kv"><span>${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</span><button class="chip" aria-label="Remove this movement" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
+    ${_custom.length?`<div class="card pad" style="margin-bottom:10px"><div class="tiny muted" style="margin-bottom:6px">Your session · ${plural(_custom.length,'move')}</div>${_custom.map(k=>`<div class="kv"><span>${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</span><button class="chip" aria-label="Remove this movement" onclick="removeCustom('${k}')">✕</button></div>`).join('')}
       ${customRiskHTML()}
       <button class="btn primary" style="width:100%;margin-top:10px" onclick="startCustom()">▶ Start workout</button>
       <button class="btn ghost" style="width:100%;margin-top:8px" onclick="saveCustomFav()">☆ Save as favorite</button></div>`:''}
-    ${favs.length?`<div class="tiny muted" style="margin:4px 0">Favorites</div>${favs.map(({f,i})=>`<div style="display:flex;gap:6px;align-items:stretch;margin-bottom:6px"><button class="kv" style="flex:1;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 13px" onclick="startFav(${i})"><span>⭐ ${_ve(f.name)}</span><span class="tiny muted">${f.items.length} moves ▶</span></button><button class="chip" aria-label="Delete the saved workout ${_ve(f.name)}" onclick="delFav(${i})">✕</button></div>`).join('')}<div style="height:6px"></div>`:''}
+    ${favs.length?`<div class="tiny muted" style="margin:4px 0">Favorites</div>${favs.map(({f,i})=>`<div style="display:flex;gap:6px;align-items:stretch;margin-bottom:6px"><button class="kv" style="flex:1;text-align:left;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:11px 13px" onclick="startFav(${i})"><span>⭐ ${_ve(f.name)}</span><span class="tiny muted">${plural(f.items.length,'move')} ▶</span></button><button class="chip" aria-label="Delete the saved workout ${_ve(f.name)}" onclick="delFav(${i})">✕</button></div>`).join('')}<div style="height:6px"></div>`:''}
     ${Object.keys(byReg).map(r=>`<div class="tiny muted" style="margin:8px 0 4px;text-transform:capitalize">${r}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${byReg[r].map(k=>`<button class="chip ${_custom.includes(k)?'on':''}"${pressed(_custom.includes(k))} onclick="addCustom('${k}')">${safeSwap(k)!==k?'⚠️ ':''}${EX[k].name}</button>`).join('')}</div>`).join('')}
     <div style="height:10px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
 }
@@ -17785,7 +17797,7 @@ function rereadMacroFromScreenshot(dataUrl,which,est,opts){
   if(est.f>0)known.push(est.f+' g of fat');
   return _visionEstimate(dataUrl,
     'This is a screenshot from a nutrition-tracking app. A previous pass over this same image already read '+
-    (known.length?known.join(' and '):'the calorie total')+' and '+est.kcal+' calories, but it MISSED the '+which+'. '+
+    (known.length?known.join(' and '):'the calorie total')+' and '+plural(est.kcal,'calorie')+', but it MISSED the '+which+'. '+
     'The '+which+' figure IS in this image — find it. It may be small, abbreviated ("'+
     (which==='carbs'?'C" or "Carb" or "Carbohydrates':which==='protein'?'P" or "Prot':'F" or "Fat')+
     '"), printed under a coloured ring or bar, or sitting in a row beside the numbers already read. '+

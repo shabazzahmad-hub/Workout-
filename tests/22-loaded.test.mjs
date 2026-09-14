@@ -782,6 +782,66 @@ export default async function run() {
     t.eq('and a flagged athlete has none at all', r.joints.lockedNeverNamed, 0, r.joints);
   }
 
+  /* v508: THE LAST LIFT, BY DATE RATHER THAN BY POSITION.
+
+     lastLift() filtered liftLog and took rows[rows.length-1] — the last SLOT,
+     not the latest DAY. Its twin holdLast(), two thousand lines away, sorts by
+     time before it takes the last row, and the app's other ordered lists were
+     each given the same treatment after the same defect: v430 sorted the
+     measurements, v499 the score history. One of a pair guarded and its twin
+     not, and this was the twin that feeds a prescription.
+
+     Nothing in the app writes out of order — saveLiftLog() stamps todayISO()
+     and pushes — so the door is an import, the same one every repair in this
+     file is written against: importData() takes arbitrary JSON and the boot
+     repair filters liftLog without sorting it.
+
+     Measured on a backup whose 40 kg September row sits above its 20 kg
+     January one: the sheet pre-filled 20, said "last time 20 kg", and
+     loadProgression() anchored its next-load hint on 20. */
+  {
+    const lift = await page.evaluate(() => {
+      const keep = JSON.stringify(STATE.liftLog || []);
+      const OUT = {};
+      const seed = rows => { STATE.liftLog = rows.map(r => Object.assign({}, r)); };
+      const NEW = { date: '2026-09-01', exId: 'dbbench', loadKg: 40, reps: 8, rir: 2 };
+      const OLD = { date: '2026-01-01', exId: 'dbbench', loadKg: 20, reps: 8, rir: 2 };
+      /* GUARD: the two rows really disagree, or "it picked the newest" is two
+         equal numbers agreeing. */
+      OUT.rowsDiffer = NEW.loadKg !== OLD.loadKg;
+      seed([OLD, NEW]);                       // in order — the app's own shape
+      OUT.inOrder = (lastLift('dbbench') || {}).loadKg;
+      OUT.inOrderHint = loadProgression('dbbench', {}).lastLoadKg;
+      seed([NEW, OLD]);                       // what an import can carry
+      OUT.jumbled = (lastLift('dbbench') || {}).loadKg;
+      OUT.jumbledHint = loadProgression('dbbench', {}).lastLoadKg;
+      /* SAME DAY KEEPS THE ORDER IT WAS PUSHED IN. liftLog rows carry no `at`,
+         so the date is the only key they have and a stable sort is what makes
+         two lifts logged in one day still read in the order they happened. */
+      seed([{ date: '2026-05-05', exId: 'dbbench', loadKg: 30, reps: 8, rir: 2 },
+            { date: '2026-05-05', exId: 'dbbench', loadKg: 32, reps: 8, rir: 2 }]);
+      OUT.sameDay = (lastLift('dbbench') || {}).loadKg;
+      /* FLOORS: another movement's rows are not this movement's, and a log with
+         nothing for this movement still answers null rather than throwing. */
+      seed([NEW, { date: '2026-10-01', exId: 'dbrow', loadKg: 99, reps: 8, rir: 2 }]);
+      OUT.otherMove = (lastLift('dbbench') || {}).loadKg;
+      seed([]);
+      OUT.empty = lastLift('dbbench');
+      STATE.liftLog = JSON.parse(keep);
+      return OUT;
+    });
+    t.ok('guard: the two seeded lifts really carry different loads', lift.rowsDiffer, lift);
+    t.eq('an in-order log still hands back the newest lift', lift.inOrder, 40, lift);
+    t.eq('and a jumbled one hands back the newest lift too, not the last row',
+      lift.jumbled, 40, lift);
+    t.eq('the next-load hint is anchored on it', lift.jumbledHint, 40, lift);
+    t.eq('FLOOR: two lifts on ONE day keep the order they were pushed in',
+      lift.sameDay, 32, lift);
+    t.eq('FLOOR: another movement\'s rows are not read as this one\'s',
+      lift.otherMove, 40, lift);
+    t.eq('FLOOR: a log with nothing for this movement answers null', lift.empty, null, lift);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
