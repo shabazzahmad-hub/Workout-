@@ -2277,6 +2277,93 @@ export default async function run() {
       r.perCoachStillWins && r.otherCoachUnmoved, JSON.stringify(r));
   }
 
+  /* ---- the voice check reports the MEASUREMENT, not the tap -------------
+
+     Reported from a real phone: Google Text-to-speech, Chrome, Test voice
+     tapped, one female voice heard, and no list to choose from - and tapping
+     Voice check answered "Voice check updated" every time. It had not updated
+     anything. getVoices() fills in asynchronously on Android, runVoiceCheck()
+     waited a flat 250ms, and the toast fired whatever came back. A promise in
+     UI text with no code behind it, and the fifth fixed-duration race in this
+     repo - the first of them live in the app rather than in a check.
+
+     Driven through the real route: getVoices() is stubbed so loadCoachVoices()
+     reads it exactly as a phone would, and toast() is stubbed so this measures
+     the PAYLOAD rather than reading a box that clears itself on a timer. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {}, realGet = speechSynthesis.getVoices.bind(speechSynthesis),
+            realToast = window.toast, realName = STATE.settings.voiceName;
+      let said = [];
+      window.toast = m => { said.push(String(m)); };
+      /* d.forced is tested FIRST, so a picked voice would answer for every
+         case below and none of them would be about the empty list at all. */
+      delete STATE.settings.voiceName;
+
+      const settle = ms => new Promise(res => setTimeout(res, ms));
+      const runAndWait = async () => {
+        said = [];
+        runVoiceCheck();
+        for (let i = 0; i < 120 && !said.length; i++) await settle(100);
+        return said.join(' | ');
+      };
+
+      // 1. the phone hands over nothing - which is this sandbox's own state
+      speechSynthesis.getVoices = () => [];
+      _voiceCheckedEmpty = false;
+      o.emptyToast = await runAndWait();
+      o.emptyFlag = _voiceCheckedEmpty;
+      o.emptyNote = voiceCheckHTML();
+
+      // 2. FLOOR: a FIRST tap is not the same message as a proven-empty one
+      _voiceCheckedEmpty = false;
+      o.firstNote = voiceCheckHTML();
+
+      // 3. FLOOR: a phone that DOES hand over a list
+      const fakes = ['Daniel', 'Alex', 'Samantha', 'Karen']
+        .map(n => ({ name: n, lang: 'en-US' }));
+      speechSynthesis.getVoices = () => fakes;
+      o.fullToast = await runAndWait();
+      o.fullFlag = _voiceCheckedEmpty;
+      o.fullNote = voiceCheckHTML();
+
+      o.src = runVoiceCheck.toString();
+      speechSynthesis.getVoices = realGet;
+      window.toast = realToast;
+      if (realName) STATE.settings.voiceName = realName;
+      loadCoachVoices();
+      return o;
+    });
+
+    const cut = x => JSON.stringify(String(x).slice(0, 180));
+    t.ok('GUARD: the empty case really reported something at all',
+      !!r.emptyToast, JSON.stringify(r.emptyToast));
+    t.ok('GUARD: and the populated case really saw four voices',
+      /4 voices/.test(r.fullToast), JSON.stringify(r.fullToast));
+    t.ok('a phone that hands over no voice list is told exactly that',
+      /no voice list/i.test(r.emptyToast), JSON.stringify(r.emptyToast));
+    t.ok('and it no longer claims an update that did not happen',
+      !/updated/i.test(r.emptyToast), JSON.stringify(r.emptyToast));
+    t.ok('the two outcomes do not share one message - which the flat toast could not do',
+      r.emptyToast !== r.fullToast, JSON.stringify([r.emptyToast, r.fullToast]));
+    t.eq('a proven-empty list is recorded as such', r.emptyFlag, true);
+    t.eq('FLOOR: and a list that did arrive is not', r.fullFlag, false);
+    t.ok('a proven-empty check names the state rather than repeating the tap',
+      /handed over no voice list/i.test(r.emptyNote), cut(r.emptyNote));
+    t.ok('and carries a real next step rather than ending there',
+      /Install voice data/i.test(r.emptyNote), cut(r.emptyNote));
+    t.ok('FLOOR: the FIRST tap still gets the short prompt, not the warning',
+      /Test voice/.test(r.firstNote) && !/handed over no voice list/i.test(r.firstNote),
+      cut(r.firstNote));
+    t.ok('FLOOR: a phone with voices gets neither of those',
+      !/handed over no voice list/i.test(r.fullNote) && !/Test voice/.test(r.fullNote),
+      cut(r.fullNote));
+    t.ok('it waits for the LIST rather than for a fixed duration',
+      /_rawVoiceCount\(\)/.test(r.src) && /VOICE_WAIT_MS/.test(r.src), cut(r.src));
+    t.ok('and nothing in it sleeps a flat 250ms and then reports',
+      !/,\s*250\s*\)/.test(r.src), cut(r.src));
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

@@ -22487,6 +22487,82 @@ own comment already records for `customFav`. Every row prints its own date
 beside it, so the cost is a display order rather than a wrong number. Recorded
 rather than closed by guessing.
 
+## "Voice check updated" over nothing changing (v509)
+
+Reported from a real phone: **Google Text-to-speech, Chrome**, Test voice
+tapped, one female voice heard, and no list to choose from — and tapping
+**🔎 Voice check** answered *"Voice check updated"* every time.
+
+It had not updated anything.
+
+```js
+function runVoiceCheck(){loadCoachVoices();setTimeout(()=>{try{renderGuide();}catch(e){}toast('Voice check updated',2500);},250);}
+```
+
+`speechSynthesis.getVoices()` fills in **asynchronously** on Android — Chrome
+answers `[]` until the engine has woken, and `voiceschanged` is what says it
+has. A flat **250 ms** is a bet on the phone being quick. On a slower one the
+render ran against an empty list, the picker kept its *"Tap Test voice"*
+placeholder, and the toast claimed an update over nothing changing.
+
+**A promise in UI text with no code behind it, on the one screen whose entire
+job is to MEASURE.** v302 built that screen precisely because this sandbox
+cannot reach a speech service — *"the app measures it on the device and says
+which one it is"* — and it was reporting a fixed string.
+
+**And it is the FIFTH fixed-duration race in this repo** — v414, v420, v437,
+v451, v486 — and **the first of them live in the app rather than in a check.**
+The rule was written five times for the suite and never asked of the product:
+*wait for the CONDITION, never for a duration.*
+
+### One message for two states
+
+`!d.all` returned *"Tap ▶ Test voice once to let this phone load its voices,
+then check back."* That is right the FIRST time and a dead end the second: the
+athlete has tapped it, and the app says the same thing again with no next step.
+
+The two states are distinguishable and the app was not distinguishing them.
+`_voiceCheckedEmpty` separates *"you have not asked yet"* from *"this phone
+really gave nothing"*, and the proven-empty note names the state and carries
+the route that fixes it (the engine gear → Install voice data). **A locked
+state with no sentence is a dead end** — the rule v366 and v367 already state
+for a gated button, on a diagnostic.
+
+**The toast reports the MEASUREMENT, not the tap**, which is also what makes
+the two outcomes distinguishable at all: the old flat string was the same
+either way, so no check could have told them apart.
+
+### The floors, and the source assertion that carries one mutant alone
+
+A **first** tap keeps the short prompt rather than the warning; a phone **with**
+voices gets neither message and is told the count. Each over-eager twin fails
+one of those — the warning shown always, and every check recording the list as
+empty.
+
+**Removing the poll is byte-identical on a stubbed empty list**, so no rendered
+assertion can see it: `finish()` runs immediately either way and reports the
+same empty result. Only the source assertion catches M6, which is the
+`WEIGHTS_PATTERNS` lesson one subsystem over.
+
+**Two guards, because the whole block is otherwise satisfied by a screen that
+reported nothing**: the empty case really produced a toast, and the populated
+case really saw four voices.
+
+Seven mutants, all caught by name — including M7, both halves reverted
+together, because *a fix with two edits needs a mutant with two* (v363, v403).
+
+### And the measurement I did not take
+
+I asked for the **🔎 Voice check** number two rounds earlier, did not get it,
+and built the next two rounds on the athlete's description of what they HEARD
+instead — concluding "one voice" from a symptom rather than from the app's own
+count. Two settings expeditions followed, both dead ends.
+
+The number was the thing to wait for, and the screen that reports it was the
+thing that was broken. **Ask for the measurement, then wait for it** — and when
+a diagnostic keeps answering the same string, suspect the diagnostic.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
