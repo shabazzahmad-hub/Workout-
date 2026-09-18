@@ -1722,6 +1722,12 @@ export default async function run() {
 
       delete STATE.settings.coachVoices; STATE.settings.voiceName = '';
       o.beforeWrestle = voiceOf(wrestle);
+      /* Drill's OWN Auto voice, captured before anything is set. This used to
+         be compared against autoWrestle, which only agreed because those two
+         list positions were congruent modulo the pool size — a 39th coach
+         inserted above wrestle broke the alignment and the FLOOR went red on
+         correct code. Pin the value the floor is really about. */
+      o.beforeDrill = voiceOf(drill);
 
       o.setOk = setCoachOwnVoice('wrestle', target);
       o.afterWrestle = voiceOf(wrestle);
@@ -1821,7 +1827,7 @@ export default async function run() {
     t.ok('a coach can be given its own device voice', r.setOk, JSON.stringify(r));
     t.eq('and speaks in it, through the real speak path', r.afterWrestle, r.target);
     t.ok('FLOOR: every other coach keeps the voice Auto gave it',
-      r.afterDrill === r.autoWrestle && r.beforeWrestle === r.autoWrestle, JSON.stringify(r));
+      r.afterDrill === r.beforeDrill && r.beforeWrestle === r.autoWrestle, JSON.stringify(r));
     t.eq('the per-coach pick outranks the single voice in Settings',
       r.wrestleUnderGlobal, r.target);
     t.ok('FLOOR: and every other coach still obeys that single voice',
@@ -2064,10 +2070,15 @@ export default async function run() {
       STATE.settings.coach = 'auto';
       delete _bags['coach'];
       out.bagWasReset = !_bags['coach'];
-      const a = []; for (let i = 0; i < 38; i++) a.push(rollAutoPersona());
-      const b = []; for (let i = 0; i < 38; i++) b.push(rollAutoPersona());
+      /* Draw the CAST SIZE, not a number written down when it was 38 — a bag
+         of n drawn 38 at a time straddles the seam and reads 37 on correct
+         code the moment a coach is added. */
+      const n = COACHES.length;
+      const a = []; for (let i = 0; i < n; i++) a.push(rollAutoPersona());
+      const b = []; for (let i = 0; i < n; i++) b.push(rollAutoPersona());
+      out.cast = n;
       out.rot1 = new Set(a).size; out.rot2 = new Set(b).size;
-      out.seamOk = a[37] !== b[0];
+      out.seamOk = a[n - 1] !== b[0];
       /* The helper is consulted from two narrow branches, so its own contract
          is pinned rather than only its effects. */
       out.bagOne = _bagNext('probe|one', 1);
@@ -2088,8 +2099,10 @@ export default async function run() {
     t.eq('and no bag opens on the item the last one closed with',
       r.seamRepeats, 0);
     t.ok('GUARD: the rotation bag started empty', r.bagWasReset, JSON.stringify(r));
-    t.eq('FLOOR: the coach rotation still deals all 38', r.rot1, 38);
-    t.eq('FLOOR: and all 38 again in the next bag', r.rot2, 38);
+    t.ok('GUARD: the cast is the whole roster, not a number restated here',
+      r.cast > 16, JSON.stringify(r));
+    t.eq('FLOOR: the coach rotation still deals every coach', r.rot1, r.cast);
+    t.eq('FLOOR: and every coach again in the next bag', r.rot2, r.cast);
     t.ok('FLOOR: with no repeat across the seam', r.seamOk, JSON.stringify(r));
     t.eq('a pool of one deals that one, every time', r.bagOne, 0);
     t.eq('and again rather than running dry', r.bagOneAgain, 0);
@@ -2127,6 +2140,7 @@ export default async function run() {
       const sheet = document.getElementById('sheet');
       const txt = sheet ? sheet.innerHTML : '';
       out.rows = (txt.match(/data-cv=/g) || []).length;
+      out.cast = COACHES.length;   // read the roster, never a number restated here
       out.perCoachLabelled = /Daniel · male/.test(txt);
       /* and the sheet must leave an unreadable name unlabelled as well — the
          global picker being right says nothing about its twin. */
@@ -2146,7 +2160,7 @@ export default async function run() {
       r.unknownUnlabelled && r.unknownNotMale, JSON.stringify(r));
     t.ok('with no bare separator left where the answer would have gone',
       r.noBareSeparator, JSON.stringify(r));
-    t.eq('GUARD: the per-coach sheet rendered a row for every coach', r.rows, 38);
+    t.eq('GUARD: the per-coach sheet rendered a row for every coach', r.rows, r.cast);
     t.ok('the per-coach rows carry the same label', r.perCoachLabelled, JSON.stringify(r));
     t.ok('and the per-coach rows leave an unreadable name unlabelled too',
       r.perCoachUnknownBare && r.perCoachUnknownNotMale, JSON.stringify(r));
@@ -2466,6 +2480,138 @@ export default async function run() {
       /voicePoolCount\(\)/.test(runVoiceCheckSrc), cut(runVoiceCheckSrc));
     t.ok('and the pool helper asks the app\'s own englishVoicePool()',
       /englishVoicePool\(\)/.test(voicePoolCountSrc), cut(voicePoolCountSrc));
+  }
+
+  /* ---- The Green Beret, and what earns a persona a place (v511) -----------
+     "Add the green Beret and Ranger, Navy seal persona." Two of the three were
+     already in the cast — seal / 'Navy SEAL Instructor' and ranger / 'Army
+     Ranger PT' — which is the roster rule this repo already applies to
+     exercises: search by what the thing IS, not by the name you expect. So the
+     round adds ONE.
+
+     What earns it a slot is the CHARACTER, not the name. Measured across the
+     cast before writing a line: every special-forces persona shouts, and the
+     two calm military ones are conventional forces. Special Forces train
+     partner forces for a living, so the Green Beret is the quiet professional —
+     it teaches rather than shouts. With Auto on, every timed effort draws a
+     different coach, so a tenth shouter adds a name and no new voice.
+
+     THE DISCRIMINATING CHECK IS THE ONE THAT MUST NOT FIRE: this persona's
+     lines carry no exclamation mark. A blanket military persona satisfies every
+     "a Green Beret exists" assertion and fails that — so Ranger, SEAL and Drill
+     are pinned beside it as the floor, or "nobody shouts" passes on a cast that
+     has been silenced. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const keepCoach = STATE.settings.coach, keepTone = STATE.settings.voiceTone,
+            keepPitch = STATE.settings.voicePitch;
+      delete STATE.settings.voicePitch;
+
+      o.count = COACHES.length;
+      o.uniqueIds = new Set(COACHES.map(c => c.id)).size;
+      const gb = COACHES.find(c => c.id === 'greenberet');
+      o.found = !!gb;
+      o.name = gb ? gb.name : null;
+
+      /* The two the athlete named that were ALREADY here. A round that renamed
+         an existing persona would satisfy "all three are in the cast". */
+      o.sealName = (COACHES.find(c => c.id === 'seal') || {}).name || null;
+      o.rangerName = (COACHES.find(c => c.id === 'ranger') || {}).name || null;
+
+      const pools = ['start', 'during', 'push', 'rest', 'done'];
+      o.poolsOk = !!gb && pools.every(k => Array.isArray(gb[k]) && gb[k].length > 0
+        && gb[k].every(l => typeof l === 'string' && l.trim()));
+      o.duringCount = gb ? gb.during.length : 0;
+
+      /* The quiet professional, measured rather than asserted. */
+      const shouts = id => { const c = COACHES.find(x => x.id === id); if (!c) return null;
+        return pools.flatMap(k => c[k]).filter(l => /!/.test(l)).length; };
+      o.gbShouts = shouts('greenberet');
+      o.rangerShouts = shouts('ranger');
+      o.sealShouts = shouts('seal');
+      o.drillShouts = shouts('drill');
+      /* No barked imperative either — the same property from the other side. */
+      o.gbBarks = gb ? pools.flatMap(k => gb[k])
+        .filter(l => /\b(GO|MOVE|NOW)\b/.test(l)).length : null;
+
+      /* Authored pitch clears the artifact floor validateData() enforces, and
+         the DELIVERED pitch stays in the band on every tone. */
+      o.authoredPitch = gb ? gb.pitch : null;
+      o.byTone = {};
+      ['deep', 'mid', 'bright'].forEach(tn => { STATE.settings.voiceTone = tn;
+        o.byTone[tn] = gb ? +localPitchFor(gb).toFixed(3) : null; });
+      o.floor = LOCAL_PITCH_FLOOR; o.ceil = LOCAL_PITCH_CEIL;   // page constants
+      /* Calibrated against its calm siblings rather than guessed: the slowest
+         rate of the military set, and a pitch between the two deepest. */
+      o.slowerThanNavy = !!gb && gb.rate < COACHES.find(c => c.id === 'navy').rate;
+      o.deeperThanSeal = !!gb && gb.pitch < COACHES.find(c => c.id === 'seal').pitch;
+
+      /* The neural shift stays inside the band validateData() polices. */
+      const nc = (typeof COACH_NEURAL !== 'undefined') ? COACH_NEURAL.greenberet : null;
+      o.neuralHas = !!nc;
+      const m = nc && /(-?\d+(?:\.\d+)?)\s*st/.exec(nc.pitch || '');
+      o.neuralSt = m ? parseFloat(m[1]) : 0;
+
+      /* Reachable: pickable by id, and dealt by the Auto shuffle bag. */
+      STATE.settings.coach = 'greenberet';
+      const p = currentPersona();
+      o.pickedOk = !!p && p.id === 'greenberet';
+      STATE.settings.coach = 'auto';
+      /* EACH BLOCK BUILDS THE STATE IT ASSERTS ON, and here that state is a
+         bag: earlier blocks have already drawn coaches, so a part-way bag
+         spans two passes and reads short on correct code. */
+      delete _bags['coach'];
+      o.bagWasReset = !_bags['coach'];
+      const bag = []; for (let i = 0; i < COACHES.length; i++) bag.push(rollAutoPersona());
+      o.bagDistinct = new Set(bag).size;
+      o.bagHasGB = bag.includes('greenberet');
+
+      o.validator = validateData().length;
+
+      STATE.settings.coach = keepCoach; STATE.settings.voiceTone = keepTone;
+      if (keepPitch !== undefined) STATE.settings.voicePitch = keepPitch;
+      return o;
+    });
+
+    t.ok('guard: the cast really grew past the old roster', r.count > 38, r);
+    t.eq('guard: and no two coaches share an id', r.uniqueIds, r.count, r);
+    t.ok('guard: the shouters really do shout, so silence is a property not a bug',
+      r.rangerShouts > 10 && r.sealShouts > 10 && r.drillShouts > 10, r);
+
+    t.ok('the Green Beret is in the cast', r.found, r);
+    t.eq('under its own name', r.name, 'Green Beret', r);
+    t.ok('with every line pool filled', r.poolsOk, r);
+    t.ok('and enough mid-effort lines not to repeat inside one set',
+      r.duringCount >= 10, r);
+
+    /* THE DISCRIMINATOR. */
+    t.eq('the quiet professional never shouts', r.gbShouts, 0, r);
+    t.eq('and never barks an imperative either', r.gbBarks, 0, r);
+    t.ok('FLOOR: the Ranger still does', r.rangerShouts > 10, r);
+    t.ok('FLOOR: so does the SEAL Instructor', r.sealShouts > 10, r);
+    t.ok('FLOOR: so does the Drill Sergeant', r.drillShouts > 10, r);
+
+    /* The two the athlete asked for that were already here. */
+    t.eq('FLOOR: the Navy SEAL Instructor is untouched', r.sealName, 'Navy SEAL Instructor', r);
+    t.eq('FLOOR: and the Army Ranger PT is untouched', r.rangerName, 'Army Ranger PT', r);
+
+    t.ok('its authored pitch clears the artifact floor the validator enforces',
+      r.authoredPitch >= 0.42, r);
+    t.ok('and what is actually spoken stays in the band on every tone',
+      ['deep', 'mid', 'bright'].every(k => r.byTone[k] >= r.floor && r.byTone[k] <= r.ceil), r);
+    t.ok('it is calibrated deeper than the SEAL and slower than the Navy Chief',
+      r.deeperThanSeal && r.slowerThanNavy, r);
+
+    t.ok('it carries a neural voice of its own', r.neuralHas, r);
+    t.ok('whose shift is no deeper than any other real voice', r.neuralSt >= -2, r);
+
+    t.ok('it can be picked as the coach', r.pickedOk, r);
+    t.ok('guard: the rotation bag started empty', r.bagWasReset, r);
+    t.eq('and Auto deals it with the rest of the cast', r.bagDistinct, r.count, r);
+    t.ok('including the Green Beret itself', r.bagHasGB, r);
+
+    t.eq('FLOOR: the validator is still clean', r.validator, 0, r);
   }
 
   srv.close();

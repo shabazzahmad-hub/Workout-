@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='510';
+const APP_VERSION='511';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -11394,7 +11394,7 @@ function assignCoachVoices(){
   }
 }
 /* A VOICE FOR ONE COACH. The Settings picker is all-or-nothing by design — one
-   voice for all 38 — so an athlete who installs a voice pack and wants THAT
+   voice for every coach — so an athlete who installs a voice pack and wants THAT
    coach on it had no way to say so, and the round-robin above decides by list
    order rather than by anything they can steer.
    settings.coachVoices maps a coach id to a device voice NAME. It is the most
@@ -11482,6 +11482,7 @@ const COACH_NEURAL={
   seal:{v:'en-GB-EthanNeural',rate:'+2%'},
   gunny:{v:'en-US-TonyNeural',style:'shouting',deg:'2',pitch:'-1st'},
   ranger:{v:'en-AU-DarrenNeural',rate:'+10%'},
+  greenberet:{v:'en-US-TonyNeural',rate:'-4%',pitch:'-1st'},
   swattrainer:{v:'en-GB-ElliotNeural',rate:'+2%'},
   iron:{v:'en-US-JasonNeural',style:'angry',deg:'1.6',pitch:'-2st'},
   track:{v:'en-AU-KenNeural',rate:'+14%'},
@@ -12285,7 +12286,7 @@ function currentTab(on){return on?' aria-current="true"':'';}
 function _ve(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 /* ---- Voice check ---------------------------------------------------------
    Reported from the phone: "I'm only hearing a female voice, not any of the
-   other coaches." There are 38 personas and a shuffle bag that plays all of
+   other coaches." The cast is large and a shuffle bag plays all of
    them before repeating, so the rotation is not the suspect — what a persona
    SOUNDS like is, and that depends entirely on what the device offers and on
    whether a voice has been forced.
@@ -12447,7 +12448,7 @@ function coachVoiceSheetHTML(){
 }
 function openCoachVoices(){primeVoice();openSheet(coachVoiceSheetHTML());}
 /* Repaint IN PLACE. Re-opening the sheet would throw the athlete back to the
-   top of a 38-row list every time they set one voice. */
+   top of a row-per-coach list every time they set one voice. */
 function renderCoachVoiceSheet(){
   try{
     const r=$('#cvRows');if(r)r.innerHTML=coachVoiceRowsHTML();
@@ -12949,6 +12950,24 @@ const COACHES=[
    push:["Final objective — push through!","Sprint the finish — Rangers lead!","Close it out — do not stop!","Everything now — finish strong!","Bring it home — go!"],
    rest:["Recover, Ranger. Controlled breathing.","Reset. Next movement soon.","Good. Refit and stay ready.","Catch your wind. Stay sharp.","Quick rest. We move again."],
    done:["Rangers lead the way — outstanding!","That is a standard-setter. Well done.","You earned that one. Hooah!","Mission complete. Solid work.","Led from the front. Respect."]},
+  /* THE QUIET PROFESSIONAL, and that is what earns it a place rather than the
+     name. Ten of this cast are military and nine of them SHOUT; the two calm
+     ones, Master Sergeant and Navy Chief, are both conventional forces. Special
+     Forces train partner forces for a living, so the defining trait is that they
+     TEACH — low volume, deliberate, long game. With Auto on, every timed effort
+     draws a different coach, so a tenth shouter would have added a name and no
+     new voice. The discriminating check is the one that must NOT fire: these
+     lines carry no exclamation mark and no GO-GO-GO, which a blanket military
+     persona would fail while satisfying every 'a Green Beret exists' assertion.
+     Rate 0.94 is the slowest of the military set (navy 0.95, mastersgt 0.98) and
+     pitch 0.46 sits between mastersgt 0.42 and seal 0.5 — calibrated against the
+     siblings rather than guessed, and clear of the 0.42 artifact floor. */
+  {id:'greenberet',name:'Green Beret',emoji:'🧭',pitch:0.46,rate:0.94,hint:['david','guy','daniel','mark','male'],
+   start:["Quiet professional. Begin.","Set your breathing, then start.","We work the plan. Begin.","Steady start. Go when you are set.","On me. Begin."],
+   during:["Quiet professionals do not rush. Hold your form.","Adapt to the effort. Do not fight it.","Long game. Every session compounds. Keep going.","You are learning your own limits. Stay on it.","Slow, deliberate, repeatable. That is the standard.","Train the mind first and the body follows. Keep going.","De Oppresso Liber. Earn the strength to help others.","No audience needed. Do the work anyway.","Measure the effort, not the noise. Keep going.","Small, correct, repeated. Keep going.","Fatigue is information. Read it and keep moving.","You are the one who teaches this later. Learn it now."],
+   push:["Last stretch. Stay precise.","Finish the way you started. Controlled.","Close it out. Quiet and strong.","Everything left, with good form.","Bring it home. No wasted motion."],
+   rest:["Recover deliberately. Breathe low and slow.","Refit. We continue shortly.","Good. Reset your position.","Steady breathing. Stay ready.","Use this minute. It is part of the work."],
+   done:["Quiet work, real result. Well done.","That is the standard. No noise needed.","You earned that one. De Oppresso Liber.","Solid session. That compounds.","Well executed. Same again next time."]},
   {id:'swattrainer',name:'SWAT Team Trainer',emoji:'🚔',pitch:0.52,rate:1.04,hint:['mark','guy','david','male'],
    start:["Gear up — begin!","Selection starts now. Go!","No weak links today. Start!","Move like it is real — begin!","Full focus — go!"],
    during:["Train hard so it is easy when it counts. Push!","Slow is smooth, smooth is fast. Keep going!","Control your breath, control the fight. Push!","You perform how you train — keep going!","Stay in the stack — push together!","Fatigue makes cowards — not today. Go!","Sharpen under pressure — keep going!","Every rep is reps in the bank. Push!","Mind quiet, body working — keep going!","Own the discomfort — drive through!","Make the standard look easy. Push!","Stay locked on — finish it!"],
@@ -13126,8 +13145,8 @@ function _hypeDeviceSpeak(text,persona){
 
    Shared rather than per-persona ON PURPOSE. What these carry is a FACT about
    the effort, not a character trait: the fatigue really is the point of the
-   set, whichever coach is speaking. 38 hand-written copies of one fact is 38
-   places for it to drift, and the persona flavour already lives in the push
+   set, whichever coach is speaking. One hand-written copy per persona is one
+   place per persona for it to drift, and the flavour already lives in the push
    and during pools either side of it.
 
    THEY NAME EFFORT AND NEVER A SYMPTOM. `npm run check` enforces that across

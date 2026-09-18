@@ -22617,6 +22617,105 @@ Eight mutants, seven caught by name and one equivalent. The four over-eager
 twins each fail a floor: the panel moved to the raw list, the new-voices clause
 deleted, every check claiming voices are new, and a toast that drops the count.
 
+## Two of the three were already there (v511)
+
+"Add the green Beret and Ranger, Navy seal persona." **Two of the three were
+already in the cast** — `seal` / *Navy SEAL Instructor* and `ranger` / *Army
+Ranger PT* — which is the roster rule this file already states for exercises,
+one registry over: **search by what the thing IS, not by the name you expect.**
+So the round adds ONE, and measuring first is what left one persona to write
+rather than three.
+
+### What earns it a place is the CHARACTER, not the name
+
+Measured across the cast before a line was written: **ten personas are military
+and nine of them SHOUT.** The two calm ones — Master Sergeant and Navy Chief —
+are both conventional forces. Special Forces train partner forces for a living,
+so the Green Beret's defining trait is that it **teaches**: low volume,
+deliberate, long game.
+
+That gap is real because of how the athlete uses it. With **Auto** on, every
+timed effort draws a different coach, so a tenth shouter would have added a name
+and no new voice.
+
+| | exclamation marks across all five line pools |
+|---|---|
+| Drill Sergeant | 28 |
+| Army Ranger PT | 24 |
+| Navy SEAL Instructor | 24 |
+| **Green Beret** | **0** |
+
+**THE DISCRIMINATING CHECK IS THE ONE THAT MUST NOT FIRE.** A blanket military
+persona satisfies every *"a Green Beret exists"* assertion and fails that — so
+Ranger, SEAL and Drill are pinned beside it as the floor, or *"nobody shouts"*
+passes on a cast that has been silenced.
+
+**Pitch and rate are calibrated against the siblings rather than guessed**: rate
+0.94 is the slowest of the military set (navy 0.95, mastersgt 0.98) and pitch
+0.46 sits between mastersgt 0.42 and seal 0.5 — clear of the 0.42 artifact floor
+`validateData()` enforces.
+
+**And the two the athlete already had are pinned as floors.** A round that
+renamed an existing persona would satisfy *"all three are in the cast"* and
+delete two.
+
+### Three checks that were passing on a number, and one on a coincidence
+
+Adding a 39th coach turned four checks red, and **not one was the app**:
+
+- **Two drew `38` from the bag by hand.** A bag of *n* drawn 38 at a time
+  straddles the seam, so the second pass reads **37 distinct on correct code**.
+  The block's own comment already said *"each block builds the state it asserts
+  on"* and reset the bag — it just drew a count written down when the cast was
+  38. That is the v323/v463 shape: **an existing check hardcoded the count,
+  which is the defect it was written for.**
+- **One pinned the per-coach sheet at 38 rows.** Its payload already carried
+  `COACHES.length` in a *different* evaluate block, so the obvious fix
+  (`r.coaches`) read `undefined` and the guard stayed red. Read the roster in
+  the block that asserts on it.
+- **And one was passing on a COINCIDENCE.** *"FLOOR: every other coach keeps the
+  voice Auto gave it"* compared `afterDrill` against **`autoWrestle`** — two
+  different coaches, which agreed only because their list positions were
+  congruent modulo the voice-pool size. `assignCoachVoices()` hands voices round
+  in list order, so a persona inserted above `wrestle` broke the alignment and
+  the floor went red on correct code. It captures **drill's own** Auto voice now.
+  A floor that names the wrong value is a floor that holds by luck.
+
+### And my own bag check needed the lesson it was written beside
+
+The new block drew `COACHES.length` from a bag earlier blocks had already
+drawn from, so it read **37 of 39**. v484 recorded this exact trap — *"the state
+is a bag"* — and the fix is the same: delete it first, and **guard that the
+reset happened**, or the assertion passes on a bag that was never fresh.
+
+### The counts in the comments went stale the moment the cast grew
+
+Four comments stated **38** as a present-tense fact about the roster (*"a voice
+for all 38"*, *"There are 38 personas"*, *"a 38-row list"*, *"38 hand-written
+copies"*). They describe the SHAPE now rather than the size — v460's rule, one
+file over. The two that are **recorded measurements** (*"190 push lines over 38
+coaches"*) are left, because a measurement is the point of the comment.
+
+The athlete-facing copy needed nothing: v398 already derives `${COACHES.length}`.
+
+### Eleven mutants, and the one that escaped was a weak MUTANT
+
+Ten caught by name first time. The escape was the over-eager twin — *the whole
+military cast silenced, so silence means nothing* — and reading it back is what
+settled it: the seed removed **2 of the Ranger's 24** exclamation marks, and the
+floor is `> 10`. It did not change the program enough to matter.
+
+Re-seeded as the real thing — every trailing exclamation mark stripped from
+Ranger, SEAL and Drill, **75 of them** — it fails by name on the guard and on
+two floors. **A guard that says a property is a property, rather than a bug, is
+what catches this class**, and nothing else in the block can.
+
+Worth recording precisely: the seed strips only the mark before a closing quote,
+so a line like *"Move, move, move! Start now!"* keeps its mid-line one and the
+Drill floor survives. A complete silencing trips all four. **Read the mutant
+back** — a seed that leaves most of the property intact is measuring nothing.
+
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
