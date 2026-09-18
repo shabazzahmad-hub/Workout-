@@ -22563,6 +22563,60 @@ thing that was broken. **Ask for the measurement, then wait for it** — and whe
 a diagnostic keeps answering the same string, suspect the diagnostic.
 
 
+## One screen, two answers about the same list (v510)
+
+Reported from a real phone, one screenshot. The panel read:
+
+> **5 different voices** in use across 38 coaches, from the 5 this phone offers.
+
+and the toast a few lines below it read **"Voice check: 92 voices in use"**.
+
+**92 is every voice the browser lists, in every language. 5 is what the app can
+actually offer.** Every surface that hands the athlete a voice draws from
+`englishVoicePool()` — the global picker, the per-coach rows, and
+`assignCoachVoices()` itself. So the bigger number was one **nothing in the app
+can use**, printed directly under the panel that gives the real one.
+
+v509's whole point was that this toast reports the MEASUREMENT rather than the
+tap. It reported the wrong measurement — the container (what the browser
+lists) instead of the payload (what the coaches can be given). Sixth entry
+under that rule, and the first where the two readings were on one screen.
+
+**`_voiceCheckedEmpty` deliberately keeps the RAW count**, because
+`voiceCheckHTML()`'s own branch tests `d.all` and two readers of one fact must
+not disagree about which list was empty.
+
+### My own fixture supplied the answer
+
+v509's block could not have caught it: **every fake voice in it is `en-US`**, so
+the raw list and the English pool are the same number there and a toast
+reporting either one passes. *A guard is only visible when the value beside it
+cannot supply the answer* — and the neighbour was my own choice of `lang`
+strings. Same shape as v507's *a sweep is only as wide as the VALUES it seeds*,
+one suite over.
+
+The new block's fixture is **9 voices, 3 of them English**, and the guards pin
+that gap before anything else is asserted. The two surfaces are then read
+**side by side** — the toast must name the pool, the panel must name the pool,
+and neither may name the raw list — because asserting either alone passes on
+half the code, which is how the disagreement shipped.
+
+**The picker is pinned as a third reading** (`voiceOptionsHTML()` must offer
+exactly the pool plus its Auto row), so "the pool is the number that matters"
+is a measurement rather than a claim.
+
+### One equivalent mutant, measured rather than assumed
+
+`_voiceCheckedEmpty=!now` escaped, and measuring is what settled it:
+`englishVoicePool()` falls back to the WHOLE list when nothing is English, so
+an empty pool implies an empty list. **0 differences across six shapes**,
+including a list with no English voice at all. Kept as intent and recorded as
+uncatchable — the same call as v287's `wantAnchor`.
+
+Eight mutants, seven caught by name and one equivalent. The four over-eager
+twins each fail a floor: the panel moved to the raw list, the new-voices clause
+deleted, every check claiming voices are new, and a toast that drops the count.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

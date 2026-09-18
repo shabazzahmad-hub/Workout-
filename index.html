@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='509';
+const APP_VERSION='510';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -12324,6 +12324,15 @@ function voiceDiag(){
 const VOICE_WAIT_MS=4000, VOICE_POLL_MS=150;
 let _voiceCheckedEmpty=false;
 function _rawVoiceCount(){try{return ('speechSynthesis'in window)?(speechSynthesis.getVoices()||[]).length:0;}catch(e){return 0;}}
+/* THE NUMBER THE ATHLETE CAN ACT ON. Every surface that offers a voice draws
+   from englishVoicePool(): the global picker (voiceOptionsHTML), the per-coach
+   rows (coachVoiceRowsHTML) and assignCoachVoices() itself. The raw browser
+   list is far larger - measured on a real phone, 92 voices from Google
+   Text-to-speech against 5 English ones - so v509's toast reported 92 directly
+   under a panel reading "5 different voices in use across 38 coaches, from the
+   5 this phone offers". One screen, two answers, and the bigger number was one
+   nothing in the app can use. Measure the payload, not the container. */
+function voicePoolCount(){try{return (englishVoicePool()||[]).length;}catch(e){return 0;}}
 function voiceCheckHTML(){
   const d=voiceDiag();
   /* The forced case FIRST, and before the "no voices yet" line: it is knowable
@@ -12345,14 +12354,21 @@ function voiceCheckHTML(){
   return `<div class="note ok" style="margin:8px 0"><b>${d.distinct} different voices</b> in use across ${d.coaches} coaches, from the ${d.en} this phone offers.</div>`;
 }
 function runVoiceCheck(){
-  const had=(COACH_VOICES||[]).length, t0=Date.now();
+  const had=voicePoolCount(), t0=Date.now();
   const finish=()=>{
     try{loadCoachVoices();}catch(e){}
-    const now=(COACH_VOICES||[]).length;
-    _voiceCheckedEmpty=!now;
+    const now=voicePoolCount();
+    /* Deliberately the RAW count: voiceCheckHTML()'s own branch tests d.all, and
+       two readers of one fact must not disagree about which list was empty.
+       EQUIVALENT to !now today, measured rather than assumed: englishVoicePool()
+       falls back to the WHOLE list when nothing is English, so an empty pool
+       implies an empty list - 0 differences across six shapes, the no-English
+       one included. No check can catch the substitution. Kept as intent, and
+       against a future pool that stops falling back. */
+    _voiceCheckedEmpty=!(COACH_VOICES||[]).length;
     try{if($('#v-guide')&&$('#v-guide').classList.contains('active'))renderGuide();}catch(e){}
     /* The toast reports the MEASUREMENT, not the tap. */
-    toast(now?('Voice check: '+plural(now,'voice')+(now>had?' found':' in use')):'Voice check: this phone gave no voice list',3000);
+    toast(now?('Voice check: '+plural(now,'voice')+' for your coaches'+(now>had?' \u2014 '+(now-had)+' new':'')):'Voice check: this phone gave no voice list',3000);
   };
   const tick=()=>{
     if(_rawVoiceCount()||Date.now()-t0>=VOICE_WAIT_MS){finish();return;}

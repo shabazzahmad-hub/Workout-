@@ -2364,6 +2364,110 @@ export default async function run() {
       !/,\s*250\s*\)/.test(r.src), cut(r.src));
   }
 
+  const [runVoiceCheckSrc, voicePoolCountSrc] = await page.evaluate(
+    () => [runVoiceCheck.toString(), voicePoolCount.toString()]);
+
+  /* ---- the toast and the panel count the SAME list ----------------------
+
+     Reported from a real phone, one screenshot: the panel read "5 different
+     voices in use across 38 coaches, from the 5 this phone offers" and the
+     toast a few lines below it read "Voice check: 92 voices in use". One
+     screen, two answers.
+
+     92 is every voice the browser lists, in every language. 5 is what the app
+     can actually offer: the global picker (voiceOptionsHTML), the per-coach
+     rows (coachVoiceRowsHTML) and assignCoachVoices() all draw from
+     englishVoicePool(). So the bigger number was one nothing in the app can
+     use - measure the payload, not the container.
+
+     v509's own block could not catch it: every fake voice in it is en-US, so
+     the raw list and the English pool are the same number there and a toast
+     reporting either one passes. A guard is only visible when the value beside
+     it cannot supply the answer, and the neighbour was my own fixture. */
+  {
+    const r = await page.evaluate(async () => {
+      const o = {}, realGet = speechSynthesis.getVoices.bind(speechSynthesis),
+            realToast = window.toast, realName = STATE.settings.voiceName;
+      let said = [];
+      window.toast = m => { said.push(String(m)); };
+      delete STATE.settings.voiceName;   // d.forced answers first otherwise
+
+      const settle = ms => new Promise(res => setTimeout(res, ms));
+      const runAndWait = async () => {
+        said = [];
+        runVoiceCheck();
+        for (let i = 0; i < 120 && !said.length; i++) await settle(100);
+        return said.join(' | ');
+      };
+
+      /* A REAL phone's list: a few English voices among many others. Google
+         Text-to-speech shipped 92 against 5 on the reporting device. */
+      const mixed = [
+        { name: 'Daniel',   lang: 'en-GB' },
+        { name: 'Samantha', lang: 'en-US' },
+        { name: 'Alex',     lang: 'en-US' },
+        { name: 'Amelie',   lang: 'fr-FR' },
+        { name: 'Jorge',    lang: 'es-ES' },
+        { name: 'Anna',     lang: 'de-DE' },
+        { name: 'Lekha',    lang: 'hi-IN' },
+        { name: 'Kyoko',    lang: 'ja-JP' },
+        { name: 'Luciana',  lang: 'pt-BR' }
+      ];
+
+      // start from nothing so the first run can report voices as NEW
+      speechSynthesis.getVoices = () => [];
+      _voiceCheckedEmpty = false;
+      await runAndWait();
+
+      speechSynthesis.getVoices = () => mixed;
+      o.grewToast = await runAndWait();
+      o.sameToast = await runAndWait();   // nothing new the second time
+      o.diag = voiceDiag();
+      o.panel = voiceCheckHTML();
+      o.pickerOpts = (voiceOptionsHTML().match(/<option/g) || []).length;
+
+      speechSynthesis.getVoices = realGet;
+      window.toast = realToast;
+      if (realName) STATE.settings.voiceName = realName;
+      loadCoachVoices();
+      return o;
+    });
+
+    const cut = x => JSON.stringify(String(x).slice(0, 200));
+    const raw = r.diag.all, pool = r.diag.en;
+
+    /* GUARDS. Without these the whole block passes on a list whose two counts
+       agree anyway - which is exactly how v509 shipped this. */
+    t.eq('GUARD: the fixture really is a mixed-language list', raw, 9);
+    t.eq('GUARD: and only some of it is English', pool, 3);
+    t.ok('GUARD: so the two numbers genuinely differ', raw !== pool, JSON.stringify([raw, pool]));
+
+    t.ok('the toast counts the voices the coaches can actually use',
+      new RegExp('\\b' + pool + ' voices\\b').test(r.grewToast), JSON.stringify(r.grewToast));
+    t.ok('and never the browser\'s whole list, which nothing in the app can offer',
+      !new RegExp('\\b' + raw + '\\b').test(r.grewToast), JSON.stringify(r.grewToast));
+    t.ok('the panel above it names the same number',
+      new RegExp('\\b' + pool + '\\b').test(r.panel), cut(r.panel));
+    t.ok('and the panel does not name the raw list either',
+      !new RegExp('\\b' + raw + '\\b').test(r.panel), cut(r.panel));
+    t.eq('GUARD: and the picker really offers that many, plus its Auto row',
+      r.pickerOpts, pool + 1);
+
+    t.ok('voices that were not there before are reported as new',
+      /\b3 new\b/.test(r.grewToast), JSON.stringify(r.grewToast));
+    t.ok('FLOOR: a second check on the same list claims nothing new',
+      !/new/.test(r.sameToast), JSON.stringify(r.sameToast));
+    t.ok('FLOOR: and still reports the count rather than going silent',
+      new RegExp('\\b' + pool + ' voices\\b').test(r.sameToast), JSON.stringify(r.sameToast));
+    t.ok('FLOOR: a list that DID arrive is not recorded as a proven-empty phone',
+      !/handed over no voice list/i.test(r.panel), cut(r.panel));
+
+    t.ok('the toast reads the pool rather than re-deriving it',
+      /voicePoolCount\(\)/.test(runVoiceCheckSrc), cut(runVoiceCheckSrc));
+    t.ok('and the pool helper asks the app\'s own englishVoicePool()',
+      /englishVoicePool\(\)/.test(voicePoolCountSrc), cut(voicePoolCountSrc));
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
