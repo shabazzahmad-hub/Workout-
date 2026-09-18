@@ -22698,6 +22698,23 @@ coaches"*) are left, because a measurement is the point of the comment.
 
 The athlete-facing copy needed nothing: v398 already derives `${COACHES.length}`.
 
+### Eleven mutants, and the one that escaped was a weak MUTANT
+
+Ten caught by name first time. The escape was the over-eager twin — *the whole
+military cast silenced, so silence means nothing* — and reading it back is what
+settled it: the seed removed **2 of the Ranger's 24** exclamation marks, and the
+floor is `> 10`. It did not change the program enough to matter.
+
+Re-seeded as the real thing — every trailing exclamation mark stripped from
+Ranger, SEAL and Drill, **75 of them** — it fails by name on the guard and on
+two floors. **A guard that says a property is a property, rather than a bug, is
+what catches this class**, and nothing else in the block can.
+
+Worth recording precisely: the seed strips only the mark before a closing quote,
+so a line like *"Move, move, move! Start now!"* keeps its mid-line one and the
+Drill floor survives. A complete silencing trips all four. **Read the mutant
+back** — a seed that leaves most of the property intact is measuring nothing.
+
 
 ## Rendering
 
