@@ -1997,6 +1997,47 @@ export default async function run() {
     t.ok('guard: the sweep really reads every store-facing manifest string',
       storeText.length >= 9 && storeText.every(([, v]) => v.length > 0), String(storeText.length));
 
+    /* AND THE README (v513). v474 swept the manifest, the meta tag and
+       package.json and built a detector for the rising-cadence claim; README_INSTALL.md
+       still said the program "gets harder every week", called it "4-week",
+       named icon files that do not exist and a "Guide tab" that is Settings,
+       and told the athlete to update by uploading index.html alone — which
+       leaves CACHE in sw.js behind, so no phone would ever see the update.
+       A sweep is only as wide as the surface it enumerates. The readme is
+       code-fenced markdown, so the fences are stripped before the claim scan
+       and every back-ticked file name is required to exist on disk. */
+    const readme = fs.readFileSync(path.join(ROOT, 'README_INSTALL.md'), 'utf8');
+    const readmeProse = readme.replace(/```[\s\S]*?```/g, ' ');
+    t.ok('guard: the readme was read', readmeProse.length > 500, String(readmeProse.length));
+    storeText.push(['README_INSTALL.md', readmeProse]);
+    {
+      /* Every file name the repo's three prose docs mention must exist. The
+         mechanics doc and the art-direction doc both still named icon-192.png,
+         which was renamed many versions ago. A doc is a link surface too. */
+      const allFiles = fs.readdirSync(ROOT);
+      const toRe = g => new RegExp('^' + g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+      const docs = ['README_INSTALL.md', 'CoreForge-MECHANICS.md', 'ART-DIRECTION.md'];
+      let namesSeen = 0;
+      const missing = [];
+      docs.forEach(d => {
+        const txt = fs.readFileSync(path.join(ROOT, d), 'utf8').replace(/\*\*/g, ''); // bold markers are not part of a name
+        const names = [...new Set([...txt.matchAll(/(?<![\w./-])((?:[A-Za-z0-9_-]|\*)+\.(?:html|js|png|jpg|mp4|woff2|webmanifest|yml))(?![\w-])/g)].map(m => m[1]))];
+        namesSeen += names.length;
+        names.forEach(n => {
+          const ok = n.includes('*') ? allFiles.some(f => toRe(n).test(f))
+            : (fs.existsSync(path.join(ROOT, n)) || fs.existsSync(path.join(ROOT, '.github/workflows', n)));
+          if (!ok) missing.push(d + ':' + n);
+        });
+      });
+      t.ok('guard: the docs name files', namesSeen >= 15, String(namesSeen));
+      t.eq('every file the three docs name exists on disk', missing.join(','), '', missing.join(','));
+      t.ok('guard: the file test can fail', !fs.existsSync(path.join(ROOT, 'icon-192.png')), 'the old icon name still exists');
+      t.ok('the readme names the real backup location, not a tab that no longer exists',
+        /Settings\s*→\s*Your data/.test(readme) && !/Guide tab/.test(readme), 'backup pointer');
+      t.ok('the readme says an update is the whole file set, with the version and cache in lockstep',
+        /APP_VERSION/.test(readme) && /CACHE/.test(readme) && /sw\.js/.test(readme), 'update advice');
+    }
+
     const total = await page.evaluate(() => SESSIONS_PER_CYCLE * TOTAL_CYCLES);
     t.eq('guard: the program really is 378 sessions', total, 378, String(total));
 

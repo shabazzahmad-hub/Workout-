@@ -454,6 +454,56 @@ export default async function run() {
       survivors.some(k => /^coreforge-v\d+$/.test(k)), survivors);
   }
 
+  /* ---- and the SIBLING worker cleans up after itself too (v513) ----------
+     The block above proves CoreForge's worker leaves the Command app's cache
+     alone. The Command app is deployed FROM THIS REPO, to the same origin, and
+     its worker (command/sw.js) still carried `keys.filter(k => k !== CACHE)`
+     — the exact line the comment above names as the defect. So every install
+     or update of the Command app wiped every coreforge-v* cache: the whole
+     offline pack, on the app this repo exists for. One of a pair guarded and
+     its twin not, across two apps.
+
+     Driven for real: register the Command worker under its own scope from
+     this page, let it genuinely activate, and read the cache keys back. The
+     GUARD is that its OWN stale cache is gone — a filter that deletes nothing
+     satisfies "CoreForge survives" and is the over-eager twin. */
+  {
+    const r = await page.evaluate(async () => {
+      await caches.open('coreforge-v998');          // a CoreForge pack
+      await caches.open('milcal-v0');               // the Command app's own stale one
+      let state = 'none', err = '';
+      try {
+        const reg = await navigator.serviceWorker.register('./command/sw.js?probe=1', { scope: './command/' });
+        const w = reg.installing || reg.waiting || reg.active;
+        if (w && w.state !== 'activated') {
+          await new Promise(res => {
+            const h = () => { if (w.state === 'activated') { w.removeEventListener('statechange', h); res(); } };
+            w.addEventListener('statechange', h); setTimeout(res, 15000);
+          });
+        }
+        state = w ? w.state : 'none';
+        await new Promise(z => setTimeout(z, 600));
+        const keys = (await caches.keys()).sort();
+        await reg.unregister();                     // leave the root page as it was
+        return { state, keys };
+      } catch (e) { err = String(e); return { state, err, keys: [] }; }
+    });
+    t.eq('guard: the Command worker really activated', r.state, 'activated', JSON.stringify(r));
+    t.ok('guard: the Command worker cleaned up its OWN stale cache', !r.keys.includes('milcal-v0'), r.keys);
+    t.ok('a CoreForge cache survives a Command app activation', r.keys.includes('coreforge-v998'), r.keys);
+    t.ok('and so does the live CoreForge cache', r.keys.some(k => /^coreforge-v\d+$/.test(k)), r.keys);
+    await page.evaluate(async () => { await caches.delete('coreforge-v998'); await caches.delete('milcal-v4.1.1'); });
+    /* And on the SOURCE, because a filter that lists CoreForge's prefix by
+       name would pass the driven case and still wipe the next sibling. */
+    const csw = fs.readFileSync(path.join(ROOT, 'command/sw.js'), 'utf8');
+    const act = /addEventListener\('activate'[\s\S]*?\n\}\);/.exec(csw);
+    t.ok('guard: the Command worker has an activate handler', !!act, String(!!act));
+    t.ok('its cleanup is scoped to its own prefix, not "everything but mine"',
+      !!act && /MINE\.test\(k\)\s*&&\s*k\s*!==\s*CACHE/.test(act[0]) && !/filter\(k\s*=>\s*k\s*!==\s*CACHE\)/.test(act[0]),
+      act ? act[0].slice(0, 200) : '');
+    t.ok('and the prefix is its own cache family', /const MINE = \/\^milcal-v\//.test(csw), 'prefix');
+  }
+
   /* ---- another app on the same origin is not OUR shell -------------------
      CacheStorage and this worker's reach are scoped to the ORIGIN, which is the
      same fact behind the documented caches.keys() bug — pointed the other way.

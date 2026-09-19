@@ -14,10 +14,17 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
+/* Delete only OUR OWN old versions. CacheStorage is scoped to the ORIGIN,
+   not to the scope this worker was registered under, so `k !== CACHE` reached
+   every other app published from the same GitHub Pages origin — CoreForge at
+   the repository root — and wiped its whole offline pack every time this app
+   installed or updated. CoreForge's own worker was given this exact rule for
+   the mirror-image damage; this one never got it. */
+const MINE = /^milcal-v/;
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => MINE.test(k) && k !== CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

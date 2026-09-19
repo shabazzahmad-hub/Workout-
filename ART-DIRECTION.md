@@ -55,7 +55,7 @@ OD-green tee/tank + camo fatigues):
   in fatigues).
 - ✅ Hero / icon / splash — the coach "Sergeant Forge" portrait (OD-green tee +
   camo fatigues, arms crossed, neutral studio) drives `hero.jpg` and, as a
-  head-and-shoulders crop, `icon-192.png` / `icon-512.png`. Same shot as
+  head-and-shoulders crop, `icon-192-v2.png` / `icon-512-v2.png`. Same shot as
   `coach-sarge.jpg` (the Morning Brief avatar).
 
 Any future images must follow the wardrobe + style spec above.

@@ -26,7 +26,11 @@ export async function serve() {
   let fail = null;
   const srv = http.createServer((rq, rs) => {
     let p = rq.url.split('?')[0];
-    if (p === '/') p = '/index.html';
+    /* Any directory path serves its index.html — that is what GitHub Pages
+       does, and the Command app's precache list opens with './', which under
+       /command/ is a directory request. Mapping only the exact root left that
+       worker's install failing in the harness with a 404 (v513). */
+    if (p.endsWith('/')) p += 'index.html';
     if (fail && p.endsWith(fail)) {
       rs.statusCode = 500; rs.setHeader('content-type', 'text/html');
       rs.end('upstream boom'); return;

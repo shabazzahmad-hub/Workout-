@@ -22763,6 +22763,70 @@ gap is **one** day, so the guard failed on correct code one weekday in seven
 — the v394 Monday defect, five weekdays over. It now requires every gap day
 rather than a flat two, which is also the stronger statement.
 
+## The sibling app never got the fix its victim did (v513)
+
+"Review and fix any broken links." Every link and asset path in the app resolves
+— measured across `index.html`, the manifest, both legal pages and the Command
+app's own page, and every one of the 251 shipped assets sits in a precache tier.
+The real finding was one directory over.
+
+`command/sw.js` — the Command app, deployed FROM THIS REPO to the same GitHub
+Pages origin — still carried
+
+```js
+keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+```
+
+**That is the exact line this file's own rule names as the defect**, and
+CoreForge's worker was fixed for it with a comment naming the Command app as
+the victim. Pointed the other way, every install or update of the Command app
+wiped every `coreforge-v*` cache — the whole offline pack of the app this repo
+exists for. *One of a pair guarded and its twin not*, across two apps rather
+than two functions, and the twin was in a folder no sweep had ever opened.
+
+It scopes to `/^milcal-v/` now. **The check is driven**: the Command worker is
+registered under its own scope from the harness page and allowed to genuinely
+activate, and a seeded `coreforge-v998` must survive. The GUARD is that the
+Command worker's OWN stale cache is gone — a filter that deletes nothing
+satisfies "CoreForge survives" and is the over-eager twin. A source assertion
+sits beside it, because a filter that lists CoreForge's prefix by name would
+pass the driven case and still wipe the next sibling.
+
+### The readme said "gets harder every week", in the words v474 banned
+
+`README_INSTALL.md` is not linked from the app, so no rendered sweep reads it,
+and v474's static sweep read the manifest, the meta tag and `package.json` —
+three files, not four. The readme still said the program is *"4-week … gets
+harder every week (repeatable to 12 weeks)"*, named `icon-192.png` (renamed
+many versions ago), pointed at a *"Guide tab"* that is Settings, and told the
+athlete to update by uploading `index.html` alone — which leaves `CACHE` in
+`sw.js` behind, so **no phone would ever see the update**. Every claim in it
+is true now, and it joins the v474 sweep as a fourth surface.
+
+`CoreForge-MECHANICS.md` calls itself a rebuild reference and stated
+`TOTAL_CYCLES=2`, `SESSIONS_PER_WEEK=4` and *"40 exercise photos"* — against 9,
+7 and ~200. Where it stated a number it now names the constant (v460's rule),
+under a banner saying to read it as a map. **Every file name the three prose
+docs mention must exist on disk**, with the old icon name pinned as the guard
+that the test can fail.
+
+### The harness served the root as a page and every other directory as a 404
+
+The driven check first reported the Command worker as **`redundant`** — its
+install had failed. Its precache list opens with `'./'`, which under
+`/command/` is a directory request, and the harness mapped only the exact root
+to `index.html`. GitHub Pages serves every directory that way, so the harness
+now does too; the root case is byte-identical. A worker whose install fails
+never runs its activate handler, so a check on that handler is satisfied by
+nothing — which is why the first assertion is that it really activated.
+
+**Five mutants, all caught by name**: the filter reverted, the over-eager twin
+that deletes nothing (caught by the own-stale-cache guard and by nothing
+else), the banned claim written back into the readme, the old icon name in
+the readme, and the old icon name in **bold** in the mechanics doc — the bold
+markers were the check's own first false alarm, `**deploy-pages.yml` read as
+a file name until they were stripped.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

@@ -1,55 +1,60 @@
-# CoreForge — 4-Week Abs & Core
-## Install it as a real app on your phone (one-time, ~5 minutes)
+# CoreForge — Full-Body Workout
+## Install it as a real app on your phone
 
-CoreForge is a home-based abs, core and oblique training program. Day one runs a
-baseline assessment, then it auto-builds a 4-week program that gets harder every
-week (repeatable to 12 weeks) and saves every rep for you — fully offline.
+CoreForge is a home calisthenics and core program that runs fully offline. Day one
+runs a baseline assessment, then every session is built from your own numbers and
+saved on the phone as you go.
 
-Your app package has 5 core files plus the exercise photos. All of them must go in
-the same folder of the repository:
+The app is one folder of static files, all at the root of this repository:
 
 - `index.html` — the entire app
-- `sw.js` — offline engine (service worker)
-- `manifest.webmanifest` — makes it installable as an app
-- `icon-192.png`, `icon-512.png` — home-screen icons
-- `ex-*.jpg` — exercise reference photos
+- `sw.js` — the offline engine (a service worker)
+- `manifest.webmanifest` — what makes it installable as an app
+- `icon-192-v2.png`, `icon-512-v2.png`, `icon-192-maskable.png`, `icon-512-maskable.png`, `icon-180-apple.png` — home-screen icons
+- `archivo.woff2` — the app font
+- `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` and `*.mp4` — exercise reference photos and clips
+- `privacy.html`, `terms.html` — the legal pages the setup screen links to
 
-## Step 1 — Put the files on GitHub (from your phone)
+## Where it lives
 
-1. Open **github.com** in your phone browser and sign in.
-2. Tap **+** (top right) → **New repository**.
-3. Name it `workout-` (or anything). Set it to **Public** (required for free GitHub Pages). Tap **Create repository**.
-4. On the new repo page tap **uploading an existing file** (or **Add file → Upload files**).
-5. Select all the files, then tap **Commit changes**.
+The app is deployed by GitHub Actions on every push to `main`
+(`.github/workflows/deploy-pages.yml`). The deploy runs only after the test suite
+passes. In the repository, **Settings → Pages → Source** must be set to
+**GitHub Actions**.
 
-## Step 2 — Turn on GitHub Pages
+Once deployed it is live at:
 
-1. In the repo, tap **Settings** (you may need the ⋯ menu) → **Pages**.
-2. Under **Branch**, choose `main` and `/ (root)`, then **Save**.
-3. Wait 1–2 minutes. Your app is now live at:
-   `https://YOUR-USERNAME.github.io/workout-/`
+```
+https://shabazzahmad-hub.github.io/Workout-/
+```
 
-## Step 3 — Install to your home screen (Samsung S26)
+## Install to your home screen
 
-1. Open that address in **Chrome** (or Samsung Internet) on your phone.
-2. Complete the quick setup and your day-1 baseline assessment.
+1. Open that address in Chrome (or Samsung Internet) on your phone.
+2. Complete the setup and your day-1 baseline assessment.
 3. Chrome menu (⋮) → **Add to Home screen** → **Install**.
-4. Open it from the **CoreForge** icon like any other app. It works fully offline.
+4. Open it from the **CoreForge** icon like any other app. It works with no signal.
 
-## Why your progress is solid (3 layers)
+## Why your progress is solid
 
-1. **Installed app storage** — an installed PWA on a real https address gets far more durable browser storage than a loose HTML file, and the app automatically requests "persistent storage" protection from Android.
-2. **Mirror backup** — every save is also copied into a second database (IndexedDB). If the main storage is ever cleared, the app detects it on next launch and restores your progress automatically.
-3. **In-app backup** — the Guide tab has JSON export / import. Do one after each re-test for extra safety.
+1. **Installed app storage** — an installed app on a real https address gets far
+   more durable browser storage than a loose HTML file, and the app asks Android
+   for "persistent storage" protection on first load.
+2. **Mirror backup** — every save is also written to a second store (IndexedDB).
+   If the main store is ever cleared, the app finds the mirror on the next launch.
+3. **In-app backup** — **Settings → Your data** has export and import. Do one after
+   each re-test for extra safety. A backup never contains your API keys.
 
-Offline: the service worker keeps the whole app cached, so it opens with no signal.
+## Updating the app
 
-## Updating the app later
-
-Upload a new `index.html` over the old one in the repo (Add file → Upload files → Commit). Your progress is NOT in the file — it's stored on the phone — so updates never erase it.
+Push the whole set of files, not `index.html` on its own. `APP_VERSION` in
+`index.html` and `CACHE` in `sw.js` move together on every release, and a phone
+only sees a new version when both have changed. Your progress is not in the
+files — it is stored on the phone — so an update never erases it.
 
 ## Note
 
-The repository is public, so don't add personal files to it. The app file itself
-contains only the workout program. Your training data, weights and measurements
-never leave your phone.
+The repository is public, so do not add personal files to it. The app files
+contain only the program. Your training data, weights and measurements never
+leave your phone unless you turn on one of the optional online features, which
+`privacy.html` lists.
