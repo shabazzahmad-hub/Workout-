@@ -1,5 +1,11 @@
 # CoreForge — Mechanics & Architecture (backup reference)
 
+> **Read this as a map, not as the numbers.** It was written for the first build
+> and describes the SHAPE of the app. Every count in the app — blocks, sessions a
+> week, exercises, photos — is a constant in `index.html` and has grown many times
+> since. Where this file used to state a number it now names the constant; read
+> the value out of `index.html`. The working rules live in `CLAUDE.md`.
+
 This document explains how the CoreForge app works so it can be rebuilt or
 maintained even without the GitHub repo. The **entire app is `index.html`** — a
 single self-contained file (HTML + CSS + vanilla JS, no build step, no
@@ -9,8 +15,8 @@ dependencies). The other files are the offline/install shell and assets.
 - **index.html** — the whole app (UI, logic, data). This is the source of truth.
 - **sw.js** — service worker: offline cache. Bump `CACHE` (e.g. `coreforge-v18`) on every change so installed apps update.
 - **manifest.webmanifest** — PWA manifest (name, icons, standalone display) → makes it installable to a phone home screen.
-- **icon-192.png / icon-512.png** — home-screen icons (the CoreForge logo).
-- **ex-*.jpg** — 40 exercise reference photos (one per exercise; filename = exercise key, e.g. `ex-plank.jpg`).
+- **icon-192-v2.png / icon-512-v2.png** (plus the maskable and Apple variants) — home-screen icons (the CoreForge logo).
+- **ex-*.jpg** (and `wu-*.jpg`, `cd-*.jpg`, `*.mp4`) — exercise reference photos and clips, one per exercise; filename = exercise key, e.g. `ex-plank.jpg`.
 - **README_INSTALL.md** — end-user install steps (GitHub Pages + Add to Home screen).
 - **deploy-pages.yml** — GitHub Actions workflow (`.github/workflows/`) that auto-enables GitHub Pages and deploys on every push to `main`.
 
@@ -43,7 +49,7 @@ Map of exerciseKey → {name, region, unit('time'|'reps'), img, anchor, hardness
 - 40 exercises total: core/ab moves + compound strength (squat, lunge, push-ups) + cardio (jacks, high knees, burpees, etc.).
 
 ## Program structure
-- **6-week block × 2 = 12 weeks** (`WEEKS_PER_CYCLE=6`, `TOTAL_CYCLES=2`), **4 sessions/week** (`SESSIONS_PER_WEEK=4`) → 24 sessions/block.
+- Blocks of `WEEKS_PER_CYCLE` program weeks, `TOTAL_CYCLES` blocks, `SESSIONS_PER_WEEK` slots a week → `SESSIONS_PER_CYCLE` sessions a block. The program is a QUEUE of sessions; how long it takes in calendar weeks depends on how many days a week the athlete trains (`programWeeks()`).
 - 4 weekly session types (`SESSIONS`): **Core Crusher** (abs), **Full-Body Burn** (compound + core), **Obliques & Love Handles**, **Metabolic HIIT** (cardio + core). Core days get a cardio finisher.
 - Each session = fixed warm-up + 4 main slots + 1 finisher. Slots reference **ladders** (`LADDERS`), easy→hard chains; the rung is chosen by `rungIndex(ladder, cycle, week, level)`.
 
