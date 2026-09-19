@@ -17,7 +17,7 @@ dependencies). The other files are the offline/install shell and assets.
 - **manifest.webmanifest** — PWA manifest (name, icons, standalone display) → makes it installable to a phone home screen.
 - **icon-192-v2.png / icon-512-v2.png** (plus the maskable and Apple variants) — home-screen icons (the CoreForge logo).
 - **ex-*.jpg** (and `wu-*.jpg`, `cd-*.jpg`, `*.mp4`) — exercise reference photos and clips, one per exercise; filename = exercise key, e.g. `ex-plank.jpg`.
-- **README_INSTALL.md** — end-user install steps (GitHub Pages + Add to Home screen).
+- **README.md** — end-user install steps (GitHub Pages + Add to Home screen). It is the repository's front page on GitHub.
 - **deploy-pages.yml** — GitHub Actions workflow (`.github/workflows/`) that auto-enables GitHub Pages and deploys on every push to `main`.
 
 ## How to rebuild / host (no GitHub needed)
