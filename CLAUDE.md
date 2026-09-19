@@ -22716,6 +22716,53 @@ Drill floor survives. A complete silencing trips all four. **Read the mutant
 back** — a seed that leaves most of the property intact is measuring nothing.
 
 
+## A local date read back through the UTC clock (v512)
+
+Found by sweeping every `new Date(` built from a stored string. JavaScript
+reads a bare `YYYY-MM-DD` as **UTC midnight**, and `toISOString()` answers in
+UTC — so a LOCAL date pushed through either one comes back a day off on one
+side of Greenwich or the other. The app already knew: the readiness map
+carries a comment that says *"localISO, not toISOString"*. **Two twins never
+got it.**
+
+| reader | built | measured |
+|---|---|---|
+| `prepMidISO()` | two LOCAL midnights, midpoint read back through `toISOString()` | **a day early east of UTC** — Tokyo, Berlin, Kiritimati |
+| `goalETAHTML()` | `new Date(b.date)` — UTC midnight — then `getDate()+weeks*7` in LOCAL time | **a day early west of UTC** — an ETA on the 1st printed the previous month |
+
+`prepCheckpoint()` compares today against that midpoint, so east of Greenwich
+the mid window opened a day before the plan's own halfway point. Neither is
+visible in UTC, which is where the default test context runs.
+
+**Every other bare-string date read was measured and left alone**: the
+streak, `daysSince()`, `shredWeeks()`, the pain count and the weight trend
+subtract two bare strings from each other, so both sides are UTC and the
+difference is exact. Only a read that MIXES a UTC parse with a local
+`getDate()` or `toISOString()` is in the class, and it had two members.
+
+**Each is driven in the zone it breaks in, with the OLD rule re-derived beside
+it as a guard** — otherwise "the midpoint is the 26th" passes on a rule that
+was never wrong. Values are pinned, never read back out of the app's own
+expression.
+
+**And the first waist seed failed on correct code.** It dated the last
+measurement in the FUTURE, and `dedupeMeasurements()` clamps a date ahead of
+today back to today — so the ETA moved and the check reported the fix broken.
+Seed in the past, and guard that the seeded date survived the repair. Two
+mutants, both caught by name.
+
+**The midnight boundary itself is clean.** A session committed at 00:30 local
+in Tokyo, Kiritimati (UTC+14), Denver at 23:30 and UTC lands on the right day
+in the log, the streak, the heatmap, the done card and the week bucket.
+
+### And a v505 guard that went red on Saturdays
+
+`GUARD: and the rolling window sees all of it` demanded **two** rides in the
+gap between the calendar week and the rolling seven days. On a Saturday that
+gap is **one** day, so the guard failed on correct code one weekday in seven
+— the v394 Monday defect, five weekdays over. It now requires every gap day
+rather than a flat two, which is also the stronger statement.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
