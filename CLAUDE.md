@@ -22827,6 +22827,16 @@ the readme, and the old icon name in **bold** in the mechanics doc — the bold
 markers were the check's own first false alarm, `**deploy-pages.yml` read as
 a file name until they were stripped.
 
+## The install guide was in a file GitHub never renders (v514)
+
+The repository had no `README.md`. GitHub renders `README.md` and nothing else
+as a repository's front page, so `README_INSTALL.md` — the one document written
+for a visitor — was invisible on the one page a visitor lands on. Renamed, the
+three references moved with it, and a guard pins that the front page exists.
+Every other page this repo serves was loaded under the harness with error
+capture on — both legal pages and the Command app's own page — and came back
+clean: no errors, no bad responses, no overflow.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

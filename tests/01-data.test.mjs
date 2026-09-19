@@ -2006,21 +2006,26 @@ export default async function run() {
        A sweep is only as wide as the surface it enumerates. The readme is
        code-fenced markdown, so the fences are stripped before the claim scan
        and every back-ticked file name is required to exist on disk. */
-    const readme = fs.readFileSync(path.join(ROOT, 'README_INSTALL.md'), 'utf8');
+    /* README.md, not README_INSTALL.md (v514): GitHub renders README.md and
+       nothing else as the repository's front page, so the install guide had
+       been invisible on the one page a visitor lands on. The guard below is
+       that the front page exists at all. */
+    t.ok('guard: the repository has a front page GitHub renders', fs.existsSync(path.join(ROOT, 'README.md')), 'README.md');
+    const readme = fs.existsSync(path.join(ROOT, 'README.md')) ? fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8') : '';
     const readmeProse = readme.replace(/```[\s\S]*?```/g, ' ');
     t.ok('guard: the readme was read', readmeProse.length > 500, String(readmeProse.length));
-    storeText.push(['README_INSTALL.md', readmeProse]);
+    storeText.push(['README.md', readmeProse]);
     {
       /* Every file name the repo's three prose docs mention must exist. The
          mechanics doc and the art-direction doc both still named icon-192.png,
          which was renamed many versions ago. A doc is a link surface too. */
       const allFiles = fs.readdirSync(ROOT);
       const toRe = g => new RegExp('^' + g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
-      const docs = ['README_INSTALL.md', 'CoreForge-MECHANICS.md', 'ART-DIRECTION.md'];
+      const docs = ['README.md', 'CoreForge-MECHANICS.md', 'ART-DIRECTION.md'];
       let namesSeen = 0;
       const missing = [];
       docs.forEach(d => {
-        const txt = fs.readFileSync(path.join(ROOT, d), 'utf8').replace(/\*\*/g, ''); // bold markers are not part of a name
+        const txt = (fs.existsSync(path.join(ROOT, d)) ? fs.readFileSync(path.join(ROOT, d), 'utf8') : '').replace(/\*\*/g, ''); // bold markers are not part of a name
         const names = [...new Set([...txt.matchAll(/(?<![\w./-])((?:[A-Za-z0-9_-]|\*)+\.(?:html|js|png|jpg|mp4|woff2|webmanifest|yml))(?![\w-])/g)].map(m => m[1]))];
         namesSeen += names.length;
         names.forEach(n => {
