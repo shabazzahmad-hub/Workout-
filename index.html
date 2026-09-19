@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='511';
+const APP_VERSION='512';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -5916,7 +5916,12 @@ function prepMidISO(){
   if(!isDateISO(p.date)||!isDateISO(p.planFrom))return null;
   const a=new Date(p.planFrom+'T00:00:00').getTime(), b=new Date(p.date+'T00:00:00').getTime();
   if(!isFinite(a)||!isFinite(b)||b<=a)return null;
-  return new Date(a+(b-a)/2).toISOString().slice(0,10);
+  /* localISO, never toISOString: a and b are LOCAL midnights, and toISOString
+     answers in UTC — so east of Greenwich (Tokyo, Berlin, Kiritimati) the
+     midpoint came back a DAY EARLY, and prepCheckpoint() compared today
+     against it. The readiness map learned this exact lesson (see the
+     localISO note beside readinessSlump) and this twin never did. */
+  return localISO(new Date(a+(b-a)/2));
 }
 function prepCheckpoint(){
   const p=prep(), mid=prepMidISO();
@@ -16429,7 +16434,11 @@ function goalETAHTML(){
   const toGoCm=b.waist-p.goalWaist;
   if(toGoCm<=0)return `<div class="tiny" style="margin-top:8px;color:var(--green);font-weight:800">🎉 Goal reached — set a new one to keep climbing.</div>`;
   if(perWeekCm<=0.03)return `<div class="tiny muted" style="margin-top:8px">Trend is flat over the last ${Math.round(days)} days — tighten the deficit or add a Special session to get it moving.</div>`;
-  const weeks=Math.ceil(toGoCm/perWeekCm);const eta=new Date(b.date);eta.setDate(eta.getDate()+weeks*7);
+  const weeks=Math.ceil(toGoCm/perWeekCm);
+  /* +'T00:00:00' — a bare YYYY-MM-DD parses as UTC MIDNIGHT, which west of
+     Greenwich is the evening of the day BEFORE, so eta.getDate() read one day
+     early and an ETA landing on the 1st printed the previous month. */
+  const eta=new Date(b.date+'T00:00:00');eta.setDate(eta.getDate()+weeks*7);
   const mon=eta.toLocaleDateString(undefined,{month:'short',year:'numeric'});const good=perWeekCm>=0.2;
   // two decimals in inches: toFixed(1) printed "~0.1in/wk" for 0.14 and left the
   // rate disagreeing with its own ETA by 40%

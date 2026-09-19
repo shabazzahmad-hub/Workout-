@@ -7173,7 +7173,10 @@ export default async function run() {
       t.ok('SUNDAY: the two windows coincide today, so the disagreement cannot be built', true);
     } else {
       t.eq('GUARD: the calendar week sees none of it', w.calendarSessions, 0, JSON.stringify(w));
-      t.ok('GUARD: and the rolling window sees all of it', w.rollingRides >= 2, JSON.stringify(w));
+      /* Every gap day, not "at least two": on a SATURDAY the gap is ONE day, so
+         a flat >= 2 failed on correct code one weekday in seven. The calendar
+         is part of the state a block has to build. */
+      t.eq('GUARD: and the rolling window sees all of it', w.rollingRides, w.gapDays, JSON.stringify(w));
       t.ok('GUARD: so the two windows genuinely disagree on this athlete',
         w.rollingRuckMin > 0 && w.rollingSkipMin > 0, JSON.stringify(w));
     }
@@ -7384,6 +7387,85 @@ export default async function run() {
       JSON.stringify(r506));
     t.eq('and none of it threw', perr506.length, 0, perr506.slice(0, 2).join(' | '));
     await ctx506.close();
+  }
+
+  // ---- a date built from a bare string is UTC, and the app lives in local ---
+  /* v512. Two readers turned a LOCAL date into a UTC one and back:
+       prepMidISO() took the midpoint of two local midnights and read it back
+       through toISOString(), which answers in UTC — so east of Greenwich the
+       midpoint came back a DAY EARLY, and prepCheckpoint() opened the mid
+       window a day before the plan's own halfway point;
+       goalETAHTML() built its ETA from new Date('YYYY-MM-DD') — UTC midnight,
+       which west of Greenwich is the evening BEFORE — then added weeks with
+       the LOCAL getDate(), so an ETA landing on the 1st printed the previous
+       month.
+     Neither is visible in UTC, which is where the default context runs. Each is
+     driven in the zone it breaks in, with the OLD rule re-derived beside it as
+     a guard that the trap is real on this machine — otherwise "the midpoint is
+     the 26th" passes on a rule that was never wrong. Values are PINNED, never
+     read back out of the app's own expression. */
+  {
+    const ctx = await tzb.newContext({ timezoneId: 'Asia/Tokyo' });
+    const pg = await ctx.newPage();
+    // 2026-08-25 03:00 in Tokyo — the day BEFORE the true midpoint
+    await pg.clock.setFixedTime(new Date('2026-08-24T18:00:00Z'));
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    const r = await pg.evaluate(() => {
+      STATE.prep = { date: '2026-09-20', planFrom: '2026-08-01' };
+      normalizeState();
+      const a = new Date('2026-08-01T00:00:00').getTime(), b = new Date('2026-09-20T00:00:00').getTime();
+      const oldRule = new Date(a + (b - a) / 2).toISOString().slice(0, 10);
+      return { today: todayISO(), mid: prepMidISO(), cp: prepCheckpoint(), oldRule };
+    });
+    t.eq('guard: today really is the day before the midpoint, in Tokyo', r.today, '2026-08-25', r);
+    t.eq('guard: the UTC rule really answers a day early east of Greenwich', r.oldRule, '2026-08-25', r);
+    t.eq('the midpoint of Aug 1 and Sep 20 is Aug 26 in Tokyo', r.mid, '2026-08-26', r);
+    t.eq('and the day before it is still the initial window', r.cp, 'initial', r);
+    await ctx.close();
+  }
+  {
+    // FLOOR: west of Greenwich the two rules agree, and the answer must not move.
+    const ctx = await tzb.newContext({ timezoneId: 'America/Denver' });
+    const pg = await ctx.newPage();
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    const r = await pg.evaluate(() => {
+      STATE.prep = { date: '2026-09-20', planFrom: '2026-08-01' };
+      normalizeState();
+      return { mid: prepMidISO() };
+    });
+    t.eq('FLOOR: the same block still lands on Aug 26 in Denver', r.mid, '2026-08-26', r);
+    await ctx.close();
+  }
+  {
+    const ctx = await tzb.newContext({ timezoneId: 'America/Denver' });
+    const pg = await ctx.newPage();
+    await pg.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg);
+    const r = await pg.evaluate(() => {
+      /* 0.5 cm/wk over a fortnight, 0.5 cm to go: one week, landing on Sep 1.
+         Dates in the PAST, because dedupeMeasurements() clamps a date ahead of
+         today back to today — the first version seeded a future row and the
+         check failed on correct code. */
+      STATE.profile.unit = 'cm'; STATE.profile.startWaist = 92; STATE.profile.goalWaist = 88.5;
+      STATE.measurements = [
+        { date: '2026-08-11', waist: 90 },
+        { date: '2026-08-25', waist: 89 },
+      ];
+      normalizeState();
+      const html = waistGoalHTML();
+      const m = /around <b>([^<]+)<\/b>/.exec(html);
+      const oldEta = new Date('2026-08-25'); oldEta.setDate(oldEta.getDate() + 7);
+      const last = STATE.measurements[STATE.measurements.length - 1];
+      return { eta: m ? m[1] : null, weeks: (/~(\d+) wk/.exec(html) || [])[1], oldDate: oldEta.getDate(),
+        lastDate: last && last.date, html: html.slice(0, 300) };
+    });
+    t.eq('guard: the seeded date survived the repair unclamped', r.lastDate, '2026-08-25', r);
+    t.eq('guard: the ETA really is one week out', r.weeks, '1', r);
+    t.eq('guard: the UTC rule really lands a day early west of Greenwich', r.oldDate, 31, r);
+    t.eq('a waist ETA that lands on Sep 1 says September, not August', r.eta, 'Sep 2026', r);
+    await ctx.close();
   }
 
   await tzb.close();
