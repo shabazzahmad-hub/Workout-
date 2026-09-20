@@ -10,7 +10,7 @@
    tiers are parsed by pulling every quoted asset name out of this file, comments
    included, so an illustrative path in a comment breaks CI by declaring
    an asset that does not exist. */
-const CACHE = 'coreforge-v514';
+const CACHE = 'coreforge-v515';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -286,6 +286,47 @@ self.addEventListener('message', e => {
       if (src && src.postMessage) src.postMessage(msg); else tellClients(msg);
     })());
   }
+});
+
+/* WITHOUT A HANDLER HERE, TAPPING A NOTIFICATION DOES NOTHING — the spec's
+   default is to just close it, never to focus or open a client. Every
+   reminder this app sends promises the athlete a screen: "Time to train",
+   "Log it on the Progress tab, under Body". A promise in UI text is a
+   specification, and nothing enforced this one at all.
+
+   The tag names which screen, because the body text already does — the
+   weekly check-in even names the sub-pane, so the hash carries it too
+   ("progress:body") for navToHash() on the page side to land on. Sending a
+   HASH rather than a full URL is what lets an ALREADY-OPEN tab jump there
+   with a postMessage instead of a reload, which would otherwise dump an
+   athlete mid-session out of whatever they were doing to answer a nudge. */
+const NOTIF_HASH = {
+  'coreforge-reminder': 'today',
+  'coreforge-test': 'today',
+  'coreforge-weekly': 'progress:body',
+  'coreforge-weekly-prep': 'progress:body',
+};
+self.addEventListener('notificationclick', e => {
+  const hash = NOTIF_HASH[e.notification.tag] || '';
+  e.notification.close();
+  const scope = self.registration.scope;
+  e.waitUntil((async () => {
+    /* includeUncontrolled reaches every window on the ORIGIN, not only ours —
+       the exact trap that made caches.keys() wipe a sibling app's offline
+       pack (v387, v513) and that made a bare navigation fetch serve the
+       Command app's page out of this cache (the fetch handler below). Only a
+       client whose URL starts with OUR scope is a tap that belongs here. */
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const mine = list.find(c => c.url.indexOf(scope) === 0);
+    if (mine) {
+      // A postMessage, not client.navigate() — a full navigate reboots the
+      // page and would end a live session for a tap that was only ever meant
+      // to change which tab is showing.
+      mine.postMessage({ type: 'cf-nav', hash });
+      return mine.focus();
+    }
+    return self.clients.openWindow(scope + '#' + hash);
+  })());
 });
 
 /* OUR assets are flat files in OUR scope directory, and the test for that has to

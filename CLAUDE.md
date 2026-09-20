@@ -22837,6 +22837,74 @@ Every other page this repo serves was loaded under the harness with error
 capture on — both legal pages and the Command app's own page — and came back
 clean: no errors, no bad responses, no overflow.
 
+## Tapping a notification did nothing (v515)
+
+A fresh axis: every push notification this app sends, against what tapping it
+actually does. `sw.js` had **no `notificationclick` handler at all**, and the
+spec's default for that is to just close the notification — never focus or
+open a client. Every reminder this app sends promises a screen: *"Time to
+train your core"*, *"Log it on the Progress tab, under Body"*. **A promise in
+UI text is a specification**, and nothing enforced this one at all.
+
+Measured: four distinct tags reach `showNotification()` —
+`coreforge-reminder`, `coreforge-test`, `coreforge-weekly`,
+`coreforge-weekly-prep` — and tapping any of them did nothing beyond
+dismissing it. The weekly one is the sharpest, because its own body text
+names a destination one layer deeper than the tab: *"the Progress tab, under
+Body"*, and landing on the tab without the pane is the v411 stale-pointer
+shape one layer down.
+
+**A postMessage, not `client.navigate()`.** An existing tab is messaged and
+focused rather than reloaded, because a full navigate reboots the page and
+would end a live session for a tap that was only ever meant to change which
+tab is showing. `navToHash(h)` is the one function both the page's own
+`hashchange` listener and the service worker's relay ask, so a hash arriving
+by either door lands the same way — the exact duplication this file's own
+`hashTab()` comment already named as a smell (*"written out by hand in two
+places... with nothing tying either copy to the buttons"*) would have become
+a third copy here if the routes had not been unified.
+
+**The hash carries a sub-pane too, as `tab:pane`.** `hashSub(tab,sub)` is a
+membership test against `PROGRESS_TABS`/`REF_TABS` — the only two tabs with a
+paned sub-nav — asked rather than restated, an inherited key refused exactly
+like `hashTab()`'s own junk case. Only the weekly check-in uses it today
+(`progress:body`), because it is the only notification whose own words
+promise a pane rather than a tab.
+
+**The origin-scoping rule, for the third time in this file.** v387 wiped a
+sibling app's cache this way, v513 did it again from the Command worker's own
+activate handler. `clients.matchAll({includeUncontrolled:true})` reaches
+every window on the ORIGIN, not only this scope, so a matched client is
+filtered to one whose URL starts with OUR OWN scope before it is trusted —
+the same guard that made those two fixes, asked a third time rather than
+forgotten a third time.
+
+**Half of this cannot be driven, and it is static for the honest reason.**
+`showNotification()`/`notificationclick` need OS-level notification
+permission, and this sandbox's headless Chromium refuses to grant it —
+measured under `grantPermissions()`, the launch-time `permissions` option,
+and `--headless=new` alike, `Notification.permission` reads `denied` every
+time. That is the same call this file already makes for a genuine
+network-level failure no fault injection can force: static, not behavioural,
+with the reason recorded rather than guessed at.
+
+**What IS driven is everything on the page side, including the ONE route
+that stands in for the SW's postMessage.** `navigator.serviceWorker` is a
+real `EventTarget`, so a synthetic `MessageEvent` dispatched on it reaches
+the exact production `message` listener a genuine relay would — not a
+re-implementation of the logic, the actual code. Six routes in: `navToHash()`
+called directly, an already-open tab needing only its pane to move, a junk
+pane that must not block the tab, a junk tab that is a complete no-op, a real
+`hashchange`, and that synthetic message dispatch.
+
+Eight mutants seeded on the new code, all caught by name: the scope filter
+dropped (caught by the origin-scoping check), `client.navigate()` swapped in
+for the postMessage+focus pair, the `openWindow` fallback pointed at the bare
+scope with no hash, `NOTIF_HASH` emptied (caught by the lockstep against the
+real tags `sendCoreNotif`/`fireProgressNotif` actually send), `hashSub`'s
+membership test dropped, the `else if(hs)render()` branch removed (the
+already-open-tab case), and `applyHashSub` never called at all.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
