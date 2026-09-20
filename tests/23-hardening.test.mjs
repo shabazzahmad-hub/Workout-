@@ -10492,6 +10492,167 @@ export default async function () {
     t.eq('FLOOR: and a view with no button is left where it was', nav.refused, 'fuel', nav);
   }
 
+  /* ---- TAPPING A NOTIFICATION DID NOTHING (v515) -------------------------
+     sw.js had NO notificationclick handler at all, and the spec's default for
+     that is to just close the notification — never focus or open a client.
+     Every reminder this app sends promises the athlete a screen ("Time to
+     train", "Log it on the Progress tab, under Body"), and tapping one did
+     not take them there. A promise in UI text is a specification.
+
+     A real showNotification()/notificationclick round trip needs OS-level
+     notification permission, and this sandbox's headless Chromium refuses to
+     grant it — Notification.permission reads 'denied' under grantPermissions(),
+     the launch-time permissions option, and --headless=new alike, all three
+     measured rather than assumed. That half is static, below, the same call
+     this file already makes for a network-level failure no fault injection
+     can force. What IS driven here is everything on the page side —
+     hashSub()/applyHashSub()/navToHash() — and the exact production 'message'
+     listener a real postMessage from the worker would reach, invoked by
+     dispatching a synthetic MessageEvent on navigator.serviceWorker (a real
+     EventTarget; dispatchEvent does not care whether the event came from a
+     worker or from here). */
+  {
+    // ---- hashSub: a membership test, same shape as hashTab above ----
+    const hs = await page.evaluate(() => ({
+      progressBody: hashSub('progress', 'body'),
+      progressJunk: hashSub('progress', 'helicopter'),
+      refMoves: hashSub('ref', 'moves'),
+      todayAnything: hashSub('today', 'body'),   // 'today' has no sub-nav at all
+      inherited: hashSub('progress', 'constructor'),
+      empty: hashSub('progress', ''),
+    }));
+    t.eq('hashSub accepts a real Progress pane', hs.progressBody, 'body', hs);
+    t.eq('and refuses a junk one', hs.progressJunk, '', hs);
+    t.eq('and accepts a real Reference pane', hs.refMoves, 'moves', hs);
+    t.eq('a tab with no sub-nav answers for nothing', hs.todayAnything, '', hs);
+    /* MEMBERSHIP, not truthiness — an inherited key is truthy on any plain
+       object, and PROGRESS_TABS/REF_TABS are asked with .some() rather than a
+       bracket lookup, so this was never actually reachable — pinned anyway,
+       the same discipline the hashTab junk case above already applies. */
+    t.eq('and an inherited key is not a pane', hs.inherited, '', hs);
+    t.eq('nor an empty one', hs.empty, '', hs);
+
+    // ---- navToHash: end to end, every route in ----
+    const nav = await page.evaluate(async () => {
+      const o = {};
+      const settle = () => new Promise(r => setTimeout(r, 60));
+      STATE.onboarded = true;
+
+      // 1. a hash naming a tab AND a pane, from a clean start
+      TAB = 'today'; PROGRESS_TAB = 'summary';
+      navToHash('progress:body');
+      o.tabAndPane = { tab: TAB, pane: PROGRESS_TAB };
+
+      // 2. already on the tab — only the pane still has to move, and it
+      //    has to move on the GLASS: applyHashSub() sets PROGRESS_TAB before
+      //    the branch that decides whether to repaint, so reading the
+      //    variable alone cannot tell a real repaint from a skipped one.
+      TAB = 'progress'; PROGRESS_TAB = 'summary'; render();
+      navToHash('progress:body');
+      const onBtn = document.querySelector('#v-progress .ttab.on');
+      o.paneOnlySwitch = { tab: TAB, pane: PROGRESS_TAB,
+        domOnclick: onBtn ? onBtn.getAttribute('onclick') : null };
+
+      // 3. a junk pane does not stop the tab opening
+      TAB = 'today'; PROGRESS_TAB = 'summary';
+      navToHash('progress:bogus');
+      o.junkPaneKeepsTab = { tab: TAB, pane: PROGRESS_TAB };
+
+      // 4. a junk tab is a complete no-op
+      TAB = 'today'; PROGRESS_TAB = 'summary';
+      navToHash('bogus:body');
+      o.junkTabNoOp = { tab: TAB, pane: PROGRESS_TAB };
+
+      // 5. driven through a REAL hashchange, not the helper called by hand
+      TAB = 'today';
+      location.hash = 'progress:body';
+      await settle();
+      o.viaHashchange = { tab: TAB, pane: PROGRESS_TAB };
+      location.hash = 'today';
+      await settle();
+
+      // 6. driven through the SAME 'message' listener a notificationclick's
+      //    postMessage relay reaches — this is the actual production code
+      //    the service worker's fix depends on, not a re-implementation of it.
+      TAB = 'today'; PROGRESS_TAB = 'summary';
+      navigator.serviceWorker.dispatchEvent(new MessageEvent('message',
+        { data: { type: 'cf-nav', hash: 'progress:body' } }));
+      o.viaSwMessage = { tab: TAB, pane: PROGRESS_TAB };
+
+      TAB = 'today'; PROGRESS_TAB = 'summary'; go('today');
+      return o;
+    });
+    t.eq('a fresh hash lands on the tab and the pane in one move',
+         nav.tabAndPane, { tab: 'progress', pane: 'body' }, nav);
+    t.eq('FLOOR: already being on the tab still moves the pane',
+         { tab: nav.paneOnlySwitch.tab, pane: nav.paneOnlySwitch.pane },
+         { tab: 'progress', pane: 'body' }, nav);
+    /* MEASURE THE PAYLOAD, NOT THE CONTAINER. applyHashSub() flips
+       PROGRESS_TAB unconditionally, so the assertion above alone is
+       satisfied by a mutant that drops the repaint entirely — the variable
+       moved and the athlete's screen never did. The tab strip's own "on"
+       button is what the athlete actually looks at. */
+    t.ok('and the rendered tab strip really repainted to Body, not just the variable',
+         (nav.paneOnlySwitch.domOnclick || '').includes("setProgressTab('body')"), nav);
+    t.eq('a junk pane does not stop the tab opening',
+         nav.junkPaneKeepsTab, { tab: 'progress', pane: 'summary' }, nav);
+    t.eq('FLOOR: a junk tab is a complete no-op',
+         nav.junkTabNoOp, { tab: 'today', pane: 'summary' }, nav);
+    t.eq('the real hashchange listener reaches the same route',
+         nav.viaHashchange, { tab: 'progress', pane: 'body' }, nav);
+    t.eq('and so does the real service-worker message listener — the exact ' +
+         'route a notificationclick relay actually takes',
+         nav.viaSwMessage, { tab: 'progress', pane: 'body' }, nav);
+  }
+
+  /* ---- THE SERVICE-WORKER SIDE OF THAT ROUTE IS STATIC (v515) ------------
+     showNotification()/notificationclick genuinely needs OS-level
+     notification permission, and this sandbox's headless Chromium refuses to
+     grant it under any of the three ways tried. Static, not behavioural — the
+     same call already made in this file for a network-level failure no fault
+     injection can force. */
+  {
+    const swSrc = readFileSync('sw.js', 'utf8');
+    const noCmt = swSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+    /* THE LOCKSTEP: every tag the app can actually SEND, read out of
+       index.html rather than restated here, must have a real destination in
+       NOTIF_HASH — a fifth tag added later and forgotten here would be
+       silent, the exact drift this repo's other registries keep having.
+       Excludes the two unrelated 'coreforge-…' strings that are filenames
+       being concatenated onto (a share-card PNG, a backup .json), never used
+       as a tag: both are followed immediately by '+', a real tag never is. */
+    const appSrc = readFileSync('index.html', 'utf8');
+    const realTags = [...new Set(
+      [...appSrc.matchAll(/'coreforge-[a-z-]+'(?!\s*\+)/g)].map(m => m[0].replace(/'/g, ''))
+    )];
+    t.ok('guard: the app really sends more than one distinct tag',
+         realTags.length >= 4, realTags);
+    const m = noCmt.match(/const NOTIF_HASH\s*=\s*\{([\s\S]*?)\};/);
+    t.ok('sw.js declares NOTIF_HASH', !!m, noCmt.slice(0, 120));
+    const mapped = m ? [...m[1].matchAll(/'([a-z0-9-]+)'\s*:/g)].map(x => x[1]) : [];
+    t.eq('every tag the app can actually send has a mapped destination',
+         realTags.filter(tg => !mapped.includes(tg)), [], { realTags, mapped });
+
+    const nc = noCmt.match(/self\.addEventListener\('notificationclick'[\s\S]*?\n\}\);/);
+    t.ok('notificationclick is registered', !!nc, noCmt.slice(0, 200));
+    const body = nc ? nc[0] : '';
+    t.ok('it closes the notification', /notification\.close\(\)/.test(body), body.slice(0, 400));
+    t.ok('the async work is pinned with waitUntil — same reasoning as cf-topup and cf-precache-status above: a worker with nothing in flight can be reclaimed mid-task',
+         /e\.waitUntil\(/.test(body), body.slice(0, 400));
+    /* THE ORIGIN-SCOPING RULE, for the third time in this file — v387 wiped a
+       sibling app's cache this way, v513 did it again from the Command
+       worker's own activate handler. includeUncontrolled reaches every window
+       on the ORIGIN, not only this scope, so only a client whose URL starts
+       with OUR OWN scope may be the tap this handler is answering. */
+    t.ok('a matched client is filtered to OUR OWN scope, not any window on the origin',
+         /c\.url\.indexOf\(scope\)\s*===\s*0/.test(body), body);
+    t.ok('an existing tab is messaged and focused, never reloaded — client.navigate() would end a live session for a tap that only ever meant to change tabs',
+         /postMessage\(\{[^)]*cf-nav/.test(body) && /\.focus\(\)/.test(body) && !/\.navigate\(/.test(body), body);
+    t.ok('with no client open, a new window opens at OUR scope plus the hash',
+         /clients\.openWindow\(scope \+ '#' \+ hash\)/.test(body), body);
+  }
+
   /* ---- EVERY THEME PAINTS EVERY PROPERTY IT IS ASKED FOR (v428) ----------
      applyTheme() reads five fields with NO fallback and writes each straight
      into a custom property. setProperty with an undefined value writes the

@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='514';
+const APP_VERSION='515';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -3786,6 +3786,41 @@ function hashTab(h){
     if(!h)return '';
     return $$('.nav button').some(b=>b.dataset.tab===h) ? h : '';
   }catch(e){return '';}
+}
+/* A hash may name a sub-pane too, as "tab:pane" — the one caller today is the
+   weekly check-in notification, whose own body text promises "the Progress
+   tab, under Body." Landing on the tab without the pane is the same
+   stale-pointer shape one layer down: only PROGRESS_TAB and REF_TAB currently
+   have a paned sub-nav (v312, v314), so those are the only two names this
+   answers for. hashSub is a membership test, same shape as hashTab above,
+   because a stray value here reaches PROGRESS_TAB/REF_TAB and both are read
+   by innerHTML through the strip. */
+function hashSub(tab,sub){
+  try{
+    if(!sub)return '';
+    if(tab==='progress')return PROGRESS_TABS.some(t=>t[0]===sub)?sub:'';
+    if(tab==='ref')return REF_TABS.some(t=>t[0]===sub)?sub:'';
+    return '';
+  }catch(e){return '';}
+}
+function applyHashSub(tab,sub){
+  const s=hashSub(tab,sub);if(!s)return;
+  if(tab==='progress')PROGRESS_TAB=s;else if(tab==='ref')REF_TAB=s;
+}
+/* Shared by the two routes a hash can arrive through AFTER boot — a
+   same-document hashchange (a home-screen shortcut, or a notification's own
+   `#tab` link, focusing an already-open tab) and a notification tap relayed
+   here by the service worker's postMessage. The boot-time read stays
+   separate below: it assigns TAB before the FIRST render() so the initial
+   paint never flashes Today before switching, which neither live route
+   needs — they are already past that first paint. */
+function navToHash(h){
+  try{
+    const parts=String(h||'').replace('#','').split(':'),ht=parts[0],hs=parts[1];
+    if(!(ht&&STATE.onboarded&&hashTab(ht)))return;
+    applyHashSub(ht,hs);
+    if(ht!==TAB)go(ht);else if(hs)render();
+  }catch(e){}
 }
 function go(tab){
   // Navigating away from the editor's host view ends the edit rather than
@@ -24455,6 +24490,7 @@ try{
     navigator.serviceWorker.addEventListener('message',ev=>{
       const d=ev.data||{};
       if(d.type==='cf-precache'){_packSeen=d;if(TAB==='guide')packRender(d);}
+      if(d.type==='cf-nav'&&d.hash)navToHash(d.hash);
     });
   }
 }catch(e){}
@@ -26926,15 +26962,13 @@ async function boot(){
   /* Android focuses an already-running PWA and navigates it, which is a
      same-document hash change — boot() never runs, so the Progress and Fuel
      home-screen shortcuts did nothing whenever the app was already open. */
-  window.addEventListener('hashchange',()=>{try{
-    const h=(location.hash||'').replace('#','');
-    if(h&&STATE.onboarded&&hashTab(h)&&h!==TAB)go(h);
-  }catch(e){}});
+  window.addEventListener('hashchange',()=>navToHash(location.hash));
   initBackButton();   // make the phone's Back button navigate instead of closing the app
   // Home-screen shortcuts (and any #tab link) open straight on that tab rather
   // than always landing on Today.
-  try{const h=(location.hash||'').replace('#','');
-    if(h&&STATE.onboarded&&hashTab(h))TAB=h;
+  try{
+    const parts=(location.hash||'').replace('#','').split(':'),ht=parts[0],hs=parts[1];
+    if(ht&&STATE.onboarded&&hashTab(ht)){TAB=ht;applyHashSub(ht,hs);}
   }catch(e){}
   render();
   if(TAB!=='today')go(TAB);
