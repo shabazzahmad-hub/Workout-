@@ -22905,6 +22905,82 @@ real tags `sendCoreNotif`/`fireProgressNotif` actually send), `hashSub`'s
 membership test dropped, the `else if(hs)render()` branch removed (the
 already-open-tab case), and `applyHashSub` never called at all.
 
+## The Alternator overwrote the count the circuit had just balanced (v516)
+
+v481 made `itemSets()` the one place the per-side rule lives, and eight builders
+ask it. `buildConcurrent()` (v477) did not need to ask — its strength half IS
+`buildWeightsSession()`, which already had. What it did instead was worse: the
+Alternator built each strength item as
+
+```js
+Object.assign({}, str[i], {sets:1, rest:0})
+```
+
+— **overwriting** the even count the circuit had just given it. `weightsPool()`
+requires `equip`, and two per-side movements carry it: the Balance Trainer Side
+Plank and the Medicine Ball Woodchopper. So an athlete who owns either can get
+one in the Alternator's strength half at one set: one side, and the format
+never repeats a movement to cover the other.
+
+**A builder that asks the rule is not safe if a later step overwrites the
+answer.** v481's sweep counted the builders that ASK `itemSets()`. It could not
+see a consumer that takes a correctly-built item and flattens one field. The
+question for this class is "who writes `sets` after the builder has", not "who
+builds items".
+
+The other two orders spread `...str` and change only the last item's `rest`, so
+they were never affected, and that is measured rather than assumed.
+
+**`itemSets(exId, 1)` is exactly 2 for a per-side movement whatever the easing
+state** — `evenSets(1, …)` floors at two in both directions — and exactly 1 for
+everything else. So the fix is deterministic and the ordinary Alternator is
+byte-identical.
+
+**The check stubs `concStrengthBlock()` and still drives `buildConcurrent()`**,
+the function that had the bug. `weightsPool()` picks at random, so waiting for
+it to land on a per-side movement is a check that passes on a coin flip. A
+guard pins that the trap is real: an athlete with a balance trainer really can
+be handed that movement.
+
+Three mutants, all caught by name: the flat `sets:1` put back, the override
+removed entirely, and `itemSets(…, 3)` — the over-eager twin, caught by the
+floor that a plain push-up stays at one set.
+
+### Two Dragon Flag videos, and the rule held
+
+Asked for a video of an exercise that is hard to read from a still. The
+Bent-Knee Dragon Flag was the pick: no press, and its point is the slow
+lowering, which no photo can show. **Two attempts, and neither drew it.**
+
+- The first was a **Glute Bridge** — feet planted on the mat the whole clip.
+  That was the prompt's fault: it said "his hips push upward", which describes
+  a glute bridge exactly, and never said the feet leave the floor. It named the
+  jackknife as the neighbour to avoid and missed the real one.
+- The second, with the feet-off-the-floor fact first and the glute bridge named
+  as the wrong move, drew a **bent-knee leg raise** for three seconds (hips and
+  back flat on the mat, a sharp bend at the hip) and then the glute bridge
+  again.
+
+**This exercise has TWO common neighbours**, and closing the door on one opened
+the other. That is v319's rule — ask whether a more common movement sits next
+door — with the wrinkle that there can be more than one. The house call stands:
+**a movement that fails twice is evidence about the movement**, so the still
+photo stays. The full straight-leg version is the more famous one and may have
+more footage behind it; untried.
+
+**No ffmpeg in this sandbox.** `pip install imageio-ffmpeg` brings a static
+binary; its path is printed by `imageio_ffmpeg.get_ffmpeg_exe()`. Read a
+contact sheet for the movement and one full-resolution frame for the file —
+the watermark was bottom-right in both clips, as it has been in every one.
+
+### And the harness trap, again, in my own command
+
+The first suite run was `timeout 300 node tests/run.mjs 23 2>&1 | tail -80`.
+Suite 23 alone takes **444 seconds**, so the timeout killed it, and the `tail`
+buffered everything, so the log was empty and said nothing about why. This file
+already says both things: write to a log file, never pipe through `tail`, and
+check the wall clock before choosing a limit.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
