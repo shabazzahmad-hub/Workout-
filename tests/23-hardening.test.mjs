@@ -13698,6 +13698,58 @@ export default async function () {
     await page.waitForTimeout(150);
   }
 
+  /* ---- THE ALTERNATOR CLOBBERED itemSets() (v516) -----------------------
+     buildConcurrent()'s 'alternate' order built each strength item as
+     Object.assign({}, str[i], {sets:1, rest:0}) — a flat 1, discarding
+     whatever itemSets() had already given it inside buildWeightsSession().
+     weightsPool() can hand concStrengthBlock() a PER-SIDE movement that
+     carries `equip` (btsideplank, mbchop are the two today), so one
+     appearance in the Alternator's loop was one SIDE, and nothing else in
+     the sequence ever repeats that same movement to cover the other — the
+     exact imbalance itemSets() exists to stop, on a session an athlete can
+     select from Special training ▸ Concurrent training ▸ The Alternator. */
+  {
+    const alt = await page.evaluate(() => {
+      const o = {};
+      const g0 = STATE.profile.gear.slice(), l0 = STATE.profile.limitations.slice();
+      /* GUARD: the trap is real. An athlete who owns a balance trainer really
+         can be handed this per-side movement by the strength half — this is
+         not a hypothetical shape. */
+      STATE.profile.gear = ['balancetrainer']; STATE.profile.limitations = [];
+      o.reallyReachable = weightsPool().indexOf('btsideplank') >= 0;
+      STATE.profile.gear = g0; STATE.profile.limitations = l0;
+
+      /* Stub concStrengthBlock() to hand buildConcurrent() — the function
+         that had the bug — a known mix, rather than hoping weightsPool()'s
+         own random pick lands on a per-side movement. buildConcurrent()
+         itself is still what runs and is still what is asserted on. */
+      const real = concStrengthBlock;
+      concStrengthBlock = () => [
+        { exId: 'btsideplank', unit: 'time', target: 20, rest: 45, sets: 1 },
+        { exId: 'pushup', unit: 'reps', target: 20, rest: 45, sets: 1 }
+      ];
+      try {
+        const plan = buildConcurrent('concAlt');
+        const bt = plan.items.find(m => m.exId === 'btsideplank');
+        const pu = plan.items.find(m => m.exId === 'pushup');
+        o.perSideSets = bt ? bt.sets : null;
+        o.twoSidedSets = pu ? pu.sets : null;
+        o.perSideRest = bt ? bt.rest : null;
+      } finally { concStrengthBlock = real; }
+      return o;
+    });
+    t.ok('guard: an athlete with a balance trainer really can be handed a per-side movement here',
+      alt.reallyReachable, String(alt.reallyReachable));
+    t.eq('the Alternator gives a per-side movement an EVEN set count, not a flat one',
+      alt.perSideSets, 2);
+    /* FLOOR: the ordinary two-sided case is byte-identical to before the fix
+       — a fix that stopped overriding sets at all would satisfy the per-side
+       assertion above (whatever concStrengthBlock() happened to hand it) and
+       turn every plain movement into a multi-set block inside the Alternator. */
+    t.eq('and a two-sided movement still gets exactly one set, unchanged', alt.twoSidedSets, 1);
+    t.eq('and the zero-rest rule is untouched', alt.perSideRest, 0);
+  }
+
   /* ---- EVERY SET, NOT ONE — the session card's own timer buttons ---------
      Reported three times: "after one set is done the timer starts immediately
      and then when the time is done to zero the app just stops, and you have to

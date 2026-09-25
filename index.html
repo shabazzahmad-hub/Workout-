@@ -2039,7 +2039,7 @@ const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,s
 
 /* App build version — shown in Settings so you can confirm you're on the latest.
    Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='515';
+const APP_VERSION='516';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -9538,10 +9538,18 @@ function buildConcurrent(format){
   if(!str.length||!end)return null;
   const bout=secs=>({exId:end.exId,unit:'time',target:secs,sets:1,rest:0});
   if(f.order==='alternate'){
+    /* itemSets(), not a bare 1. weightsPool() can hand concStrengthBlock() a
+       PER-SIDE movement with `equip` (btsideplank, mbchop are the two today),
+       and str[i].sets already carries the even count buildWeightsSession()
+       gave it via itemSets() for exactly that reason. Overwriting it with a
+       flat 1 undid that: one appearance in this loop is one SIDE, and the
+       Alternator never repeats a movement to cover the other one. itemSets()
+       still returns 1 for every two-sided movement, so nothing else here
+       changes. */
     const items=[];
     const n=Math.min(CONC_ALT_MAX,str.length);
     for(let i=0;i<n;i++){
-      items.push(Object.assign({},str[i],{sets:1,rest:0}));
+      items.push(Object.assign({},str[i],{sets:itemSets(str[i].exId,1),rest:0}));
       items.push(bout(CONC_ALT_BOUT_MIN*60));
     }
     return {items,endurance:end,format,strengthCount:n};
