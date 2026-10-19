@@ -3,24 +3,37 @@
    Run everything:      npm test
    Run one file:        npm test -- 03
    Keep going on fail:  npm test -- --all   (default is to run all anyway;
-                        this flag exists so `--bail` can be the opposite) */
+                        this flag exists so `--bail` can be the opposite)
+   One CI group:        npm test -- --group=2/4   (see tests/lib/groups.mjs) */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { reportLive } from './lib/harness.mjs';
+import { partition, partitionProblems } from './lib/groups.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const bail = args.includes('--bail');
 const filter = args.find(a => !a.startsWith('--'));
+const groupArg = (args.find(a => a.startsWith('--group=')) || '').slice(8);
 
-const files = fs.readdirSync(HERE)
-  .filter(f => f.endsWith('.test.mjs'))
-  .filter(f => !filter || f.includes(filter))
-  .sort();
+const all = fs.readdirSync(HERE).filter(f => f.endsWith('.test.mjs')).sort();
+let files = all.filter(f => !filter || f.includes(filter));
+
+/* A group runs only its share. The split is re-checked here, on the runner,
+   because a suite that lands in no group passes CI by never running. */
+if (groupArg) {
+  const m = /^(\d+)\/(\d+)$/.exec(groupArg);
+  if (!m || +m[1] < 1 || +m[1] > +m[2]) { console.error(`bad --group "${groupArg}" — expected k/n, e.g. 2/4`); process.exit(1); }
+  const bad = partitionProblems(all, +m[2]);
+  if (bad.length) { console.error('✗ the suite cannot be split safely:'); bad.forEach(b => console.error('  ' + b)); process.exit(1); }
+  const mine = partition(all, +m[2])[+m[1] - 1].files;
+  files = files.filter(f => mine.includes(f));
+  console.log(`Group ${m[1]} of ${m[2]}: ${mine.join(' ')}`);
+}
 
 if (!files.length) {
-  console.error('no test files matched' + (filter ? ` "${filter}"` : ''));
+  console.error('no test files matched' + (filter ? ` "${filter}"` : '') + (groupArg ? ` in group ${groupArg}` : ''));
   process.exit(1);
 }
 

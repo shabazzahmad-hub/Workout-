@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='517';
+const APP_VERSION='518';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -4199,6 +4199,83 @@ function initBackButton(){
 }
 
 /* ============================ RENDER ROUTER ============================ */
+/* ── Report a problem (v518) ────────────────────────────────────────────────
+   Settings had a link to the GitHub issues page and nothing else, so a report
+   arrived as "the app broke" with no version, no device and no error — and this
+   sandbox cannot reach a real phone to find out. The button now fills in the
+   facts the app already knows and opens a new issue with them.
+
+   PRIVACY IS THE WHOLE DESIGN. GitHub issues on this repository are PUBLIC, so
+   the report carries NOTHING about the athlete: no name, no body numbers, no
+   workouts, no photos, no API key. Only the app version, the screen, the
+   browser's own user-agent string, whether it is online, how many problems the
+   data check found (a count, never the data), and the error messages caught
+   this session. The athlete sees the exact text before anything leaves, and
+   nothing leaves until they press Submit on GitHub themselves.
+
+   The errors live in MEMORY only, never in STATE: they describe this session of
+   this tab, not the athlete, so they must not travel in a backup. */
+const REPORT_ISSUES_URL='https://github.com/shabazzahmad-hub/Workout-/issues/new';
+const APP_ERR_MAX=8;
+let _appErrors=[];
+function noteAppError(where,e){
+  try{
+    const msg=String(e&&e.message||e||'').replace(/\s+/g,' ').slice(0,160);
+    if(!msg)return;
+    _appErrors.push({at:new Date().toTimeString().slice(0,8),where:String(where).slice(0,24),msg});
+    if(_appErrors.length>APP_ERR_MAX)_appErrors.splice(0,_appErrors.length-APP_ERR_MAX);
+  }catch(e2){}
+}
+try{
+  window.addEventListener('error',ev=>noteAppError('error',ev&&(ev.error||ev.message)));
+  window.addEventListener('unhandledrejection',ev=>noteAppError('promise',ev&&ev.reason));
+}catch(e){}
+/* The text that goes into the issue. `what` is the athlete's own words. */
+function problemReportText(what){
+  const L=[];
+  const said=String(what||'').trim().slice(0,1500);
+  L.push('**What happened**',said||'(describe what you were doing and what went wrong)','','---','**Facts from the app** (nothing about you)');
+  L.push('- App: v'+APP_VERSION);
+  try{L.push('- Screen: '+TAB+' · '+innerWidth+'×'+innerHeight+' · '+((matchMedia('(display-mode: standalone)').matches||navigator.standalone)?'installed app':'browser tab'));}catch(e){}
+  try{L.push('- Online: '+(navigator.onLine===false?'no':'yes'));}catch(e){}
+  try{L.push('- Device: '+String(navigator.userAgent||'unknown').slice(0,220));}catch(e){}
+  let n='?';
+  try{const _ce=console.error;console.error=()=>{};try{n=validateData().length;}finally{console.error=_ce;}}catch(e){}
+  L.push('- Data check: '+n+' problem'+(n===1?'':'s')+' found');
+  L.push('','**Errors caught this session:** '+(_appErrors.length?'':'none'));
+  _appErrors.forEach(x=>L.push('- '+x.at+' ['+x.where+'] '+x.msg));
+  return L.join('\n');
+}
+function problemReportURL(what){
+  const title='Problem report — v'+APP_VERSION;
+  /* No cap is needed here: the description is held to 1500 characters, each
+     error to 160 and there are at most 8, so the longest possible address is a
+     few thousand characters (suite 26 measures the worst case). */
+  const body=problemReportText(what);
+  return REPORT_ISSUES_URL+'?title='+encodeURIComponent(title)+'&body='+encodeURIComponent(body);
+}
+function openReport(){
+  openSheet(`<h3>Report a problem</h3>
+    <div class="field"><label for="rpWhat">What happened?</label><textarea id="rpWhat" rows="4" maxlength="1500" placeholder="What you tapped, what you expected, what you saw instead" oninput="reportRefresh()"></textarea></div>
+    <div class="tiny muted" style="margin:8px 0 4px">This is exactly what will be sent:</div>
+    <pre id="rpPreview" aria-label="The report that will be sent" style="white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:200px;overflow:auto;margin:0;padding:10px;border-radius:10px;background:rgba(127,127,127,.12)"></pre>
+    <div class="note info" style="margin-top:10px">It opens a new issue on the app's GitHub page. <b>GitHub issues are public</b>, so the report carries <b>nothing about you</b> — no name, body numbers, workouts or photos. Nothing is sent until you press <b>Submit</b> on GitHub, and you need a free GitHub account to do that.</div>
+    <div class="btnrow" style="margin-top:10px"><button class="btn ghost sm" onclick="copyReport()">Copy text</button><button class="btn primary sm" onclick="sendReport()">Open on GitHub</button></div>`);
+  reportRefresh();
+}
+function reportRefresh(){
+  try{const w=$('#rpWhat'),p=$('#rpPreview');if(p)p.textContent=problemReportText(w?w.value:'');}catch(e){}
+}
+function sendReport(){
+  const w=$('#rpWhat');
+  try{window.open(problemReportURL(w?w.value:''),'_blank','noopener');}
+  catch(e){toast('Could not open GitHub — tap Copy text and paste it into an issue');}
+}
+function copyReport(){
+  const w=$('#rpWhat'),t=problemReportText(w?w.value:'');
+  try{navigator.clipboard.writeText(t).then(()=>toast('Report copied'),()=>toast('Could not copy — select the text and copy it'));}
+  catch(e){toast('Could not copy — select the text and copy it');}
+}
 function render(){
   /* One paint, one memo. Opened here and dropped in the `finally` below, so a
      rebuilt session is computed at most once per render and never survives it. */
@@ -4208,13 +4285,14 @@ function render(){
      stayed blank on every relaunch. Now we repair the state and retry once. */
   try{_render();}
   catch(e){
-    try{console.error('[render:recovered]',e);normalizeState();_render();toast('Recovered from a display error');}
+    try{console.error('[render:recovered]',e);noteAppError('render',e);normalizeState();_render();toast('Recovered from a display error');}
     catch(e2){
       // Views are marked .active — .view.on never matched, so this fell through to
       // document.body and deleted the topbar, nav, scrim, player and toast host.
       console.error('[render]',e,e2);
+      noteAppError('render',e2);
       const v=document.querySelector('.view.active')||document.getElementById('main')||document.body;
-      v.innerHTML=`<div class="note warn" style="margin:16px"><b>Something went wrong drawing this screen.</b><div class="tiny muted" style="margin-top:6px">${_ve(String(e2&&e2.message||e2).slice(0,120))}</div><button class="btn ghost sm" style="margin-top:10px" onclick="exportData()">⬇ Export a backup first</button><button class="btn primary sm" style="margin-top:6px" onclick="location.reload()">Reload</button></div>`;
+      v.innerHTML=`<div class="note warn" style="margin:16px"><b>Something went wrong drawing this screen.</b><div class="tiny muted" style="margin-top:6px">${_ve(String(e2&&e2.message||e2).slice(0,120))}</div><button class="btn ghost sm" style="margin-top:10px" onclick="exportData()">⬇ Export a backup first</button><button class="btn primary sm" style="margin-top:6px" onclick="location.reload()">Reload</button><button class="btn ghost sm" style="margin-top:6px" onclick="openReport()">💬 Report this problem</button></div>`;
     }
   }
   /* Dropped whatever happened above, including the error-boundary retry — a
@@ -21689,7 +21767,7 @@ function dietLabel(){const m=Object.fromEntries(DIET_OPTS);return m[STATE.nutrit
    to name every member. */
 function privacyNoteHTML(){
   return `<div class="note info" style="margin-top:12px">Your training data lives <b>only on this phone</b> — sessions, measurements, photos and backups are saved on the device and work offline. Nothing is uploaded, and there is no account.
-    <div class="tiny muted" style="margin-top:6px">Four optional extras can send something out, and every one is off until you switch it on. Two need your own API key: <b>image lookup</b> sends a food photo — or a screenshot from another tracker or your watch — to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. Two need no key: <b>searching packaged foods or scanning a barcode</b> sends only the search term or barcode (never anything about you) to the free Open Food Facts database, and <b>voice commands</b> open the microphone during rest so your browser’s speech service can listen for the one word that starts your next set. Leave all four off and nothing ever leaves the phone.</div>
+    <div class="tiny muted" style="margin-top:6px">Four optional extras can send something out, and every one is off until you switch it on. Two need your own API key: <b>image lookup</b> sends a food photo — or a screenshot from another tracker or your watch — to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. Two need no key: <b>searching packaged foods or scanning a barcode</b> sends only the search term or barcode (never anything about you) to the free Open Food Facts database, and <b>voice commands</b> open the microphone during rest so your browser’s speech service can listen for the one word that starts your next set. Leave all four off and nothing ever leaves the phone — except a <b>problem report</b>, and only if you choose to send one: <b>Report a problem</b> in Settings shows you the exact text first, and it carries nothing about you.</div>
     <div class="tiny muted" style="margin-top:6px"><a href="./privacy.html" target="_blank" rel="noopener" style="color:inherit">Read the full privacy policy →</a></div></div>`;
 }
 /* Shown when normalizeState() could not recognise the stored diet and fell
@@ -24411,7 +24489,8 @@ h+=`<div class="section-label">What changes, and when</div>
     <div class="tiny muted" style="margin-top:6px">If the version here doesn't match the latest, tap Check for update — it re-fetches the app and reloads. On the installed app, fully closing and reopening it also picks up new versions.</div>
     <div class="divider"></div>
     <div class="btnrow"><a class="btn ghost sm" style="width:100%" href="./privacy.html" target="_blank" rel="noopener">Privacy policy</a><a class="btn ghost sm" style="width:100%" href="./terms.html" target="_blank" rel="noopener">Terms of use</a></div>
-    <a class="btn ghost sm" style="width:100%;margin-top:8px" href="https://github.com/shabazzahmad-hub/Workout-/issues" target="_blank" rel="noopener">💬 Report a problem / get help</a>
+    <button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="openReport()">💬 Report a problem</button>
+    <a class="tiny muted" style="display:block;text-align:center;margin-top:6px;color:inherit" href="https://github.com/shabazzahmad-hub/Workout-/issues" target="_blank" rel="noopener">See reports already filed →</a>
   </div>`;
   h+=`<div class="center tiny muted" style="margin:20px 0">CoreForge v${APP_VERSION} · built for a strong midsection<br>${(n=>n?'Athlete: '+_ve(n)+' · ':'')(athleteName())}saved ${_ve(STATE._saved||todayISO())}</div>`;
   v.innerHTML=h;

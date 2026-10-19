@@ -2257,9 +2257,10 @@ export default async function run() {
     const voiceBullet = bulletOf('Voice commands');
     const offBullet   = bulletOf('Packaged-food');
     const azureBullet = bulletOf('Premium coach voice');
-    t.ok('guard: all four exception bullets were found by name',
-      [imageBullet, voiceBullet, offBullet, azureBullet].every(b => b.length > 80),
-      [imageBullet, voiceBullet, offBullet, azureBullet].map(b => b.length).join(','));
+    const reportBullet = bulletOf('Problem reports');
+    t.ok('guard: all five exception bullets were found by name',
+      [imageBullet, voiceBullet, offBullet, azureBullet, reportBullet].every(b => b.length > 80),
+      [imageBullet, voiceBullet, offBullet, azureBullet, reportBullet].map(b => b.length).join(','));
 
     const CAPS = [
       ['Open Food Facts', /world\.openfoodfacts\.org/,           offBullet,   /open\s*food\s*facts/i, /open\s*food\s*facts/i],
@@ -2268,6 +2269,10 @@ export default async function run() {
       ['watch shot',      /ACTIVITY_PROMPT/,                      imageBullet, /watch/i,               /watch/i],
       ['Azure voice',     /SPEECH_SDK_URL/,                       azureBullet, /azure/i,               /azure/i],
       ['microphone',      /webkitSpeechRecognition/,              voiceBullet, /microphone/i,          /microphone/i],
+      /* v518: the report opens a PRE-FILLED issue, and the address itself
+         carries the text to GitHub the moment it is opened — so it is a way
+         out even though the athlete still has to press Submit. */
+      ['problem report',  /issues\/new/,                          reportBullet, /public github/i,      /problem report/i],
     ];
     /* GUARD: a marker that no longer matches would let its whole row pass in
        silence, which is the drift this rule exists to stop. */

@@ -65,7 +65,7 @@ program, plus nutrition, progress tracking and a guided workout player.
 | `index.html` | The entire app — markup, styles, and one inline `<script>` |
 | `sw.js` | Service worker; `CACHE` name + the precache tiers |
 | `manifest.webmanifest` | PWA metadata |
-| `tests/` | 24 suites, run by `npm test` |
+| `tests/` | 26 suites, run by `npm test` — CI splits them across 4 runners |
 | `CLAUDE-HISTORY.md` | The round-by-round record. Read one `## ` section, never the file |
 | `ex-*.jpg`, `wu-*.jpg`, `cd-*.jpg` | Exercise artwork, 800×800 progressive JPEG |
 
@@ -23056,6 +23056,68 @@ Ten mutants, all caught by name. M9 — the call to the proof deleted — change
 output on an honest build, so only a source assertion on `tools/build.mjs` can
 see it; M5 was the mutant that moved the proof onto the final page.
 
+## A suite that lands in no group passes by never running (v518)
+
+CI took about 16 minutes on one runner. It now runs the suites on **four
+runners at once**, and `tests/lib/groups.mjs` decides which suite goes where.
+
+**The danger in any split is a suite that runs nowhere.** It passes CI by never
+running, and nothing on the summary page says so. So the split is computed from
+the files on disk rather than written per group, and it is checked twice: by
+`npm run check` (the build gate) and again by `run.mjs` on the runner before it
+starts. Every suite must land in exactly one group, no group may be empty, and
+the workflow's runner list must match the group count it passes — `[1,2,3]`
+with `/4` would never run group 4.
+
+**The weights are measured seconds and only affect balance.** A wrong weight
+makes one runner slower; it never drops a suite. A suite with no weight fails
+the gate, so a new suite is weighed the day it is added.
+
+**Suite 23 alone is ~450 s**, more than the other suites together divided by
+three, so it gets a runner of its own and sets the wall-clock time. Splitting a
+file is the only way below that.
+
+**The published copy is now built by its own job**, after every group passes,
+rather than at the end of the one test job. That is a second build from the one
+suite 25 drove, and it is safe because the build is deterministic (exact terser
+pin, fixed options) and `verifyBuilt()` runs on this build too.
+
+Seven mutants, all caught by name: a group dropped from the runner list, a
+missing weight, a stale weight, a broken lightest-group pick, a suite dropped
+from the split, the suite run whole, and a group count that disagrees.
+
+## A problem report that carries nothing about the athlete (v518)
+
+Settings had a bare link to the GitHub issues page, so a report arrived as "it
+broke" with no version, no device and no error — and this sandbox cannot reach
+a real phone to find out. **Report a problem** now opens a sheet that fills in
+what the app knows and opens a pre-filled new issue.
+
+**The issues on this repository are PUBLIC, so privacy is the whole design.**
+The report carries the version, the screen, the browser's own user-agent, the
+online state, a COUNT of validator problems (never the problems) and the error
+messages caught this session — and nothing about the athlete. The athlete sees
+the exact text first; nothing leaves until they press Submit on GitHub.
+
+**It is a way out of the device**, because the address itself carries the text
+to GitHub the moment it opens, so it is the fifth exception in `privacy.html`
+and the first-run note names it. v476's derived list has a row for it.
+
+**Errors live in memory only, never in `STATE`**, so no backup carries them: they
+describe this session of this tab. Caught by the real `error` and
+`unhandledrejection` listeners and by both arms of the render boundary, which
+now offers the report on its own failure screen. Capped at 8, newest kept.
+
+**Suite 26 seeds a secret in every place a careless report could reach** — a
+name, a body weight, a food, both API keys — and checks the PREVIEW and the
+ADDRESS separately, because the address is what actually leaves. Twelve
+mutants, all caught by name.
+
+**A cap that cannot be reached was removed rather than kept.** The first version
+capped the body at 6000 characters; the description is already held to 1500 and
+each error to 160, so the worst case is a few thousand. The check measures that
+worst case instead of guarding a branch no input reaches.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
@@ -23290,7 +23352,7 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
    `APP_VERSION` / `CACHE` lockstep, and lints the coach corpus against the
    stop-for-pain rule (no line may frame pain or a symptom as the thing to
    push through).
-2. `npm test` — all 25 suites green (suite 25 builds and drives the published copy), zero page errors, validator clean.
+2. `npm test` — all 26 suites green (suite 25 builds and drives the published copy), zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,
