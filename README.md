@@ -22,6 +22,11 @@ The app is deployed by GitHub Actions on every push to `main`
 passes. In the repository, **Settings → Pages → Source** must be set to
 **GitHub Actions**.
 
+What is published is not the source tree itself. `tools/build.mjs` makes a copy
+of the site with every developer comment removed from `index.html` (about 40% of
+the file), proves the copy is the same program, and the deploy publishes only
+that copy. Run `node tools/build.mjs` to make it locally in `dist/`.
+
 Once deployed it is live at:
 
 ```

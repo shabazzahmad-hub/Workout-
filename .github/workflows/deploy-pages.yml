@@ -33,8 +33,13 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # The copy the test job built and tested — not a checkout of the source.
+      # The source carries ~700 KB of developer comments a phone never needs.
+      - name: Fetch the published copy
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: site
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -44,8 +49,7 @@ jobs:
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # The app is static and lives at the repo root.
-          path: '.'
+          path: site
 
       - name: Deploy to GitHub Pages
         id: deployment

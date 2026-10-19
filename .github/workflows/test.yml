@@ -60,3 +60,20 @@ jobs:
 
       - name: Run the suite
         run: npm test
+
+      # Since v517 the site is not the source tree: the published index.html has
+      # every developer comment stripped (tools/build.mjs). The build proves it
+      # changed nothing else and suite 25 drives the result. This step builds the
+      # copy that is published and hands it to the deploy job, so what goes to a
+      # phone is byte-for-byte the copy this job built — not a second build.
+      - name: Build the published copy
+        run: node tools/build.mjs dist
+
+      - name: Hand the published copy to the deploy job
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
