@@ -26,9 +26,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Four runners at once (v518). One runner took ~16 minutes; suite 23 alone is
+  # ~7.5 of them, so it gets a runner of its own and the other 24 suites share
+  # three. tests/lib/groups.mjs decides the split, and `npm run check` fails if
+  # any suite lands in no group or two, or if this list stops matching the /4.
   test:
+    name: test (group ${{ matrix.group }} of 4)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false      # every group reports, so one red run names every failure
+      matrix:
+        group: [1, 2, 3, 4]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,14 +67,34 @@ jobs:
       - name: Parse check and version lockstep
         run: npm run check
 
-      - name: Run the suite
-        run: npm test
+      - name: Run this group's suites
+        run: npm test -- --group=${{ matrix.group }}/4
+
+  # Runs only once every group has passed. It needs no browser.
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
 
       # Since v517 the site is not the source tree: the published index.html has
       # every developer comment stripped (tools/build.mjs). The build proves it
-      # changed nothing else and suite 25 drives the result. This step builds the
-      # copy that is published and hands it to the deploy job, so what goes to a
-      # phone is byte-for-byte the copy this job built — not a second build.
+      # changed nothing else and suite 25 drives the result. This job builds the
+      # copy that is published and hands it to the deploy job. It is a separate
+      # build from the one suite 25 drove, and that is safe for two reasons: the
+      # build is deterministic (same source, the exact terser version
+      # package.json pins, no options that vary), and verifyBuilt() runs on THIS build
+      # too and throws rather than publish a copy that is not the same program.
       - name: Build the published copy
         run: node tools/build.mjs dist
 

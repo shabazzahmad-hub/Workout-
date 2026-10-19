@@ -164,3 +164,26 @@ if (EXT.length) {
   process.exit(1);
 }
 console.log('✓ external calls carry their timeouts, budget, retry classifier and diagnostic');
+
+/* 6. Every suite runs in exactly one CI group (v518). CI splits the suite across
+      runners, and a suite that lands in no group passes by never running —
+      nothing on the summary page would say so. Two halves: the split itself,
+      and the workflow's runner list matching the group count it passes. */
+{
+  const { partitionProblems } = await import('./lib/groups.mjs');
+  const suites = fs.readdirSync(path.join(ROOT, 'tests')).filter(f => f.endsWith('.test.mjs'));
+  const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/test.yml'), 'utf8');
+  const G = [];
+  const per = [...wf.matchAll(/--group=\$\{\{\s*matrix\.group\s*\}\}\/(\d+)/g)].map(m => +m[1]);
+  const list = /^\s*group:\s*\[([^\]]*)\]/m.exec(wf);
+  if (per.length !== 1) G.push(`test.yml must run the suite exactly once as --group=\${{ matrix.group }}/N (found ${per.length})`);
+  else if (!list) G.push('test.yml has no matrix group list');
+  else {
+    const n = per[0], got = list[1].split(',').map(x => +x.trim());
+    const want = Array.from({length: n}, (_, i) => i + 1);
+    if (got.join() !== want.join()) G.push(`test.yml runs groups [${got}] but splits the suite into ${n} — they must be exactly [${want}], or a group never runs`);
+    G.push(...partitionProblems(suites, n));
+  }
+  if (G.length) { console.error(`✗ ${G.length} CI split problem(s)`); G.forEach(o => console.error('  ' + o)); process.exit(1); }
+  console.log(`✓ every one of ${suites.length} suites runs in exactly one of ${per[0]} CI groups`);
+}
