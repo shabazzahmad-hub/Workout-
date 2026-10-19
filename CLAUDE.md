@@ -23118,6 +23118,25 @@ capped the body at 6000 characters; the description is already held to 1500 and
 each error to 160, so the worst case is a few thousand. The check measures that
 worst case instead of guarding a branch no input reaches.
 
+## The kettlebell swing came back right first time (v519)
+
+One prompt, one clip, correct movement: hips back with the bell between the
+legs, a hip snap to chest height, straight arms throughout, one person, no
+overhead finish. It fits the rule: no press inside the movement, and the close
+neighbours (a front raise, the overhead American swing, a squat-style swing)
+were each named in the prompt as the thing not to draw.
+
+**This clip carried no visible watermark** — the first of the series without
+one — so the crop (`crop=720:720:290:0`) was chosen for the framing alone: it
+keeps the hinge and the full arc of the bell, and drops a dark object at the
+left edge of the frame and the backdrop's right edge. Read one frame at full
+size before choosing the crop, not the contact sheet.
+
+**`pip install imageio-ffmpeg` may report it is installed while `import
+imageio_ffmpeg` fails**, because pip and python3 point at different
+interpreters. The binary is still on disk:
+`/usr/local/lib/python3.13/dist-packages/imageio_ffmpeg/binaries/ffmpeg-linux-x86_64-v7.0.2`.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
