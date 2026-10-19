@@ -9,6 +9,7 @@ import { serve, suite, ROOT } from './lib/harness.mjs';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import { buildIndex } from '../tools/build.mjs';
 
 export default async function run() {
   const t = suite('tiered precache');
@@ -141,8 +142,15 @@ export default async function run() {
     const ghosts = all.filter(u => u !== './' && u !== './index.html' && !fs.existsSync(path.join(ROOT, u.slice(2))));
     t.eq('no tier references a file that does not exist', ghosts, []);
 
-    /* The point of the split: what the install blocks on has to be small. */
+    /* The point of the split: what the install blocks on has to be small.
+
+       MEASURED ON WHAT IS PUBLISHED (v517). The phone downloads the built
+       index.html, which carries none of the developer comments, so that is
+       the size the budget is about. Measuring the source made this check trip
+       every few versions on 700 KB of comments no phone ever receives. */
+    const publishedIndex = Buffer.byteLength(await buildIndex(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')));
     const bytes = list => list.filter(u => u !== './').reduce((n, u) => {
+      if (u === './index.html') return n + publishedIndex;
       const f = path.join(ROOT, u.slice(2));
       return n + (fs.existsSync(f) ? fs.statSync(f).size : 0);
     }, 0);

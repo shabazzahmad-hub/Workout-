@@ -585,6 +585,17 @@
 <script id="state-data" type="application/json">{}</script>
 <script>
 "use strict";
+/* App build version — shown in Settings so you can confirm you're on the latest.
+   Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship.
+
+   IT LIVES AT THE TOP OF THE SCRIPT ON PURPOSE (v517). selfUpdate() asks the
+   server for only the first 64 KB of index.html and looks for this line in it.
+   It used to sit about 232 KB in, so on any server that honours a Range
+   request — GitHub Pages does — the pattern never matched and the update check
+   returned silently, for many versions. Updates still arrived through the
+   service worker, which is why nothing looked wrong. Suite 25 pins the line
+   inside the first 64 KB of the PUBLISHED file. */
+const APP_VERSION='517';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -2037,9 +2048,6 @@ const TESTS = [
    waiting to happen, and there is now a validator check that would catch it. */
 const TEST_DEFAULTS={plank:30,side:20,hollow:20,lower:10,dyn:16,push:10,pull:6,squat:18,power:7,stamina:12};
 
-/* App build version — shown in Settings so you can confirm you're on the latest.
-   Bump this in lockstep with the sw.js CACHE (coreforge-vNN) on every ship. */
-const APP_VERSION='516';
 /* ============================ STATE ============================ */
 const STORE_KEY='coreforge.v1';
 // A one-step rollback for importData() — a raw, un-mirrored localStorage entry,
@@ -24511,7 +24519,7 @@ async function selfUpdate(){
        simply returns 200 and the whole body, which still works. */
     const r=await fetchWithTimeout('./index.html?cb='+Date.now(),{cache:'no-store',headers:{'Range':'bytes=0-65535'}},6000);
     if(!r.ok&&r.status!==206)return;
-    const m=/APP_VERSION='(\d+)'/.exec(await r.text());
+    const m=/APP_VERSION=['"](\d+)['"]/.exec(await r.text());
     if(!m)return;
     const live=+m[1], mine=+APP_VERSION;
     if(!(live>mine))return;

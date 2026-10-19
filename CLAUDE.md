@@ -22981,6 +22981,81 @@ buffered everything, so the log was empty and said nothing about why. This file
 already says both things: write to a log file, never pipe through `tail`, and
 check the wall clock before choosing a limit.
 
+## The phone downloads a copy with no comments in it (v517)
+
+`index.html` had reached **1,863 KB of a 2,048 KB install budget**, growing
+5–10 KB a version, and the budget check tripped every few rounds (v352, v410,
+v465, v490, v503). **40% of the file was developer comments** — 706 KB of block
+comments — which a phone downloads on every install and update and never uses.
+
+`tools/build.mjs` publishes a copy with the comments removed: **1,863 KB to
+1,059 KB.** The source keeps every comment; only `dist/` loses them, and the
+deploy publishes only the copy the test job built (`upload-artifact` →
+`download-artifact`), never a second build.
+
+**terser runs with `compress:false` and `mangle:false`.** No expression is
+rewritten and no name is shortened — the markup calls handlers by name, so a
+renamed function is a dead button. `comments:false` is the one thing removed.
+
+### Every build proves it is the same program
+
+`verifyBuilt()` parses each script before and after and requires identical
+syntax trees once positions and the raw spelling of literals are set aside
+(`25000` reprints as `25e3`; `{tab:tab}` as `{tab}`; a string key as a bare
+one). Markup and stylesheet must come out byte-identical, and the data block
+untouched. A failed proof throws and nothing is published.
+
+**It runs on the FINAL page, not on each script as terser emits it.** The first
+version checked the terser output and then assembled the page, so a step
+between the two was invisible — the mutant that prefixed a `;` (which also
+silently drops `"use strict"` as a directive) escaped. Same lesson as *measure
+the payload, not the container*, applied to a proof.
+
+### The tree proof is blind to text the app READS, and the app reads one
+
+`selfUpdate()` fetches the live `index.html` and finds the version with
+`/APP_VERSION='(\d+)'/` — **single quotes**. terser's default reprints that line
+as `APP_VERSION="517"`. The syntax tree is identical, so the proof passed, and
+every installed phone — all carrying the single-quote pattern — would never have
+seen an update through that path. `quote_style:3` keeps every quote as written,
+and the pattern now accepts either.
+
+**A proof that the program is unchanged says nothing about code that treats the
+program as TEXT.** Before trusting a minifier, grep for the app reading its own
+source at runtime — `fetch('./index.html')` followed by a regex is the one here.
+
+### And the update check had been dead for many versions anyway
+
+`selfUpdate()` asks for **only the first 64 KB** (a `Range` header) and the
+version line sat **~232 KB in**. GitHub Pages honours `Range`, so the pattern
+never matched and the check returned silently. Updates kept arriving through the
+service worker's own byte-change check, which is why nothing looked wrong — the
+athlete's phone was on v516.
+
+**The harness server ignores `Range` and sends the whole file**, which is exactly
+why no browser check could see it. The version line now opens the script (~49 KB
+in, in both copies), and suite 25 reads the same first 64 KB the phone does,
+with BOTH patterns — this build's and the one every installed phone runs.
+
+### The 42 checks that read source text stay on the source
+
+Run against the published copy with `SERVE_ROOT=dist`, the full suite passed
+every behaviour check and failed 42 that read the app's own source in the page —
+comment positions, `Function.toString()`, `const EX = {` with its spaces. Those
+are about how the code is WRITTEN and the published copy is meant to read
+differently, so CI runs the full suite on the source and **suite 25** drives the
+published copy: a fresh install, every tab and pane, fifteen sheets, every
+handler name the markup calls, a whole guided session, the validator, the
+service worker. The install budget in suite 12 now measures the published
+`index.html`, which is the byte count a phone pays.
+
+**`serve(root)` takes a directory now**, and `SERVE_ROOT` points the whole
+suite at one — useful for exactly this kind of comparison.
+
+Ten mutants, all caught by name. M9 — the call to the proof deleted — changes no
+output on an honest build, so only a source assertion on `tools/build.mjs` can
+see it; M5 was the mutant that moved the proof onto the final page.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
@@ -23215,7 +23290,7 @@ Develop on `claude/abs-core-workout-app-3rr2ob`.
    `APP_VERSION` / `CACHE` lockstep, and lints the coach corpus against the
    stop-for-pain rule (no line may frame pain or a symptom as the thing to
    push through).
-2. `npm test` — all 24 suites green, zero page errors, validator clean.
+2. `npm test` — all 25 suites green (suite 25 builds and drives the published copy), zero page errors, validator clean.
    Mutation-test anything newly added.
 3. Bump `APP_VERSION` and `CACHE` together.
 4. `git fetch origin main && git checkout -B <branch> origin/main`, commit,

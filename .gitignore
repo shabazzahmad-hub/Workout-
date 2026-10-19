@@ -55,3 +55,6 @@ package-lock.json
 /mut*/
 /mut*.py
 /mut*.log
+
+# The published copy tools/build.mjs writes. Built in CI, never committed.
+/dist/

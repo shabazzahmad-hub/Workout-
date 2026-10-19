@@ -11,6 +11,11 @@ import {chromium} from 'playwright';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/* What the browser is served. Normally the source tree; SERVE_ROOT points it at
+   a published build instead (tools/build.mjs), so the suite can drive exactly
+   the copy a phone downloads. Source scans keep reading ROOT either way. */
+export const SERVE_ROOT = process.env.SERVE_ROOT ? path.resolve(process.env.SERVE_ROOT) : ROOT;
+
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2',
@@ -22,7 +27,7 @@ const TYPES = {
    the client. Service-worker fetches are not visible to Playwright's route
    interception, so a test that wants the worker to see a 500 has to get it from
    a real server. srv.fail500(pathSuffix) turns it on; srv.failClear() off. */
-export async function serve() {
+export async function serve(root = SERVE_ROOT) {
   let fail = null;
   const srv = http.createServer((rq, rs) => {
     let p = rq.url.split('?')[0];
@@ -35,9 +40,9 @@ export async function serve() {
       rs.statusCode = 500; rs.setHeader('content-type', 'text/html');
       rs.end('upstream boom'); return;
     }
-    // Never let a test reach outside the repo.
-    const file = path.join(ROOT, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
-    if (!file.startsWith(ROOT)) { rs.statusCode = 403; rs.end('no'); return; }
+    // Never let a test reach outside the served tree.
+    const file = path.join(root, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
+    if (!file.startsWith(root)) { rs.statusCode = 403; rs.end('no'); return; }
     fs.readFile(file, (e, d) => {
       if (e) { rs.statusCode = 404; rs.end('not found'); return; }
       rs.setHeader('content-type', TYPES[path.extname(file)] || 'text/plain');
