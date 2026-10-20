@@ -2628,6 +2628,9 @@ export default async function run() {
       o.withClip = read('kbswing');
       EX.revcrunch.demo = 'https://www.youtube.com/watch?v=abcDEF12345';
       o.picked = read('revcrunch');
+      openExerciseInfo('revcrunch');
+      o.pickedSearch = [...document.querySelectorAll('#sheet a[data-demo="search"]')].map(a => a.getAttribute('href'));
+      closeSheet();
       EX.revcrunch.demo = 'https://evil.example/x"><img src=x onerror=alert(1)>';
       o.junk = read('revcrunch');
       const ce = console.error; console.error = () => {};
@@ -2638,6 +2641,16 @@ export default async function run() {
       Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
       try { o.offline = read('revcrunch'); } finally { delete navigator.onLine; }
       o.inherited = demoLink('constructor');
+      /* EVERY movement with a demo carries its own name in the search — the
+         class, not one example, so a future name with odd characters is
+         covered the day it is added. */
+      o.swept = 0; o.noName = [];
+      Object.keys(EX).forEach(k => { const L = demoLink(k); if (!L) return; o.swept++;
+        const q = new URL(L.search).searchParams.get('search_query') || '';
+        if (!q.startsWith(EX[k].name)) o.noName.push(k); });
+      openExerciseInfo('revcrunch');
+      o.shown = (document.querySelector('#sheet a[data-demo]').nextElementSibling || {}).textContent || '';
+      closeSheet();
       return o;
     });
     t.ok('guard: the plain movement really has no clip and no picked link', d.noVid, '');
@@ -2662,6 +2675,13 @@ export default async function run() {
       !!d.offline && /offline/i.test(d.offline.note), JSON.stringify(d.offline));
     t.eq('FLOOR: and the link is still there for when it comes back', d.offline && d.offline.kind, 'search', '');
     t.eq('an inherited key is not an exercise', d.inherited, null, JSON.stringify(d.inherited));
+    t.ok('guard: the name sweep really read the library', d.swept > 100, String(d.swept));
+    t.eq('every demo search starts with the exercise name', d.noName, [], JSON.stringify(d.noName));
+    t.ok('and the sheet shows the words it will search for', d.shown.includes('“' + d.name + ' exercise proper form”'),
+      d.shown);
+    t.eq('a picked link still offers a search by name beside it', d.pickedSearch.length, 1, JSON.stringify(d.pickedSearch));
+    t.ok('and that search carries the name', (d.pickedSearch[0] || '').includes(encodeURIComponent(d.name)),
+      JSON.stringify(d.pickedSearch));
   }
 
   await browser.close(); srv.close();

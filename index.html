@@ -14684,12 +14684,20 @@ function exJointsHTML(exId){
    one that is not. A movement with its own clip in the library gets no link:
    the clip is the better demo and it works offline. */
 const DEMO_URL_RE=/^https:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)[A-Za-z0-9_-]{6,20}(?:[?&][A-Za-z0-9_=&.-]*)?$/;
+/* THE EXERCISE NAME IS ALWAYS IN THE SEARCH. The search words are built in
+   one place from the movement's own name, the sheet prints them so the
+   athlete knows what will be typed for them, and a PICKED link still carries
+   a second link that searches by name — so the name is one tap away on every
+   sheet that has a demo at all. */
+function demoQuery(exId){return exKnown(exId)?EX[exId].name+' exercise proper form':'';}
+function demoSearchURL(exId){return 'https://www.youtube.com/results?search_query='+encodeURIComponent(demoQuery(exId));}
 function demoLink(exId){
   if(!exKnown(exId))return null;
   const ex=EX[exId];
   if(ex.vid)return null;
-  if(typeof ex.demo==='string'&&DEMO_URL_RE.test(ex.demo))return {url:ex.demo,picked:true};
-  return {url:'https://www.youtube.com/results?search_query='+encodeURIComponent(ex.name+' exercise proper form'),picked:false};
+  const search=demoSearchURL(exId),query=demoQuery(exId);
+  if(typeof ex.demo==='string'&&DEMO_URL_RE.test(ex.demo))return {url:ex.demo,picked:true,search,query};
+  return {url:search,picked:false,search,query};
 }
 function exDemoHTML(exId){
   try{
@@ -14697,10 +14705,12 @@ function exDemoHTML(exId){
     /* navigator.onLine is read ONE-SIDED: false means no route at all, true
        means only that something is attached (v413). */
     const off=navigator.onLine===false;
+    const q=`<b>“${_ve(d.query)}”</b>`;
     const note=off?'You are offline. The demo needs a connection.'
-      :(d.picked?'A demo picked for this movement.':'Searches YouTube for this movement. The first result is not always the best demo.')+' Opens YouTube in a new tab, which needs a connection.';
+      :(d.picked?'A demo picked for this movement.':'Searches YouTube for '+q+'. The first result is not always the best demo.')+' Opens YouTube in a new tab, which needs a connection.';
+    const more=d.picked?`<a class="tiny" data-demo="search" style="display:block;margin-top:6px;color:inherit" href="${_ve(d.search)}" target="_blank" rel="noopener noreferrer">Or search YouTube for ${q}</a>`:'';
     return `<a class="btn ghost" data-demo="${d.picked?'picked':'search'}" style="margin-top:14px;display:block;text-align:center;text-decoration:none" href="${_ve(d.url)}" target="_blank" rel="noopener noreferrer">▶ Watch a demo on YouTube</a>
-    <div class="tiny muted" style="margin-top:6px">${note}</div>`;
+    <div class="tiny muted" style="margin-top:6px">${note}</div>${more}`;
   }catch(e){return '';}
 }
 function openExerciseInfo(exId){
