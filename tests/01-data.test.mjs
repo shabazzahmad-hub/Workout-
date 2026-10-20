@@ -2258,9 +2258,10 @@ export default async function run() {
     const offBullet   = bulletOf('Packaged-food');
     const azureBullet = bulletOf('Premium coach voice');
     const reportBullet = bulletOf('Problem reports');
-    t.ok('guard: all five exception bullets were found by name',
-      [imageBullet, voiceBullet, offBullet, azureBullet, reportBullet].every(b => b.length > 80),
-      [imageBullet, voiceBullet, offBullet, azureBullet, reportBullet].map(b => b.length).join(','));
+    const demoBullet = bulletOf('Exercise demos');
+    t.ok('guard: all six exception bullets were found by name',
+      [imageBullet, voiceBullet, offBullet, azureBullet, reportBullet, demoBullet].every(b => b.length > 80),
+      [imageBullet, voiceBullet, offBullet, azureBullet, reportBullet, demoBullet].map(b => b.length).join(','));
 
     const CAPS = [
       ['Open Food Facts', /world\.openfoodfacts\.org/,           offBullet,   /open\s*food\s*facts/i, /open\s*food\s*facts/i],
@@ -2273,6 +2274,9 @@ export default async function run() {
          carries the text to GitHub the moment it is opened — so it is a way
          out even though the athlete still has to press Submit. */
       ['problem report',  /issues\/new/,                          reportBullet, /public github/i,      /problem report/i],
+      /* v520: the demo button opens YouTube with the exercise's name in the
+         address — a way out the athlete chooses, so it is named like one. */
+      ['YouTube demo',    /youtube\.com\/results/,                 demoBullet,  /youtube/i,             /youtube demo/i],
     ];
     /* GUARD: a marker that no longer matches would let its whole row pass in
        silence, which is the drift this rule exists to stop. */
@@ -2602,6 +2606,82 @@ export default async function run() {
       scheme.light.scheme, 'light', JSON.stringify(scheme));
     t.eq('and the dark theme keeps the dark one', scheme.dark.scheme, 'dark',
       JSON.stringify(scheme));
+  }
+
+  /* ---- a demo link on the how-to sheet (v520)
+     Generated clips kept drawing a neighbour movement, so a movement with no
+     clip of its own links out to a real demo: a link picked for it if one
+     exists, otherwise a YouTube search for its own name. The SHEET is driven
+     and the rendered link read back, because the button is the route. */
+  {
+    const d = await page.evaluate(() => {
+      const o = {};
+      const link = () => document.querySelector('#sheet a[data-demo]');
+      const read = id => { openExerciseInfo(id); const a = link();
+        const note = a && a.nextElementSibling ? a.nextElementSibling.textContent : '';
+        const r = a ? { kind: a.dataset.demo, href: a.getAttribute('href'), target: a.target, rel: a.rel, note } : null;
+        closeSheet(); return r; };
+      o.noVid = !EX.revcrunch.vid && !EX.revcrunch.demo;
+      o.hasVid = !!EX.kbswing.vid;
+      o.search = read('revcrunch');
+      o.name = EX.revcrunch.name;
+      o.withClip = read('kbswing');
+      EX.revcrunch.demo = 'https://www.youtube.com/watch?v=abcDEF12345';
+      o.picked = read('revcrunch');
+      openExerciseInfo('revcrunch');
+      o.pickedSearch = [...document.querySelectorAll('#sheet a[data-demo="search"]')].map(a => a.getAttribute('href'));
+      closeSheet();
+      EX.revcrunch.demo = 'https://evil.example/x"><img src=x onerror=alert(1)>';
+      o.junk = read('revcrunch');
+      const ce = console.error; console.error = () => {};
+      try { o.junkErrs = validateData().filter(e => /^revcrunch: demo/.test(e)); } finally { console.error = ce; }
+      delete EX.revcrunch.demo;
+      const ce2 = console.error; console.error = () => {};
+      try { o.cleanErrs = validateData().filter(e => /demo/.test(e)); } finally { console.error = ce2; }
+      Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+      try { o.offline = read('revcrunch'); } finally { delete navigator.onLine; }
+      o.inherited = demoLink('constructor');
+      /* EVERY movement with a demo carries its own name in the search — the
+         class, not one example, so a future name with odd characters is
+         covered the day it is added. */
+      o.swept = 0; o.noName = [];
+      Object.keys(EX).forEach(k => { const L = demoLink(k); if (!L) return; o.swept++;
+        const q = new URL(L.search).searchParams.get('search_query') || '';
+        if (!q.startsWith(EX[k].name)) o.noName.push(k); });
+      openExerciseInfo('revcrunch');
+      o.shown = (document.querySelector('#sheet a[data-demo]').nextElementSibling || {}).textContent || '';
+      closeSheet();
+      return o;
+    });
+    t.ok('guard: the plain movement really has no clip and no picked link', d.noVid, '');
+    t.ok('guard: and the swing really has a clip', d.hasVid, '');
+    t.eq('a movement with no clip gets a YouTube search', d.search && d.search.kind, 'search', JSON.stringify(d.search));
+    t.ok('and the search is for that movement by name',
+      !!d.search && d.search.href.startsWith('https://www.youtube.com/results?search_query=') &&
+      d.search.href.includes(encodeURIComponent(d.name)), d.search && d.search.href);
+    t.ok('and it opens in a new tab, with no opener', !!d.search && d.search.target === '_blank' &&
+      /noopener/.test(d.search.rel) && /noreferrer/.test(d.search.rel), JSON.stringify(d.search));
+    t.ok('and it says it needs a connection', !!d.search && /connection/.test(d.search.note), d.search && d.search.note);
+    t.eq('FLOOR: a movement with its own clip gets no link', d.withClip, null, JSON.stringify(d.withClip));
+    t.eq('a picked link wins over the search', d.picked && d.picked.href, 'https://www.youtube.com/watch?v=abcDEF12345',
+      JSON.stringify(d.picked));
+    t.eq('and says it was picked', d.picked && d.picked.kind, 'picked', '');
+    t.eq('a picked link that is not a YouTube address is refused, and the search stands',
+      d.junk && d.junk.kind, 'search', JSON.stringify(d.junk));
+    t.ok('and it never reaches the page', !!d.junk && !/evil|onerror/.test(d.junk.href), d.junk && d.junk.href);
+    t.eq('and the validator names it', d.junkErrs.length, 1, JSON.stringify(d.junkErrs));
+    t.eq('FLOOR: the validator is clean once it is removed', d.cleanErrs, [], JSON.stringify(d.cleanErrs));
+    t.ok('offline, the sheet says the demo needs a connection',
+      !!d.offline && /offline/i.test(d.offline.note), JSON.stringify(d.offline));
+    t.eq('FLOOR: and the link is still there for when it comes back', d.offline && d.offline.kind, 'search', '');
+    t.eq('an inherited key is not an exercise', d.inherited, null, JSON.stringify(d.inherited));
+    t.ok('guard: the name sweep really read the library', d.swept > 100, String(d.swept));
+    t.eq('every demo search starts with the exercise name', d.noName, [], JSON.stringify(d.noName));
+    t.ok('and the sheet shows the words it will search for', d.shown.includes('“' + d.name + ' exercise proper form”'),
+      d.shown);
+    t.eq('a picked link still offers a search by name beside it', d.pickedSearch.length, 1, JSON.stringify(d.pickedSearch));
+    t.ok('and that search carries the name', (d.pickedSearch[0] || '').includes(encodeURIComponent(d.name)),
+      JSON.stringify(d.pickedSearch));
   }
 
   await browser.close(); srv.close();

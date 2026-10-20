@@ -23137,6 +23137,24 @@ imageio_ffmpeg` fails**, because pip and python3 point at different
 interpreters. The binary is still on disk:
 `/usr/local/lib/python3.13/dist-packages/imageio_ffmpeg/binaries/ffmpeg-linux-x86_64-v7.0.2`.
 
+## A demo link where a generated clip kept failing (v520)
+
+The Dead Bug and the Hollow Rock both came back from the video generator as a
+leg raise that turned into the other one, twice each. So a movement with no
+clip of its own gets a **Watch a demo on YouTube** link on its how-to sheet:
+a link picked for it (`ex.demo`) if one exists, otherwise a YouTube search for
+its own name, which needs no curation and cannot rot.
+
+- **On the how-to sheet, never in the player.** Leaving the app mid-set is the
+  reclaimed-tick case v350, v375 and v425 each had to rescue.
+- **A picked link must match `DEMO_URL_RE`**, fully anchored, and
+  `validateData()` refuses one that does not. A junk one falls back to the
+  search rather than reaching the page.
+- **It is a way out of the device**, so it is the sixth exception in
+  `privacy.html` and the first-run note names it. v476's derived list has a row.
+- **Generate each video in a NEW chat.** The Hollow Rock clip carried the Dead
+  Bug from the request before it — the Windmill/Cossack lesson again.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

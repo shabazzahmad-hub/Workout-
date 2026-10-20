@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='519';
+const APP_VERSION='520';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -14666,6 +14666,53 @@ function exJointsHTML(exId){
     return h;
   }catch(e){return '';}
 }
+/* A DEMO VIDEO FOR A MOVEMENT THAT HAS NONE OF ITS OWN (v520). Generated
+   clips kept drawing a more common neighbour instead of the movement asked
+   for — the Dead Bug and the Hollow Rock both came back as a leg raise that
+   turned into the other — so the how-to sheet links out to a real demo.
+
+   ON THE HOW-TO SHEET, NEVER IN THE MIDDLE OF A SET. Leaving the app mid-set
+   is the reclaimed-tick case v350, v375 and v425 each had to rescue, YouTube
+   needs a connection this app does not, and a video can open on an ad. The
+   athlete learns the move before the session; the player is untouched.
+
+   TWO SOURCES, ONE ANSWER. A link the athlete picked (ex.demo) wins; every
+   other movement gets a YouTube SEARCH for its own name, which needs no
+   curation and cannot rot. The picked link must be a YouTube watch, shorts or
+   youtu.be address and nothing else — DEMO_URL_RE is fully anchored, so an
+   address cannot carry a quote or a stray host — and validateData() refuses
+   one that is not. A movement with its own clip in the library gets no link:
+   the clip is the better demo and it works offline. */
+const DEMO_URL_RE=/^https:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)[A-Za-z0-9_-]{6,20}(?:[?&][A-Za-z0-9_=&.-]*)?$/;
+/* THE EXERCISE NAME IS ALWAYS IN THE SEARCH. The search words are built in
+   one place from the movement's own name, the sheet prints them so the
+   athlete knows what will be typed for them, and a PICKED link still carries
+   a second link that searches by name — so the name is one tap away on every
+   sheet that has a demo at all. */
+function demoQuery(exId){return exKnown(exId)?EX[exId].name+' exercise proper form':'';}
+function demoSearchURL(exId){return 'https://www.youtube.com/results?search_query='+encodeURIComponent(demoQuery(exId));}
+function demoLink(exId){
+  if(!exKnown(exId))return null;
+  const ex=EX[exId];
+  if(ex.vid)return null;
+  const search=demoSearchURL(exId),query=demoQuery(exId);
+  if(typeof ex.demo==='string'&&DEMO_URL_RE.test(ex.demo))return {url:ex.demo,picked:true,search,query};
+  return {url:search,picked:false,search,query};
+}
+function exDemoHTML(exId){
+  try{
+    const d=demoLink(exId);if(!d)return '';
+    /* navigator.onLine is read ONE-SIDED: false means no route at all, true
+       means only that something is attached (v413). */
+    const off=navigator.onLine===false;
+    const q=`<b>“${_ve(d.query)}”</b>`;
+    const note=off?'You are offline. The demo needs a connection.'
+      :(d.picked?'A demo picked for this movement.':'Searches YouTube for '+q+'. The first result is not always the best demo.')+' Opens YouTube in a new tab, which needs a connection.';
+    const more=d.picked?`<a class="tiny" data-demo="search" style="display:block;margin-top:6px;color:inherit" href="${_ve(d.search)}" target="_blank" rel="noopener noreferrer">Or search YouTube for ${q}</a>`:'';
+    return `<a class="btn ghost" data-demo="${d.picked?'picked':'search'}" style="margin-top:14px;display:block;text-align:center;text-decoration:none" href="${_ve(d.url)}" target="_blank" rel="noopener noreferrer">▶ Watch a demo on YouTube</a>
+    <div class="tiny muted" style="margin-top:6px">${note}</div>${more}`;
+  }catch(e){return '';}
+}
 function openExerciseInfo(exId){
   const ex=EX[exId];
   openSheet(`
@@ -14680,6 +14727,7 @@ function openExerciseInfo(exId){
     <div class="section-label">Avoid these mistakes</div>
     <ul class="cuelist bad">${ex.mistakes.map(c=>`<li>${c}</li>`).join('')}</ul>
     ${exJointsHTML(exId)}
+    ${exDemoHTML(exId)}
     <button class="btn ghost" style="margin-top:14px" onclick="speakExerciseCues('${exId}')">🔊 Hear coaching cues</button>
     <button class="btn ghost" style="margin-top:8px" onclick="closeSheet()">Close</button>
   `);
@@ -21767,7 +21815,7 @@ function dietLabel(){const m=Object.fromEntries(DIET_OPTS);return m[STATE.nutrit
    to name every member. */
 function privacyNoteHTML(){
   return `<div class="note info" style="margin-top:12px">Your training data lives <b>only on this phone</b> — sessions, measurements, photos and backups are saved on the device and work offline. Nothing is uploaded, and there is no account.
-    <div class="tiny muted" style="margin-top:6px">Four optional extras can send something out, and every one is off until you switch it on. Two need your own API key: <b>image lookup</b> sends a food photo — or a screenshot from another tracker or your watch — to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. Two need no key: <b>searching packaged foods or scanning a barcode</b> sends only the search term or barcode (never anything about you) to the free Open Food Facts database, and <b>voice commands</b> open the microphone during rest so your browser’s speech service can listen for the one word that starts your next set. Leave all four off and nothing ever leaves the phone — except a <b>problem report</b>, and only if you choose to send one: <b>Report a problem</b> in Settings shows you the exact text first, and it carries nothing about you.</div>
+    <div class="tiny muted" style="margin-top:6px">Four optional extras can send something out, and every one is off until you switch it on. Two need your own API key: <b>image lookup</b> sends a food photo — or a screenshot from another tracker or your watch — to Google Gemini, and the <b>premium coach voice</b> sends the line being spoken to Microsoft Azure. Two need no key: <b>searching packaged foods or scanning a barcode</b> sends only the search term or barcode (never anything about you) to the free Open Food Facts database, and <b>voice commands</b> open the microphone during rest so your browser’s speech service can listen for the one word that starts your next set. Leave all four off and nothing ever leaves the phone — except two things you choose to open: a <b>problem report</b>, where <b>Report a problem</b> in Settings shows you the exact text first and it carries nothing about you, and a <b>YouTube demo</b>, where tapping <b>Watch a demo</b> on an exercise opens YouTube with that exercise's name.</div>
     <div class="tiny muted" style="margin-top:6px"><a href="./privacy.html" target="_blank" rel="noopener" style="color:inherit">Read the full privacy policy →</a></div></div>`;
 }
 /* Shown when normalizeState() could not recognise the stored diet and fell
@@ -26466,6 +26514,8 @@ function validateData(){
       errs.push(k+': base '+e.base+' exceeds its own repCap '+e.repCap);
     if(e.unit==='time'&&e.repCap)errs.push(k+': repCap on a timed hold is dead');
     if(e.equip&&e.equip.length&&!e.pattern)errs.push(k+': has equip but no pattern — unreachable in the Weights circuit');
+    if(e.demo!==undefined&&!(typeof e.demo==='string'&&DEMO_URL_RE.test(e.demo)))
+      errs.push(k+': demo is not a YouTube watch, shorts or youtu.be address');
     /* PRESENCE IS NOT MEMBERSHIP. A pattern the circuit never asks for is
        exactly as unreachable as no pattern at all, and the rule above passes
        it. Checked for every exercise, not only geared ones, so an invented
