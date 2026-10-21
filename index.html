@@ -7155,7 +7155,6 @@ function setForceResultQuiet(id,n){
 }
 function openForceDate(ev){
   const key=PREP_EVENT_KEYS.includes(ev)?ev:prepEvent();
-  const def=PREP_EVENTS[key];
   /* ONE BLOCK AT A TIME, said BEFORE the save rather than discovered after. */
   const other=prep().date&&prepEvent()!==key;
   openSheet(`
