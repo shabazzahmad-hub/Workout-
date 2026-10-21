@@ -7468,6 +7468,145 @@ export default async function run() {
     await ctx.close();
   }
 
+  /* ---- v521: BMQ prep -----------------------------------------------------
+     The prep block was aimed at one day, the FORCE Evaluation. An athlete who
+     has passed FORCE and is preparing for Basic Military Qualification needs
+     the same progression aimed at a different day. The date stays one field;
+     `prep.event` says what the day IS, and every sentence that named "your
+     evaluation" now asks it. Its own page: the suite's first browser is closed
+     by now, and each block builds the state it asserts on. */
+  {
+    const ctx521 = await tzb.newContext();
+    const pg521 = await ctx521.newPage();
+    const perr521 = [];
+    pg521.on('pageerror', e => perr521.push(String(e).slice(0, 200)));
+    await pg521.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg521);
+    await seedAthlete(pg521);
+    const r = await pg521.evaluate(() => {
+      const o = {};
+      const sheetTxt = () => ((document.querySelector('#sheet') || {}).textContent || '').replace(/\s+/g, ' ');
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return localISO(x); };
+      STATE.prep = {}; STATE.profile.limitations = []; STATE.profile.tightSpace = false;
+      STATE.profile.gear = ['bar', 'sandbag', 'ruck', 'bench'];
+      o.reg = typeof PREP_EVENTS === 'object' && PREP_EVENT_KEYS.join(',');
+      o.absentIsForce = prepEvent();
+      // no date yet
+      openBmqPrep();
+      o.noDateNote = !!document.querySelector('#sheet [data-bmqdate="none"]');
+      o.weekRows = document.querySelectorAll('#sheet [data-bmqday]').length;
+      o.tile = altSessionHTML().includes('onclick="openBmqPrep()"');
+      // set it through the real sheet
+      openForceDate('bmq');
+      o.dateLabel = ((document.querySelector('label[for="fq-date"]') || {}).textContent || '');
+      o.noReplaceWarn = !document.querySelector('[data-replaces]');
+      document.querySelector('#fq-date').value = iso(110);
+      saveForceDate('bmq');
+      o.event = STATE.prep.event; o.date = STATE.prep.date; o.planFrom = STATE.prep.planFrom; o.today = todayISO();
+      o.reopenedBmq = /BMQ prep/.test(sheetTxt());
+      o.setNote = (document.querySelector('#sheet [data-bmqdate="set"]') || {}).textContent || '';
+      o.paced = !enduranceWeek().noDate;
+      const seg = briefSegments().find(s => /BMQ/.test(s.title || ''));
+      o.briefTitle = seg && seg.title; o.briefSay = seg && seg.say;
+      o.briefNoEval = !briefSegments().some(s => /your evaluation/.test(s.say || ''));
+      openForcePrep();
+      o.forceOther = !!document.querySelector('#sheet [data-otherblock]');
+      o.forceNoCountdown = !/weeks? to go/.test(sheetTxt());
+      // taper: two weeks out
+      STATE.prep.date = iso(10);
+      o.taperPhase = prepPhase();
+      o.banner = deloadBanner();
+      // items
+      o.a = bmqItems('strA'); o.b = bmqItems('strB');
+      o.bHasBag = o.b.some(i => i.exId === 'sbaglift') && o.b.some(i => i.exId === 'sbagshuttle');
+      STATE.profile.gear = [];
+      o.bNoBag = bmqItems('strB').map(i => i.exId);
+      o.aNoBar = bmqItems('strA').map(i => i.exId);
+      o.allOwned = [...o.bNoBag, ...o.aNoBar].every(k => hasGearFor(k));
+      STATE.profile.limitations = ['shoulder', 'wrist'];
+      const flagged = [...bmqItems('strA'), ...bmqItems('strB')].map(i => i.exId);
+      o.flaggedRisky = flagged.filter(k => jointRisky(k, ['shoulder', 'wrist']));
+      o.flaggedCount = flagged.length;
+      STATE.profile.limitations = []; STATE.profile.gear = ['bar', 'sandbag', 'ruck', 'bench'];
+      o.unique = [o.a, o.b].every(l => new Set(l.map(i => i.exId)).size === l.length);
+      o.realNumbers = [...o.a, ...o.b].every(i => i.target > 0 && i.sets > 0 && i.rest > 0);
+      // a session is a bonus: it opens free and moves nothing
+      const ptr = STATE.progressPtr;
+      startBmqSession('strA');
+      o.playerFree = !!(PLAYER && PLAYER.free); o.playerItems = PLAYER ? PLAYER.items.length : 0;
+      try { playerTeardown(); } catch (e) {}
+      o.ptrSame = STATE.progressPtr === ptr;
+      // switching to FORCE is a new block, and the sheet said so first
+      STATE.prep.date = iso(110); STATE.prep.planFrom = iso(-40);
+      openForceDate('force');
+      o.replaceWarn = !!document.querySelector('[data-replaces]');
+      o.forceFieldBlank = document.querySelector('#fq-date').value === '';
+      document.querySelector('#fq-date').value = iso(60);
+      saveForceDate('force');
+      o.forceEventGone = STATE.prep.event === undefined;
+      o.forceNewBlock = STATE.prep.planFrom === todayISO();
+      o.forceEnd = enduranceHTML();
+      // repair
+      STATE.prep.event = 'zzz'; normalizeState(); o.junkDropped = STATE.prep.event === undefined;
+      STATE.prep.event = 'constructor'; normalizeState(); o.inheritedDropped = STATE.prep.event === undefined;
+      STATE.prep.event = 'bmq'; normalizeState(); o.bmqKept = STATE.prep.event;
+      // clear from BMQ returns to BMQ and drops the event
+      clearForceDate();
+      o.clearGone = STATE.prep.event === undefined && STATE.prep.date === undefined;
+      o.clearHome = /BMQ prep/.test(sheetTxt());
+      // floor: FORCE with no date still says test date
+      o.forceNoDate = enduranceHTML();
+      try { closeSheet(); } catch (e) {}
+      STATE.prep = {}; save();
+      return o;
+    });
+    t.eq('guard: the registry names both days', r.reg, 'force,bmq', r);
+    t.eq('an existing prep block with no event reads as FORCE', r.absentIsForce, 'force', r);
+    t.ok('BMQ prep with no date asks for one', r.noDateNote, r);
+    t.eq('the week lists five sessions', r.weekRows, 5, r);
+    t.ok('Today offers a BMQ prep tile', r.tile, r);
+    t.ok('the date sheet calls it the BMQ start date', /BMQ start date/.test(r.dateLabel), r);
+    t.ok('setting the first date warns about nothing', r.noReplaceWarn, r);
+    t.eq('saving stores the event', r.event, 'bmq', r);
+    t.ok('and starts the block today', r.planFrom === r.today, r);
+    t.ok('and lands back on BMQ prep, not FORCE', r.reopenedBmq, r);
+    t.ok('the countdown names BMQ in weeks', /\d+ weeks to BMQ/.test(r.setNote), r);
+    t.ok('the running and the ruck are paced to it', r.paced, r);
+    t.eq('the spoken brief titles it the BMQ start date', r.briefTitle, 'Your BMQ start date', r);
+    t.ok('and counts down to BMQ', /from BMQ/.test(r.briefSay || ''), r);
+    t.ok('and never says "your evaluation"', r.briefNoEval, r);
+    t.ok('FORCE prep says the block is aimed at BMQ', r.forceOther, r);
+    t.ok('and does not count down to a FORCE test that is not set', r.forceNoCountdown, r);
+    t.eq('guard: ten days out is the taper', r.taperPhase, 'taper', r);
+    t.ok('the taper banner says BMQ is close', /BMQ is close/.test(r.banner || ''), r);
+    t.ok('with a sandbag, Strength B lifts and carries it', r.bHasBag, r);
+    t.ok('with no sandbag, Strength B hands out no sandbag work', !r.bNoBag.some(k => /^sbag/.test(k)), r);
+    t.eq('and still fills all five slots', r.bNoBag.length, 5, r);
+    t.eq('without the bag, no movement is handed out twice', new Set(r.bNoBag).size, r.bNoBag.length, r);
+    t.ok('the crawl fills one slot and the plank the next', r.bNoBag.includes('bearcrawl') && r.bNoBag.includes('plank'), r);
+    t.ok('with no bar, Strength A rows on a towel', r.aNoBar.includes('towelrow') && !r.aNoBar.includes('invertedrow'), r);
+    t.ok('every movement handed out is one the athlete has kit for', r.allOwned, r);
+    t.ok('guard: the flagged sessions still have movements', r.flaggedCount >= 8, r);
+    t.eq('no movement loads a joint the athlete flagged', r.flaggedRisky, [], r);
+    t.ok('no session repeats a movement', r.unique, r);
+    t.ok('every item is sized with real numbers', r.realNumbers, r);
+    t.ok('a BMQ session opens as a bonus session', r.playerFree && r.playerItems >= 5, r);
+    t.ok('and does not move the program', r.ptrSame, r);
+    t.ok('setting a FORCE date over a BMQ one warns first', r.replaceWarn, r);
+    t.ok('and does not pre-fill the BMQ date as the test date', r.forceFieldBlank, r);
+    t.ok('saving it switches the block back to FORCE', r.forceEventGone, r);
+    t.ok('as a new block, counted from today', r.forceNewBlock, r);
+    t.ok('FLOOR: the FORCE plan is still a plan', !/Set your/.test(r.forceEnd), r);
+    t.ok('a junk event is dropped at boot', r.junkDropped, r);
+    t.ok('an inherited key is not an event', r.inheritedDropped, r);
+    t.eq('FLOOR: a real event survives the boot', r.bmqKept, 'bmq', r);
+    t.ok('clearing the date drops the event with it', r.clearGone, r);
+    t.ok('and returns to the BMQ screen', r.clearHome, r);
+    t.ok('FLOOR: with no block, the plan still asks for a test date', /Set your test date/.test(r.forceNoDate), r);
+    t.eq('the BMQ block throws no page errors', perr521, []);
+    await ctx521.close();
+  }
+
   await tzb.close();
 
   srv.close();

@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='520';
+const APP_VERSION='521';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -6352,6 +6352,130 @@ function prepPhaseNote(phase){
   const n=prepPathDef().notes||PREP_PHASE_NOTE;
   return n[phase]||'';
 }
+/* WHAT THE BLOCK IS FOR. The prep block — the date, the running plan, the
+   ruck ladder, the sharpen finisher and the taper — was written for the FORCE
+   Evaluation, and every sentence said "test date" and "your evaluation". An
+   athlete who has PASSED FORCE and is preparing for Basic Military
+   Qualification needs exactly the same progression aimed at a different day,
+   so the date stays one field and this says what the day IS. Absent reads as
+   FORCE, which is what every phone carrying a prep block already means.
+
+   ONE BLOCK AT A TIME. Two dates would mean two running plans and two ruck
+   ladders landing on the same legs — the stacking footLoadHTML() exists to
+   warn about. So setting a date for one event replaces the other, and the
+   date sheet says so before it happens. */
+const PREP_EVENTS={
+  force:{name:'FORCE Evaluation',short:'FORCE',date:'test date',target:'your evaluation',day:'test day',close:'Your evaluation is close',peak:'past what this evaluation asks of you'},
+  bmq:{name:'BMQ',short:'BMQ',date:'BMQ start date',target:'BMQ',day:'day one of BMQ',close:'BMQ is close',peak:'enough to arrive at BMQ ready rather than worn out'},
+};
+const PREP_EVENT_KEYS=Object.keys(PREP_EVENTS);
+function prepEvent(){const k=prep().event;return PREP_EVENT_KEYS.includes(k)?k:'force';}
+function prepEventDef(){return PREP_EVENTS[prepEvent()];}
+/* The screen that owns the current block. Every "reopen after a change" asks
+   this, so a BMQ athlete who picks a path or moves the date lands back on the
+   BMQ screen rather than on FORCE. */
+function openPrepHome(){return prepEvent()==='bmq'?openBmqPrep():openForcePrep();}
+/* ---- BMQ prep ---------------------------------------------------------------
+   The week, the two strength sessions, and the checklist. The RUNNING and the
+   RUCK are not restated here: they are the block's own plan (enduranceWeek()
+   and ruckLadderWeek()), paced to the BMQ start date, so the screen points at
+   that plan instead of printing a second set of distances that could disagree
+   with it.
+
+   The course itself is administered by the CAF, not by this app. Its dates,
+   format and kit list come from the unit's joining instructions, so they are
+   stamped like FORCE_ASOF and the screen says so. */
+const BMQ_ASOF='October 2026';
+const BMQ_WEEK=[
+  {k:'strA',what:'Strength A, then an easy run',why:'Push, pull, legs and trunk. The run is the easy one from this week’s plan.'},
+  {k:'ruck',what:'Ruck',why:'The distance and the plate from this week’s ruck ladder. Wear the boots you will wear on course.'},
+  {k:'run',what:'Run session',why:'The tempo, intervals or base run this week’s plan gives you.'},
+  {k:'strB',what:'Strength B with the sandbag',why:'Lifting and carrying a load, then crawling. The work BMQ asks of you day after day.'},
+  {k:'long',what:'Long ruck or long run',why:'Whichever this week’s plan schedules. The longest effort of the week.'},
+];
+/* Each slot is an ORDERED list of candidates: the first one the athlete has
+   kit for wins, so a barless athlete rows on a towel instead of being handed a
+   movement they cannot do. Then every question the other picking paths ask —
+   safeSwap(), spaceSwap(), and no movement twice. */
+const BMQ_SESSIONS={
+  strA:{name:'BMQ Strength A',slots:[['pushup'],['invertedrow','towelrow'],['squat'],['reverselunge'],['plank'],['legraise']]},
+  strB:{name:'BMQ Strength B',slots:[['sbaglift','squat'],['sbagshuttle','bearcrawl'],['pushup'],['ruckstepup','reverselunge'],['bearcrawl','plank']]},
+};
+function bmqItems(key){
+  const def=BMQ_SESSIONS[key];if(!def)return [];
+  let pos={};try{pos=posOf(STATE.progressPtr);}catch(e){pos={};}
+  const used=new Set(), out=[];
+  def.slots.forEach(cands=>{
+    /* The first candidate that survives every question AND is not already in
+       the session — so a bagless athlete whose crawl already filled one slot
+       still gets the plank in the next, rather than an empty slot. */
+    let k=null;
+    for(const c of cands){
+      if(!exKnown(c))continue;
+      /* Kit is asked once, AFTER the swap: a flagged shoulder turns the bar
+         row into a towel row, which needs no bar. */
+      let x=c;try{x=spaceSwap(safeSwap(c));}catch(e){}
+      if(exKnown(x)&&hasGearFor(x)&&!used.has(x)){k=x;break;}
+    }
+    if(!k)return;
+    used.add(k);
+    /* prescribe() sizes it from the athlete's own tests and eases it on a
+       deload, a taper or safe mode, and it already gives a per-side movement
+       an even count. A fixed number here would be a second engine. */
+    let rx=null;try{rx=prescribe(k,pos);}catch(e){rx=null;}
+    const ex=EX[k];
+    const target=(rx&&rx.target>0)?rx.target:(ex.unit==='time'?(ex.base||30):(ex.base||12));
+    const sets=(rx&&rx.sets>0)?rx.sets:itemSets(k,3,pos);
+    out.push({exId:k,unit:ex.unit,target,rest:(rx&&rx.rest>0)?rx.rest:(ex.rest||60),sets});
+  });
+  return out;
+}
+function startBmqSession(key){
+  const def=BMQ_SESSIONS[key];if(!def)return;
+  const items=bmqItems(key);
+  if(!items.length){toast('Nothing in this session fits your kit yet');return;}
+  closeSheet();
+  openPlayer({items,free:true,title:def.name,focus:'BMQ prep'});
+}
+function bmqCountdownHTML(){
+  if(prepEvent()!=='bmq'||!prep().date)
+    return `<div class="note fire" data-bmqdate="none"><b>Set your BMQ start date and this becomes a plan.</b> Not sure yet? Use the latest date you expect. You can move it when your unit gives you a date, and the plan keeps the work you have already done.</div>`;
+  const wk=forceWeeksLeft();
+  if(wk!==null&&wk<0)return `<div class="note info" data-bmqdate="passed"><b>Your BMQ start date has passed.</b> ${_ve(prepDateLabel())} has been and gone. Set a new date to build again.</div>`;
+  return `<div class="note fire" data-bmqdate="set"><b>${wk>0?plural(wk,'week')+' to BMQ':'BMQ starts this week'}</b> — ${_ve(prepDateLabel())}. ${wk>0?'That is what the running and the ruck are paced to.':''}</div>`;
+}
+function openBmqPrep(){
+  const ph=prepEvent()==='bmq'?prepPhase():null;
+  const week=BMQ_WEEK.map((d,i)=>`<div class="kv" style="align-items:flex-start" data-bmqday="${_ve(d.k)}">
+      <span><b>Session ${i+1} — ${_ve(d.what)}</b><div class="tiny muted" style="margin-top:2px">${_ve(d.why)}</div></span></div>`).join('');
+  const kitNote=(()=>{try{
+    return hasGearFor('sbaglift')?'':`<div class="tiny muted" style="margin-top:6px">No 20 kg sandbag in your kit yet, so Strength B uses body-weight squats and bear crawls in its place.</div>`;
+  }catch(e){return '';}})();
+  openSheet(`
+    <h3>🪖 BMQ prep</h3>
+    <div class="note info"><b>Confirm the course with your unit.</b> Your joining instructions decide the dates, the format and the kit. This is what the app knows as of <b>${BMQ_ASOF}</b>, and it has no internet access to check.</div>
+    ${bmqCountdownHTML()}
+    ${ph?`<div class="tiny muted" style="margin:6px 3px 0">Phase: <b>${_ve(ph)}</b>. ${_ve(prepPhaseNote(ph))}</div>`:''}
+    <div class="section-label" style="margin-top:14px">Your week</div>
+    <div class="card pad">${week}
+      <div class="tiny muted" style="margin-top:8px">Two days off. One of them is stretching only. The week slots onto your own training days.</div></div>
+    <button class="btn primary" style="width:100%;margin-top:10px" onclick="startBmqSession('strA')">▶ BMQ Strength A</button>
+    <button class="btn primary" style="width:100%;margin-top:8px" onclick="startBmqSession('strB')">▶ BMQ Strength B</button>
+    ${kitNote}
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openEndurance()">📈 This week's running and ruck</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate('bmq')">📅 ${prepEvent()==='bmq'&&prep().date?'Change my BMQ start date':'Set my BMQ start date'}</button>
+    ${prepPathHTML()}
+    <div class="section-label" style="margin-top:14px">Before you go</div>
+    <div class="card pad tiny" data-bmqready="1">
+      <div class="kv"><span>Get the boots you will wear on course. Break them in on your rucks, not on course.</span></div>
+      <div class="kv"><span>Check your feet after every ruck. Treat a hot spot the same day.</span></div>
+      <div class="kv"><span>Hold your FORCE fitness. Re-run the four tasks now and then from FORCE prep.</span></div>
+      <div class="kv"><span>Get up at the same early hour every day for the last few weeks.</span></div>
+    </div>
+    ${footKitHTML()}
+    <div class="tiny muted" style="margin-top:10px">Each week raises the ruck distance or the plate, never both. The last weeks before the course ease off on purpose, so you arrive fresh rather than tired.</div>
+  `);
+}
 /* Membership on the WAY IN as well as on the way out. A getter that sanitises
    its own read hides junk in STATE, which then travels in every backup — the
    trap setCardioMode() was caught by, so the check asserts on STATE and not on
@@ -6361,7 +6485,7 @@ function setPrepPath(k){
   if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
   STATE.prep.path=k;save();
   toast(PREP_PATHS[k].short+' path set');
-  try{openForcePrep();}catch(e){try{render();}catch(_){}}
+  try{openPrepHome();}catch(e){try{render();}catch(_){}}
 }
 function prepPathHTML(){
   const cur=prepPath();
@@ -6464,9 +6588,10 @@ function footLoadHTML(w,card){
 }
 function enduranceHTML(){
   const w=enduranceWeek();
-  if(w.passed)return `<div class="note info"><b>Your test date has passed.</b> ${_ve(prepDateLabel())} has been and gone, so there is no block left to schedule. Set a new date and the plan rebuilds from what you have been logging since.
-    <button class="btn ghost" style="width:100%;margin-top:10px" onclick="openForceDate()">📅 Set a new test date</button></div>`;
-  if(w.noDate)return `<div class="note info"><b>Set your test date and this becomes a plan.</b> Without one the app cannot tell a base-building week from a taper, and a schedule invented around no deadline is worse than none.</div>`;
+  const ev=prepEventDef();
+  if(w.passed)return `<div class="note info"><b>Your ${_ve(ev.date)} has passed.</b> ${_ve(prepDateLabel())} has been and gone, so there is no block left to schedule. Set a new date and the plan rebuilds from what you have been logging since.
+    <button class="btn ghost" style="width:100%;margin-top:10px" onclick="openForceDate()">📅 Set a new ${_ve(ev.date)}</button></div>`;
+  if(w.noDate)return `<div class="note info"><b>Set your ${_ve(ev.date)} and this becomes a plan.</b> Without one the app cannot tell a base-building week from a taper, and a schedule invented around no deadline is worse than none.</div>`;
   const names={base:'Base run',long:'Long run',tempo:'Tempo run',intervals:'6 × 400 m'};
   return `<div class="card pad">
     <div class="row" style="justify-content:space-between;align-items:baseline">
@@ -6489,7 +6614,7 @@ function enduranceHTML(){
         ? `<div class="note warn" style="margin:10px 0 0"><b>Built on an assumption, because nothing is logged.</b> It opened at ${_ve(distShow(PREP_FLOOR_KM))} a week because there were no runs to read, and has climbed to ${_ve(distShow(w.km))} from there. Log a few runs and it will rebuild from what you actually do.</div>`
         : `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${_ve(distShow(PREP_FLOOR_KM))} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`)
       : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you have been logging${w.blank>0?` — <b>${w.blank} of the last ${w.counted} weeks had no runs at all</b>, counted as the zero they were rather than skipped`:''}, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
-    ${w.atPeak?`<div class="note info" style="margin:10px 0 0"><b>The build has reached its ceiling.</b> Volume holds at ${_ve(distShow(w.peak))} a week from here — ${Math.round(PREP_PEAK_MULT*10)/10}× what you opened on, and past what this evaluation asks of you. The work gets sharper from here, not longer.</div>`:''}
+    ${w.atPeak?`<div class="note info" style="margin:10px 0 0"><b>The build has reached its ceiling.</b> Volume holds at ${_ve(distShow(w.peak))} a week from here — ${Math.round(PREP_PEAK_MULT*10)/10}× what you opened on, and ${_ve(ev.peak)}. The work gets sharper from here, not longer.</div>`:''}
     ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(distShow(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
     <div class="tiny muted" style="margin-top:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">This week</div>
     ${w.sessions.map(id=>`<button class="btn ghost" style="text-align:left;display:block;padding:12px;width:100%;margin-top:6px" onclick="startRunSession('${id}')">▶ ${_ve(names[id]||id)}</button>`).join('')}
@@ -6823,7 +6948,8 @@ function openForcePrep(){
     <div class="note info"><b>Confirm these figures with your unit before you train to them.</b>
       They are what the app knows as of <b>${FORCE_ASOF}</b>, and a published fitness standard moves.
       This app has no internet access and cannot check them for you.</div>
-    ${wk!==null?`<div class="note fire"><b>${wk>0?wk+' week'+(wk===1?'':'s')+' to go':(wk===0?'This week':'Your test date has passed')}</b>${wk>0?' — that is what the build is paced to.':''}</div>`:''}
+    ${wk!==null&&prepEvent()==='force'?`<div class="note fire"><b>${wk>0?wk+' week'+(wk===1?'':'s')+' to go':(wk===0?'This week':'Your test date has passed')}</b>${wk>0?' — that is what the build is paced to.':''}</div>`:''}
+    ${wk!==null&&prepEvent()!=='force'?`<div class="note info" data-otherblock="1">Your running and ruck are paced to <b>${_ve(prepEventDef().name)}</b> on ${_ve(prepDateLabel())}, not to a FORCE test date.</div>`:''}
     <div class="card pad">${rows}</div>
     ${day90HTML()}
     ${footKitHTML()}
@@ -6833,7 +6959,7 @@ function openForcePrep(){
     ${safeMode()?maxLockNoteHTML('The four FORCE tasks')
       :`<button class="btn primary" style="width:100%;margin-top:10px" onclick="startForceTrain()">▶ Train ${forceAvailable().length===FORCE_EVENTS.length?'the four tasks':'what you have kit for'}</button>`}
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceLog()">✎ Log a result</button>
-    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate()">📅 ${prep().date?'Change my test date':'Set my test date'}</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate('force')">📅 ${prep().date&&prepEvent()==='force'?'Change my test date':'Set my test date'}</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openCombat()">🎖️ FORCE Combat — the Army standard</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openArmyRun()">🏃 Army running</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openEndurance()">📈 This week's endurance</button>
@@ -7029,20 +7155,28 @@ function setForceResultQuiet(id,n){
   }
   return true;
 }
-function openForceDate(){
+function openForceDate(ev){
+  const key=PREP_EVENT_KEYS.includes(ev)?ev:prepEvent();
+  /* ONE BLOCK AT A TIME, said BEFORE the save rather than discovered after. */
+  const other=prep().date&&prepEvent()!==key;
   openSheet(`
-    <h3>When is your evaluation?</h3>
-    <div class="note info">The date is what paces the build. Without one the app cannot tell a base-building week from a sharpening week.</div>
-    <div class="field"><label for="fq-date">Test date</label>
-      <input id="fq-date" type="date" value="${_ve(prep().date||'')}"></div>
-    <button class="btn primary" style="width:100%" onclick="saveForceDate()">Save</button>
-    ${prep().date?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="clearForceDate()">Clear it</button>`:''}
+    <h3>${key==='bmq'?'When does BMQ start?':'When is your evaluation?'}</h3>
+    <div class="note info">The date is what paces the build. Without one the app cannot tell a base-building week from a sharpening week.${key==='bmq'?' Not sure yet? Use the latest date you expect.':''}</div>
+    ${other?`<div class="note warn" data-replaces="1"><b>This replaces your ${_ve(prepEventDef().date)}.</b> The app runs one block at a time, so the running and the ruck will be paced to this date instead.</div>`:''}
+    <div class="field"><label for="fq-date">${key==='bmq'?'BMQ start date':'Test date'}</label>
+      <input id="fq-date" type="date" value="${_ve(other?'':(prep().date||''))}"></div>
+    <button class="btn primary" style="width:100%" onclick="saveForceDate('${key}')">Save</button>
+    ${prep().date&&!other?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="clearForceDate()">Clear it</button>`:''}
   `);
 }
-function saveForceDate(){
+function saveForceDate(ev){
+  const key=PREP_EVENT_KEYS.includes(ev)?ev:prepEvent();
   const v=($('#fq-date')||{}).value||'';
   if(!isDateISO(v)){toast('Pick a date');return;}
   if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  /* A DIFFERENT EVENT IS A NEW BLOCK, whatever the dates say: its weeks are
+     counted from today, not from when the last block started. */
+  const switched=prepEvent()!==key;
   /* A RESCHEDULE KEEPS THE STAMP; A NEW BLOCK GETS A NEW ONE. The stamp was
      written once and never again, which is right for moving a date that is
      still ahead — the plan keeps running from when the athlete started. It is
@@ -7054,18 +7188,20 @@ function saveForceDate(){
      `now>=date` is the same day-exact test prepCheckpoint() already uses for
      'final', read BEFORE the new date overwrites it. */
   const prevDate=(typeof STATE.prep.date==='string')?STATE.prep.date:'';
-  const newBlock=!prevDate||todayISO()>=prevDate;
+  const newBlock=switched||!prevDate||todayISO()>=prevDate;
   STATE.prep.date=v;
+  if(key==='force')delete STATE.prep.event; else STATE.prep.event=key;
   if(newBlock||!isDateISO(STATE.prep.planFrom))
     STATE.prep.planFrom=todayISO();
-  save();closeSheet();toast('Test date set 📅');openForcePrep();
+  save();closeSheet();toast((key==='bmq'?'BMQ start date':'Test date')+' set 📅');openPrepHome();
 }
 function clearForceDate(){
   /* THE STAMP GOES WITH THE DATE. Leaving it behind means the next date set
      opens its block at whatever week the abandoned one had reached — the same
      stale-stamp defect by a second door. */
-  if(STATE.prep&&typeof STATE.prep==='object'){delete STATE.prep.date;delete STATE.prep.planFrom;}
-  save();closeSheet();openForcePrep();
+  const home=prepEvent();
+  if(STATE.prep&&typeof STATE.prep==='object'){delete STATE.prep.date;delete STATE.prep.planFrom;delete STATE.prep.event;}
+  save();closeSheet();home==='bmq'?openBmqPrep():openForcePrep();
 }
 /* "TODAY IS ALREADY LOGGED" IS FALSE ON A PAIN STOP, and this note renders a
    few lines under sessionDoneCardHTML(), which says in bold that the session is
@@ -7082,6 +7218,7 @@ function altSessionHTML(){
     <button class="tile" onclick="openSpecial()"><span class="ti">\ud83c\udf96\ufe0f</span>Special</button>
     <button class="tile" onclick="openQuickList()"><span class="ti">\u26a1</span>Quick<br>5\u201310 min</button>
     <button class="tile" onclick="openForcePrep()"><span class="ti">\ud83c\udf41</span>FORCE<br>prep</button>
+    <button class="tile" onclick="openBmqPrep()"><span class="ti">\ud83e\ude96</span>BMQ<br>prep</button>
     <button class="tile" onclick="openRestSheet()"><span class="ti">\ud83d\ude0c</span>Recover</button>
     <button class="tile" onclick="${rested?'openRestSheet()':'startRestDay()'}"><span class="ti">\ud83d\udecc</span>${rested?'Rest logged':'Rest day'}</button>
   </div>
@@ -12047,12 +12184,13 @@ function briefSegments(){
     if(_pw!==null){
       const _ph=prepPhase();
       const _when=_pw<=0?'This week':(_pw===1?'One week out':(_pw+' weeks out'));
+      const _ev=prepEventDef();
       const _what=_ph==='taper'
-        ? `${_when} from your evaluation, and this is the taper. The sessions ease off, the running comes down and the plate stays where it is. You cannot add fitness now — you can only arrive tired, so we do not.`
+        ? `${_when} from ${_ev.target}, and this is the taper. The sessions ease off, the running comes down and the plate stays where it is. You cannot add fitness now — you can only arrive tired, so we do not.`
         : _ph==='sharpen'
-        ? `${_when} from your evaluation. The volume stops climbing here and the work gets sharper — this is the part that shows up on test day.`
-        : `${_when} from your evaluation. We are still building, so the volume climbs and the easy work stays easy.`;
-      segs.push({icon:'🎖️',title:'Your test date',say:_what});
+        ? `${_when} from ${_ev.target}. The volume stops climbing here and the work gets sharper — this is the part that shows up on ${_ev.day}.`
+        : `${_when} from ${_ev.target}. We are still building, so the volume climbs and the easy work stays easy.`;
+      segs.push({icon:'🎖️',title:'Your '+_ev.date,say:_what});
     }
   }catch(e){}
   /* 3-7 — the work, or the RECORD of it. Every one of these five segments is
@@ -16454,7 +16592,7 @@ function deloadBanner(){
      specific cause wins when both are true. */
   const taperOnly=!manual&&!calendar&&prepTaperEase();
   const msg=taperOnly
-    ? '🎯 <b>Taper — lighter load on purpose.</b> Your evaluation is close, so sets and targets ease off. You cannot gain fitness in the last weeks; you can only arrive tired. The running and the rucking come down with it.'
+    ? '🎯 <b>Taper — lighter load on purpose.</b> '+prepEventDef().close+', so sets and targets ease off. You cannot gain fitness in the last weeks; you can only arrive tired. The running and the rucking come down with it.'
     : spikeOnly
     ? '📈 <b>Weekly volume spiked — lighter load.</b> Your logged sets over the last 7 days are well above your recent average. Targets are eased so you recover and rebuild stronger.'
     : '🌙 <b>Deload week — lighter load.</b> Sets and targets are eased so you recover and rebuild stronger.';
@@ -25692,6 +25830,9 @@ function normalizeState(){
       it would be a second way to say the same thing that then travels in every
       backup. */
    if(P.path!==undefined&&!PREP_PATH_KEYS.includes(P.path))delete P.path;
+   /* Which day the block is aimed at. Membership, dropped not rewritten —
+      absent already reads as FORCE. */
+   if(P.event!==undefined&&!PREP_EVENT_KEYS.includes(P.event))delete P.event;
    /* The dated checkpoint records. importData() accepts arbitrary JSON, so
       every level is repaired: the container, each checkpoint slot (membership,
       not truthiness — `initial` is not a free-form key), its results map, and
