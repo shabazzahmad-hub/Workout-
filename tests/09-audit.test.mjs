@@ -7582,6 +7582,8 @@ export default async function run() {
     t.ok('with a sandbag, Strength B lifts and carries it', r.bHasBag, r);
     t.ok('with no sandbag, Strength B hands out no sandbag work', !r.bNoBag.some(k => /^sbag/.test(k)), r);
     t.eq('and still fills all five slots', r.bNoBag.length, 5, r);
+    t.eq('without the bag, no movement is handed out twice', new Set(r.bNoBag).size, r.bNoBag.length, r);
+    t.ok('the crawl fills one slot and the plank the next', r.bNoBag.includes('bearcrawl') && r.bNoBag.includes('plank'), r);
     t.ok('with no bar, Strength A rows on a towel', r.aNoBar.includes('towelrow') && !r.aNoBar.includes('invertedrow'), r);
     t.ok('every movement handed out is one the athlete has kit for', r.allOwned, r);
     t.ok('guard: the flagged sessions still have movements', r.flaggedCount >= 8, r);

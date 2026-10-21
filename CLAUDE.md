@@ -23155,6 +23155,32 @@ its own name, which needs no curation and cannot rot.
 - **Generate each video in a NEW chat.** The Hollow Rock clip carried the Dead
   Bug from the request before it — the Windmill/Cossack lesson again.
 
+
+## The prep block names its day (v521)
+
+The athlete passed FORCE and is preparing for Basic Military Qualification.
+The prep block — date, running plan, ruck ladder, sharpen, taper — was aimed
+at one day, and every sentence said "test date" and "your evaluation". BMQ
+needs the same progression aimed at a different day, so **the date stays one
+field and `prep.event` (`PREP_EVENTS`: force | bmq) says what it is**. Absent
+reads as FORCE, so every existing phone is unchanged.
+
+- **One block at a time.** Two dates would be two running plans on the same
+  legs. Setting a date for the other event replaces it, the date sheet says so
+  BEFORE the save, and the switch starts a new block from today.
+- **`openPrepHome()`** is the one "reopen after a change"; a BMQ athlete who
+  picks a path lands on BMQ prep, not FORCE.
+- **The BMQ screen does not restate distances.** Running and rucking come from
+  the block's own plan; the screen points at it.
+- **`bmqItems()` asks every question a picking path asks** — kit (once, after
+  the swap, because a flagged shoulder turns the bar row into a towel row),
+  `safeSwap`, `spaceSwap`, no repeats — and sizes with `prescribe()`.
+- Course dates, format and kit are the CAF's, stamped `BMQ_ASOF`.
+
+Fourteen mutants. Two escaped first: the pre-swap kit check was redundant with
+the post-swap one, so it was removed rather than tested; and the no-repeat rule
+could only fire for a bagless athlete, whose crawl fills two slots without it.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

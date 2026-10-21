@@ -6411,7 +6411,9 @@ function bmqItems(key){
        still gets the plank in the next, rather than an empty slot. */
     let k=null;
     for(const c of cands){
-      if(!exKnown(c)||!hasGearFor(c))continue;
+      if(!exKnown(c))continue;
+      /* Kit is asked once, AFTER the swap: a flagged shoulder turns the bar
+         row into a towel row, which needs no bar. */
       let x=c;try{x=spaceSwap(safeSwap(c));}catch(e){}
       if(exKnown(x)&&hasGearFor(x)&&!used.has(x)){k=x;break;}
     }
