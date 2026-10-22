@@ -2684,6 +2684,51 @@ export default async function run() {
       JSON.stringify(d.pickedSearch));
   }
 
+  /* v524 -- A MOVEMENT WITH A VIDEO MUST NOT SHOW A "PHOTO PENDING" STILL.
+     The Sandbag Lift got its video in v522 and kept the grey placeholder card
+     as its still. The still is what every surface without the video shows:
+     the rest screen's preview of the next movement, the how-to sheet, the
+     library and the session lists. So the athlete saw a real clip during the
+     set and a grey card during the rest before it. A frame of the clip is a
+     real photograph of the movement, so there is never a reason to keep the
+     placeholder once a video exists.
+     The placeholder is a flat dark-grey card (about 56,56,56). The detector
+     samples the still at 50x50 and counts pixels of that grey. It is proven
+     both ways on SYNTHETIC images, so it stays true whatever the library
+     becomes: a flat grey card must be reported, a real photo must not. */
+  {
+    const d = await page.evaluate(async () => {
+      const load = src => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+      const greyShare = img => {
+        const c = document.createElement('canvas'); c.width = 50; c.height = 50;
+        const x = c.getContext('2d'); x.drawImage(img, 0, 0, 50, 50);
+        const px = x.getImageData(0, 0, 50, 50).data; let g = 0;
+        for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i]-56) < 8 && Math.abs(px[i+1]-56) < 8 && Math.abs(px[i+2]-56) < 8) g++;
+        return g / 2500;
+      };
+      const synth = fill => { const c = document.createElement('canvas'); c.width = 50; c.height = 50;
+        const x = c.getContext('2d'); x.fillStyle = fill; x.fillRect(0, 0, 50, 50); return c; };
+      const out = { flagged: [], checked: 0, missing: [] };
+      out.synthGrey = greyShare(synth('rgb(56,56,56)'));
+      out.synthLight = greyShare(synth('rgb(200,200,200)'));
+      const real = await load('ex-pushup.jpg'); out.realPhoto = real ? greyShare(real) : null;
+      for (const k of Object.keys(EX)) {
+        const e = EX[k]; if (!e.vid || !e.img) continue;
+        const img = await load(e.img);
+        if (!img) { out.missing.push(k); continue; }
+        out.checked++;
+        if (greyShare(img) > 0.5) out.flagged.push(k + ':' + e.img);
+      }
+      return out;
+    });
+    t.ok('guard: the detector reports a flat grey placeholder card', d.synthGrey > 0.5, String(d.synthGrey));
+    t.ok('guard: and is quiet on a light image', d.synthLight < 0.1, String(d.synthLight));
+    t.ok('guard: and is quiet on a real exercise photograph', d.realPhoto !== null && d.realPhoto < 0.5, String(d.realPhoto));
+    t.ok('guard: the sweep really checked the movements that have a video', d.checked >= 10, String(d.checked));
+    t.eq('every movement with a video has a real still beside it', d.flagged, [], JSON.stringify(d.flagged));
+    t.eq('and every one of those stills loads', d.missing, [], JSON.stringify(d.missing));
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

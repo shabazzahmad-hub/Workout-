@@ -23211,6 +23211,26 @@ mutant left the card in its done state, so the next line clicked Undo rather
 than Start and the player was null. A guard on the Start button now reports
 it as two named failures — red is not enough, it has to say what.
 
+## A video beside a "photo pending" still (v524)
+
+Reported as "a blank space when doing the exercise set". The guided player
+showed a real photo or video for every BMQ movement when driven in the sandbox,
+so the report was chased through the surfaces instead. The Sandbag Lift got its
+video in v522 and kept the grey PHOTO PENDING card as its still, and the still
+is what the REST screen previews for the next movement, and what the how-to
+sheet, the library and the session lists show. So the set played a real clip
+and the rest before it showed a grey card.
+
+A frame of the clip (1.75 s, the bag on its way to the shelf) is now the still.
+Suite 01 sweeps every movement with a video and refuses a flat grey still beside
+it, with its detector proven both ways on synthetic images. Seeding the old card
+back fails it by name.
+
+Two placeholders remain and are NOT in that class, because neither has a video:
+`ex-rushes.jpg` and `ex-sbagdrag.jpg`. Using a nearby movement's photo for them
+(the sprint for the rushes) would label one movement with another, so they wait
+for real photos.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
