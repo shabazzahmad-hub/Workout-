@@ -23181,6 +23181,36 @@ Fourteen mutants. Two escaped first: the pre-swap kit check was redundant with
 the post-swap one, so it was removed rather than tested; and the no-repeat rule
 could only fire for a bagless athlete, whose crawl fills two slots without it.
 
+## A week that reads as a menu is not a plan (v523)
+
+v521 gave the BMQ screen two equal buttons, **Strength A** and **Strength B**,
+above a five-session list. The athlete read them as a choice — *"should I
+just press A or B? what decides which?"* — and asked why the app did not
+lay the week out for them. Nothing recorded what was done, so the list could
+not say where they were either.
+
+**The week is a SEQUENCE, not a calendar.** `bmqToday()` names one session:
+the one after the last done, or session 1 after session 5. `prep.bmqDone`
+is a short `{date, k}` history, one row a day (a second mark the same day
+replaces the first), capped at `BMQ_LOG_MAX`, and repaired at boot by
+membership and `isDateISO()`. Absent stays absent.
+
+- **A strength session ticks itself off** when the player finishes it, but
+  only with work in it: `setsDone>0`. A player opened and closed is not a
+  session done.
+- **Ruck, run and long days get a Done button**, because their work is
+  logged under Movement and the app cannot tell which run was the BMQ one.
+- **Only a BMQ session carries `bmqKey`**, by membership, so an ordinary
+  bonus session, or a junk key, ticks nothing. The main program pointer
+  never moves.
+- A and B stay reachable under "out of order, any time", because a real week
+  sometimes needs a swap.
+
+Seven mutants, all caught by name. One first threw instead: the zero-work
+mutant left the card in its done state, so the next line clicked Undo rather
+than Start and the player was null. A guard on the Start button now reports
+it as two named failures — red is not enough, it has to say what.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly
