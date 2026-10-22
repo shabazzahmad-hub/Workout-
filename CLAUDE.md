@@ -23226,10 +23226,17 @@ Suite 01 sweeps every movement with a video and refuses a flat grey still beside
 it, with its detector proven both ways on synthetic images. Seeding the old card
 back fails it by name.
 
-Two placeholders remain and are NOT in that class, because neither has a video:
-`ex-rushes.jpg` and `ex-sbagdrag.jpg`. Using a nearby movement's photo for them
-(the sprint for the rushes) would label one movement with another, so they wait
-for real photos.
+Two placeholders were left, because neither had a video: `ex-rushes.jpg` and
+`ex-sbagdrag.jpg`. Using a nearby movement's photo for them (the sprint for the
+rushes) would label one movement with another, so they waited for real footage.
+
+**v525 closed both.** The athlete's own Gemini clips are 1280x720 and the rushes
+man travels the full width, so a square crop loses him. Each clip is scaled to
+640 wide and laid over a **blurred copy of itself** to fill 640x640. Smearing the
+edge rows instead was tried first and streaked on every close-up cut. Each still
+is a square crop of a wide frame from its own clip. The drag clip walks FORWARD
+while the steps say walk backwards; the athlete accepted it as a reminder, and
+that difference is recorded rather than hidden.
 
 ## Rendering
 
