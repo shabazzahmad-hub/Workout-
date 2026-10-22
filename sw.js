@@ -10,7 +10,7 @@
    tiers are parsed by pulling every quoted asset name out of this file, comments
    included, so an illustrative path in a comment breaks CI by declaring
    an asset that does not exist. */
-const CACHE = 'coreforge-v524';
+const CACHE = 'coreforge-v525';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -157,7 +157,8 @@ const EXTRA = [
   './ex-squatthrust.mp4','./ex-inchworm.mp4','./ex-cossack.mp4','./ex-abroll.mp4',
   './ex-halfburpee.mp4','./ex-jumpingjack.mp4','./ex-jumpsquat.mp4','./ex-kbhalo.mp4',
   './ex-kbheli.mp4','./ex-kbtgu.mp4','./ex-nordic.mp4','./ex-pistol.mp4',
-  './ex-superpushup.mp4','./ex-kbswing.mp4','./ex-sbaglift.mp4','./wu-march.mp4'
+  './ex-superpushup.mp4','./ex-kbswing.mp4','./ex-sbaglift.mp4','./ex-rushes.mp4',
+  './ex-sbagdrag.mp4','./wu-march.mp4'
 ];
 
 /* The union, and still the single source of truth for "what ships offline". */
