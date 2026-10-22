@@ -7607,6 +7607,157 @@ export default async function run() {
     await ctx521.close();
   }
 
+  /* v523 — WHICH BMQ SESSION IS TODAY. The week is a sequence, not a menu:
+     two equal Strength A / Strength B buttons read as a choice, and nothing
+     remembered what was done. The screen now names one session for today,
+     ticks it off, and moves to the next. */
+  {
+    const ctx523 = await tzb.newContext();
+    const pg523 = await ctx523.newPage();
+    const perr523 = [];
+    pg523.on('pageerror', e => perr523.push(String(e).slice(0, 200)));
+    await pg523.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await waitForBoot(pg523);
+    await seedAthlete(pg523);
+    const r = await pg523.evaluate(() => {
+      const o = {};
+      const card = () => document.querySelector('#sheet [data-bmqtoday]');
+      const cardTxt = () => ((card() || {}).textContent || '').replace(/\s+/g, ' ');
+      const iso = d => { const x = new Date(); x.setDate(x.getDate() + d); return localISO(x); };
+      STATE.prep = { event: 'bmq', date: iso(100), planFrom: todayISO() };
+      STATE.profile.limitations = []; STATE.profile.tightSpace = false;
+      STATE.profile.gear = ['bar', 'sandbag', 'ruck', 'bench'];
+      o.keys = BMQ_KEYS.join(',');
+      const ptr0 = STATE.progressPtr;
+
+      // 1. nothing done: session 1, Strength A, one Start button
+      openBmqPrep();
+      o.freshState = card() && card().getAttribute('data-bmqtoday');
+      o.freshTxt = cardTxt();
+      const startBtn = card() && [...card().querySelectorAll('button')].find(b => /Start/.test(b.textContent));
+      o.freshStartsA = !!startBtn && /startBmqSession\('strA'\)/.test(startBtn.getAttribute('onclick') || '');
+      o.currentRow = (document.querySelector('#sheet [data-bmqday][aria-current="step"]') || {}).getAttribute
+        ? document.querySelector('#sheet [data-bmqday][aria-current="step"]').getAttribute('data-bmqday') : null;
+      o.weekCopy = /not a choice/.test((document.querySelector('#sheet') || {}).textContent || '');
+
+      // 2. a zero-work session does not count
+      startBtn.click();
+      o.playerKey = PLAYER && PLAYER.bmqKey;
+      PLAYER.setsDone = 0; plEnterDone();
+      o.zeroLogged = bmqLog().length;
+      playerTeardown();
+
+      // 3. a real finish ticks session 1 and leaves the main program alone
+      openBmqPrep();
+      /* Guard before the dereference: if the zero-work session was wrongly
+         ticked, the card is in its done state and has no Start button. */
+      const start2 = card() && [...card().querySelectorAll('button')].find(x => /Start/.test(x.textContent));
+      o.startAgain = !!start2;
+      if (!start2) { closeSheet(); return o; }
+      start2.click();
+      PLAYER.setsDone = 4; plEnterDone();
+      playerTeardown();
+      o.afterA = JSON.stringify(bmqLog());
+      o.ptrUnmoved = STATE.progressPtr === ptr0;
+      openBmqPrep();
+      o.doneState = card() && card().getAttribute('data-bmqtoday');
+      o.doneTxt = cardTxt();
+
+      // 4. undo goes back to session 1
+      bmqUndoToday();
+      o.undoState = card() && card().getAttribute('data-bmqtoday');
+      o.undoLog = bmqLog().length;
+
+      // 5. A yesterday: today is the ruck, a non-strength session with no Start
+      STATE.prep.bmqDone = [{ date: iso(-1), k: 'strA' }];
+      openBmqPrep();
+      o.ruckTxt = cardTxt();
+      o.ruckHasStart = /startBmqSession/.test(card().innerHTML);
+      o.ruckShowsPlan = /openEndurance\(\)/.test(card().innerHTML);
+      o.tickA = /✅/.test(document.querySelector('#sheet [data-bmqday="strA"]').textContent);
+      [...card().querySelectorAll('button')].find(b => /Done/.test(b.textContent)).click();
+      o.afterRuck = bmqLog().map(x => x.k).join(',');
+      o.tickRuck = /✅/.test(document.querySelector('#sheet [data-bmqday="ruck"]').textContent);
+      // a second mark the same day replaces, it does not add
+      bmqMarkDone('run', true);
+      o.oneADay = bmqLog().filter(x => x.date === todayISO()).length;
+      o.replacedWith = bmqLog().slice(-1)[0].k;
+
+      // 6. after session 5 the week starts again
+      STATE.prep.bmqDone = [{ date: iso(-1), k: 'long' }];
+      o.wrapNext = bmqToday().next; o.wrapTicks = bmqToday().doneUpTo;
+      STATE.prep.bmqDone = [{ date: todayISO(), k: 'long' }];
+      openBmqPrep();
+      o.wrapTodayTxt = cardTxt();
+      // 7. Strength B is session 4
+      STATE.prep.bmqDone = [{ date: iso(-1), k: 'run' }];
+      openBmqPrep();
+      o.bStart = /startBmqSession\('strB'\)/.test(card().innerHTML);
+
+      // 8. only a BMQ session carries the key
+      openPlayer({ items: bmqItems('strA'), free: true, title: 'x' });
+      o.plainFreeKey = PLAYER.bmqKey; playerTeardown();
+      openPlayer({ items: bmqItems('strA'), free: true, title: 'x', bmqKey: 'constructor' });
+      o.junkKey = PLAYER.bmqKey; playerTeardown();
+
+      // 9. boot repair
+      STATE.prep.bmqDone = [{ date: iso(-2), k: 'strA' }, { date: 'abc', k: 'ruck' }, { date: iso(-1), k: 'constructor' },
+        null, 'x', { date: iso(-1), k: 'run', extra: 1 }];
+      normalizeState();
+      o.repaired = JSON.stringify(STATE.prep.bmqDone);
+      STATE.prep.bmqDone = [{ date: 'nope', k: 'strA' }];
+      normalizeState();
+      o.allJunkGone = !('bmqDone' in STATE.prep);
+      STATE.prep.bmqDone = 'junk'; normalizeState();
+      o.stringGone = !('bmqDone' in STATE.prep);
+      STATE.prep.bmqDone = Array.from({ length: 80 }, (_, i) => ({ date: iso(-80 + i), k: 'strA' }));
+      normalizeState();
+      o.capped = STATE.prep.bmqDone.length; o.keptNewest = STATE.prep.bmqDone.slice(-1)[0].date === iso(-1);
+      delete STATE.prep.bmqDone; normalizeState();
+      o.absentStays = !('bmqDone' in STATE.prep);
+      closeSheet();
+      return o;
+    });
+    t.eq('the week has five sessions in order', r.keys, 'strA,ruck,run,strB,long', r);
+    t.eq('with nothing done, the card offers a session', r.freshState, 'next', r);
+    t.ok('and it is session 1, Strength A', /Session 1 of 5/.test(r.freshTxt) && /Strength A/.test(r.freshTxt), r);
+    t.ok('with one Start button for Strength A', r.freshStartsA, r);
+    t.eq('the week list marks it as the current one', r.currentRow, 'strA', r);
+    t.ok('the screen says A and B are not a choice', r.weekCopy, r);
+    t.eq('the Start button carries the session key into the player', r.playerKey, 'strA', r);
+    t.eq('a session with no sets done is not ticked off', r.zeroLogged, 0, r);
+    t.ok('so session 1 is still offered with its Start button', r.startAgain, r);
+    t.ok('a finished Strength A ticks session 1 for today', r.afterA === JSON.stringify([{ date: r.afterA && JSON.parse(r.afterA)[0] && JSON.parse(r.afterA)[0].date, k: 'strA' }]) && JSON.parse(r.afterA).length === 1, r);
+    t.ok('FLOOR: the main program pointer does not move', r.ptrUnmoved, r);
+    t.eq('the card then says today is done', r.doneState, 'done', r);
+    t.ok('and names session 2 for the next training day', /Session 2 — Ruck/.test(r.doneTxt), r);
+    t.eq('undo puts session 1 back', r.undoState, 'next', r);
+    t.eq('and removes the tick', r.undoLog, 0, r);
+    t.ok('after A yesterday, today is session 2, the ruck', /Session 2 of 5/.test(r.ruckTxt) && /Ruck/.test(r.ruckTxt), r);
+    t.ok('a ruck day has no strength Start button', !r.ruckHasStart, r);
+    t.ok('it points at this week’s plan instead', r.ruckShowsPlan, r);
+    t.ok('the week list ticks session 1', r.tickA, r);
+    t.eq('the Done button logs the ruck', r.afterRuck, 'strA,ruck', r);
+    t.ok('and the list ticks it', r.tickRuck, r);
+    t.eq('one session a day: a second mark replaces the first', r.oneADay, 1, r);
+    t.eq('with the later one', r.replacedWith, 'run', r);
+    t.eq('after session 5 the next is session 1 again', r.wrapNext, 'strA', r);
+    t.eq('and a new week shows no ticks', r.wrapTicks, -1, r);
+    t.ok('finishing session 5 today says a new week starts next', /new week/.test(r.wrapTodayTxt), r);
+    t.ok('Strength B is session 4', r.bStart, r);
+    t.eq('FLOOR: an ordinary bonus session carries no BMQ key', r.plainFreeKey, null, r);
+    t.eq('an inherited key is not a session', r.junkKey, null, r);
+    let rep523 = []; try { rep523 = JSON.parse(r.repaired); } catch (e) {}
+    t.eq('the boot repair keeps only real rows, in order', rep523.map(x => x.k).join(','), 'strA,run', r);
+    t.ok('and strips fields it does not know', rep523.every(x => Object.keys(x).sort().join() === 'date,k'), r);
+    t.ok('a history with nothing usable is removed', r.allJunkGone && r.stringGone, r);
+    t.eq('the history is capped', r.capped, 60, r);
+    t.ok('keeping the newest rows', r.keptNewest, r);
+    t.ok('FLOOR: absent stays absent', r.absentStays, r);
+    t.eq('the BMQ Today card throws no page errors', perr523, []);
+    await ctx523.close();
+  }
+
   await tzb.close();
 
   srv.close();

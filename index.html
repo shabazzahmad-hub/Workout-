@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='522';
+const APP_VERSION='523';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -6430,12 +6430,83 @@ function bmqItems(key){
   });
   return out;
 }
+/* WHICH SESSION IS TODAY. The week is a SEQUENCE, not a calendar: the athlete
+   does session 1, then 2, and so on, on whatever days they train, and the
+   app keeps the place. Before this there were two equal buttons and a list,
+   so the athlete had to work out for themselves that A and B are not a
+   choice but two different days — and nothing remembered what was done.
+
+   `prep.bmqDone` is a short history of {date, k}. The next session follows
+   the last one done; with nothing done, or after session 5, it is session 1.
+   One session a day: once a session is done today, the card says so and names
+   the next one for the next training day, rather than offering a second. */
+const BMQ_KEYS=BMQ_WEEK.map(d=>d.k);
+const BMQ_LOG_MAX=60;
+function bmqLog(){
+  const l=prep().bmqDone;
+  return Array.isArray(l)?l.filter(r=>r&&isDateISO(r.date)&&BMQ_KEYS.includes(r.k)):[];
+}
+function bmqToday(){
+  const l=bmqLog(), t=todayISO();
+  const last=l.length?l[l.length-1]:null;
+  const doneToday=(last&&last.date===t)?last.k:null;
+  const lastIdx=last?BMQ_KEYS.indexOf(last.k):-1;
+  const nextIdx=(lastIdx+1)%BMQ_KEYS.length;
+  /* Ticks in the current week: everything up to the last one done, unless the
+     last one finished a week on an earlier day — then a new week has begun. */
+  const doneUpTo=(lastIdx===BMQ_KEYS.length-1&&!doneToday)?-1:lastIdx;
+  return {doneToday,nextIdx,next:BMQ_KEYS[nextIdx],doneUpTo};
+}
+function bmqMarkDone(k,quiet){
+  if(!BMQ_KEYS.includes(k))return;
+  if(!STATE.prep||typeof STATE.prep!=='object'||Array.isArray(STATE.prep))STATE.prep={};
+  const t=todayISO();
+  const l=bmqLog().filter(r=>r.date!==t);   // one session a day: a re-mark replaces it
+  l.push({date:t,k});
+  STATE.prep.bmqDone=l.slice(-BMQ_LOG_MAX);
+  save();
+  if(!quiet)toast('Session '+(BMQ_KEYS.indexOf(k)+1)+' done ✅');
+  try{if($('#sheet [data-bmqtoday]'))openBmqPrep();}catch(e){}
+}
+function bmqUndoToday(){
+  const t=todayISO(), l=bmqLog();
+  if(!l.length||l[l.length-1].date!==t){toast('Nothing to undo today');return;}
+  STATE.prep.bmqDone=l.slice(0,-1);save();
+  toast('Undone');
+  try{openBmqPrep();}catch(e){}
+}
+function bmqTodayHTML(){
+  const st=bmqToday();
+  if(st.doneToday){
+    const i=BMQ_KEYS.indexOf(st.doneToday), d=BMQ_WEEK[i], n=BMQ_WEEK[st.nextIdx];
+    return `<div class="card pad" data-bmqtoday="done">
+      <div class="tiny muted">Today</div>
+      <div style="font-weight:800;margin:2px 0 4px">✅ Session ${i+1} done — ${_ve(d.what)}</div>
+      <div class="tiny muted">Next training day: <b>Session ${st.nextIdx+1} — ${_ve(n.what)}</b>.${i===BMQ_KEYS.length-1?' That starts a new week.':''}</div>
+      <button class="btn ghost" style="width:100%;margin-top:8px" onclick="bmqUndoToday()">↺ Undo — I did not finish it</button>
+    </div>`;
+  }
+  const d=BMQ_WEEK[st.nextIdx], k=st.next;
+  const strength=!!BMQ_SESSIONS[k];
+  const go=strength
+    ?`<button class="btn primary" style="width:100%;margin-top:8px" onclick="startBmqSession('${k}')">▶ Start ${_ve(BMQ_SESSIONS[k].name)}</button>
+      <div class="tiny muted" style="margin-top:6px">It ticks itself off when you finish. ${k==='strA'?'Do the easy run from this week\u2019s plan after it.':''}</div>`
+    :`<button class="btn primary" style="width:100%;margin-top:8px" onclick="openEndurance()">📈 See this week\u2019s distance${k==='ruck'||k==='long'?' and plate':''}</button>
+      <div class="tiny muted" style="margin-top:6px">Log it on Today, under Movement, then tap Done here.</div>`;
+  return `<div class="card pad" data-bmqtoday="next">
+    <div class="tiny muted">Today</div>
+    <div style="font-weight:800;margin:2px 0 4px">Session ${st.nextIdx+1} of ${BMQ_KEYS.length} — ${_ve(d.what)}</div>
+    <div class="tiny muted">${_ve(d.why)}</div>
+    ${go}
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="bmqMarkDone('${k}')">✓ Done — mark session ${st.nextIdx+1} complete</button>
+  </div>`;
+}
 function startBmqSession(key){
   const def=BMQ_SESSIONS[key];if(!def)return;
   const items=bmqItems(key);
   if(!items.length){toast('Nothing in this session fits your kit yet');return;}
   closeSheet();
-  openPlayer({items,free:true,title:def.name,focus:'BMQ prep'});
+  openPlayer({items,free:true,title:def.name,focus:'BMQ prep',bmqKey:key});
 }
 function bmqCountdownHTML(){
   if(prepEvent()!=='bmq'||!prep().date)
@@ -6446,8 +6517,11 @@ function bmqCountdownHTML(){
 }
 function openBmqPrep(){
   const ph=prepEvent()==='bmq'?prepPhase():null;
-  const week=BMQ_WEEK.map((d,i)=>`<div class="kv" style="align-items:flex-start" data-bmqday="${_ve(d.k)}">
-      <span><b>Session ${i+1} — ${_ve(d.what)}</b><div class="tiny muted" style="margin-top:2px">${_ve(d.why)}</div></span></div>`).join('');
+  const st=bmqToday();
+  const week=BMQ_WEEK.map((d,i)=>{
+    const done=i<=st.doneUpTo, now=!st.doneToday&&i===st.nextIdx;
+    return `<div class="kv" style="align-items:flex-start" data-bmqday="${_ve(d.k)}"${now?' aria-current="step"':''}>
+      <span><b>${done?'✅ ':(now?'▶ ':'')}Session ${i+1} — ${_ve(d.what)}</b><div class="tiny muted" style="margin-top:2px">${_ve(d.why)}</div></span></div>`;}).join('');
   const kitNote=(()=>{try{
     return hasGearFor('sbaglift')?'':`<div class="tiny muted" style="margin-top:6px">No 20 kg sandbag in your kit yet, so Strength B uses body-weight squats and bear crawls in its place.</div>`;
   }catch(e){return '';}})();
@@ -6456,12 +6530,17 @@ function openBmqPrep(){
     <div class="note info"><b>Confirm the course with your unit.</b> Your joining instructions decide the dates, the format and the kit. This is what the app knows as of <b>${BMQ_ASOF}</b>, and it has no internet access to check.</div>
     ${bmqCountdownHTML()}
     ${ph?`<div class="tiny muted" style="margin:6px 3px 0">Phase: <b>${_ve(ph)}</b>. ${_ve(prepPhaseNote(ph))}</div>`:''}
+    <div class="section-label" style="margin-top:14px">Today</div>
+    ${bmqTodayHTML()}
     <div class="section-label" style="margin-top:14px">Your week</div>
     <div class="card pad">${week}
-      <div class="tiny muted" style="margin-top:8px">Two days off. One of them is stretching only. The week slots onto your own training days.</div></div>
-    <button class="btn primary" style="width:100%;margin-top:10px" onclick="startBmqSession('strA')">▶ BMQ Strength A</button>
-    <button class="btn primary" style="width:100%;margin-top:8px" onclick="startBmqSession('strB')">▶ BMQ Strength B</button>
+      <div class="tiny muted" style="margin-top:8px">Do the sessions in order, one per training day. Strength A and Strength B are not a choice: A is session 1 and B is session 4, and you need both each week. Take two days off — one of them stretching only. Miss a day and the app simply waits on the same session.</div></div>
     ${kitNote}
+    <div class="tiny muted" style="margin:10px 3px 4px">Out of order, any time:</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn ghost" style="flex:1" onclick="startBmqSession('strA')">▶ Strength A</button>
+      <button class="btn ghost" style="flex:1" onclick="startBmqSession('strB')">▶ Strength B</button>
+    </div>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openEndurance()">📈 This week's running and ruck</button>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="openForceDate('bmq')">📅 ${prepEvent()==='bmq'&&prep().date?'Change my BMQ start date':'Set my BMQ start date'}</button>
     ${prepPathHTML()}
@@ -8176,6 +8255,7 @@ function openPlayer(opts){
   plClear();
   const _tempo=repTempoSetting();
   PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,free,
+    bmqKey:(opts&&free&&BMQ_KEYS.includes(opts.bmqKey))?opts.bmqKey:null,
     tempo:_tempo,
     t0:monoNow(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0};
   $('#player').classList.add('open');document.body.style.overflow='hidden';
@@ -8812,6 +8892,11 @@ function plEnterDone(){
       <div style="width:100%;max-width:440px;margin-top:18px"><button class="btn primary" style="width:100%;margin-bottom:8px" onclick='openLiftLog(${JSON.stringify(PLAYER.items.map(m=>({exId:m.exId,unit:m.unit,target:m.target})))})'>🏋️ Log what you lifted</button><button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="shareLast()">📤 Share</button><button class="btn green" style="width:100%" onclick="playerQuit()">Done ✓</button></div>
       <div class="pl-swapmenu" id="plLiftPanel" style="display:none;text-align:left"></div>`;
     if(!motivate('done'))coachSpeak('Session complete. Strong work.');
+    /* A BMQ strength session ticks its own slot in the week, because the
+       athlete was asked to do exactly this one. Only a session that did some
+       work counts: a player opened and closed with nothing marked is not a
+       session done. */
+    if(PLAYER.bmqKey&&PLAYER.setsDone>0){try{bmqMarkDone(PLAYER.bmqKey,true);}catch(e){}}
     return;
   }
   /* BELOW the free branch, not above it. The stamp used to sit one line before
@@ -25833,6 +25918,13 @@ function normalizeState(){
    /* Which day the block is aimed at. Membership, dropped not rewritten —
       absent already reads as FORCE. */
    if(P.event!==undefined&&!PREP_EVENT_KEYS.includes(P.event))delete P.event;
+   /* The BMQ week's history. Rows are kept only with a real date and a real
+      session key, in the order they were done, capped at the writer's own
+      bound. Absent stays absent. */
+   if(P.bmqDone!==undefined){
+     const l=Array.isArray(P.bmqDone)?P.bmqDone.filter(r=>r&&typeof r==='object'&&isDateISO(r.date)&&BMQ_KEYS.includes(r.k)).map(r=>({date:r.date,k:r.k})):[];
+     if(l.length)P.bmqDone=l.slice(-BMQ_LOG_MAX);else delete P.bmqDone;
+   }
    /* The dated checkpoint records. importData() accepts arbitrary JSON, so
       every level is repaired: the container, each checkpoint slot (membership,
       not truthiness — `initial` is not a free-form key), its results map, and
