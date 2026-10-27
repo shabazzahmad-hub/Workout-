@@ -40,7 +40,9 @@ export default async function run() {
         && testUnit[EX[k].anchor] !== EX[k].unit),
       // an anchored move left at the default hardness is an uncalibrated one
       overCap: Object.keys(EX).filter(k => EX[k].unit === 'reps' && EX[k].repCap > 0 && EX[k].base > EX[k].repCap),
-      gearNoPattern: Object.keys(EX).filter(k => EX[k].equip && EX[k].equip.length && !EX[k].pattern),
+      /* standalone cardio is exempt: it has its own card and is kept out of the
+         circuit on purpose (v526 gave the bike a trainer requirement) */
+      gearNoPattern: Object.keys(EX).filter(k => EX[k].equip && EX[k].equip.length && !EX[k].pattern && !STANDALONE_CARDIO.includes(k)),
       noHardness: Object.keys(EX).filter(k => !(EX[k].hardness > 0)),
       thinCopy: Object.keys(EX).filter(k => !EX[k].steps || !EX[k].cues || !EX[k].mistakes
         || !EX[k].steps.length || !EX[k].cues.length),
@@ -1821,7 +1823,13 @@ export default async function run() {
          meal generator, todaysWorkedDay() is its helper, and logFoodFromList()
          is suite 06's bad-index guard. Deleting one of those on a call-site
          count is exactly the mistake v387 records. */
-      const KEPT = new Set(['mealPlanHTML', 'todaysWorkedDay', 'logFoodFromList']);
+      /* totalTUT has had no app caller since v445 moved the lifetime minutes to
+         totalMinutes(); suites 05 and 08 drive it as the time-under-tension
+         figure that answers a different question. It only read as reachable
+         before because this stripper does not know regex literals, so a quote
+         inside one flipped its string state and a COMMENT naming totalTUT()
+         was scanned as code. v526 code shifted that parity and exposed it. */
+      const KEPT = new Set(['mealPlanHTML', 'todaysWorkedDay', 'logFoodFromList', 'totalTUT']);
       const orphans = [...names].filter(n => !reach.has(n) && !KEPT.has(n)).sort();
       t.eq('no function is unreachable from the markup, the top level or boot()',
         orphans.length, 0, orphans.slice(0, 20));
