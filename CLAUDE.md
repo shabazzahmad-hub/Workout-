@@ -23792,3 +23792,15 @@ Sections, in the order they shipped:
 - Nine controls had no name a screen reader could read (v269)
 - Progression for the formats that never had any (v279)
 - A stability ball, and three genuinely new exercises (v281)
+
+## The hanging leg raise came back right first time (v527)
+
+One prompt, one clip: straight arms, straight legs raised to hip level, two
+reps, one person, no watermark. It fits the rule — no press, and both close
+neighbours (a pull-up and the Hanging Knee Raise, which is its own entry in
+the library) were named in the prompt as the thing not to draw.
+
+**One deviation, accepted and recorded:** his feet touch the floor between
+reps, where a strict rep stays hanging. The movement itself is correct, so a
+second generation slot was not worth it. Cropped `crop=720:720:290:0`, which
+keeps the bar and the boots at full reach.
