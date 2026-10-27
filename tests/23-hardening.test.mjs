@@ -13450,6 +13450,9 @@ export default async function () {
       o.leakedIntoProgramme = leaked;
 
       // ---- the endurance half is the athlete's OWN cardio mode ----
+      /* v526: the bike needs a trainer, so an athlete whose own mode is the
+         bike owns one. A trainer-less athlete is v526's own block. */
+      const gOwn = STATE.profile.gear; STATE.profile.gear = ['bike'];
       STATE.profile.limitations = [];
       o.perMode = {};
       ['jacks', 'bike', 'ruck', 'run', 'skip'].forEach(m => {
@@ -13466,6 +13469,7 @@ export default async function () {
       STATE.profile.limitations = [];
       const ce = concEndurance();
       o.clean = { exId: ce && ce.exId, swapped: ce && ce.swapped, note: concEnduranceNote(ce) };
+      STATE.profile.gear = gOwn;
 
       /* THE SWEEP: every mode against every realistic flag set. The claim the
          session makes is that its second half is aerobic and safe, and one
@@ -14973,6 +14977,159 @@ export default async function () {
     t.ok('and nothing it carried ran', r.pwned === false, JSON.stringify(r));
     t.ok('and the one-button branch keeps it out too', r.payloadAbsent1 === true && r.pwned1 === false, JSON.stringify(r));
     t.eq('FLOOR: only a real joint is ever flagged', r.junkFlagged, '[]', JSON.stringify(r));
+  }
+
+  /* ============ v526: THE REST OF THE REVIEW =============================
+     Four more changes from one review, each driven through the control the
+     athlete taps: the bike needs a trainer, "Recent sessions" is by date with
+     each delete kept on its own row, a backup can be handed to Google Drive,
+     and the training days can go into the phone's calendar. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const wait = ms => new Promise(z => setTimeout(z, ms));
+      /* capture every download the page makes */
+      const dl = [];
+      const realClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { if (this.download) dl.push({ name: this.download, href: this.href }); };
+      const realToast = toast; let toasts = []; window.toast = (m, ms) => { toasts.push(String(m)); realToast(m, ms); };
+      try {
+        /* ---- the bike needs a trainer ---- */
+        STATE.profile.gear = []; R.bikeNoGear = hasGearFor('bike');
+        STATE.profile.gear = ['bike']; R.bikeGear = hasGearFor('bike');
+        STATE.nutrition.cardioMode = 'bike'; STATE.profile.limitations = [];
+        STATE.profile.gear = ['bike']; R.concOwner = concEndurance();
+        STATE.profile.gear = []; R.concNone = concEndurance();
+        R.concNoneNote = concEnduranceNote(R.concNone);
+        /* a steady run loads the knee, so a knee flag refuses the run mode */
+        STATE.nutrition.cardioMode = 'run'; STATE.profile.gear = ['bike']; STATE.profile.limitations = ['knee'];
+        R.concJointWhy = (concEndurance() || {}).why;
+        STATE.profile.limitations = []; STATE.nutrition.cardioMode = 'bike';
+        go('guide'); await wait(150);
+        R.settingsHasEquipLabel = /Equipment you have/.test(document.querySelector('#v-guide').textContent);
+        STATE.profile.gear = ['kettlebell', 'dumbbell', 'bike'];
+        R.poolHasBike = weightsPool().includes('bike');
+        R.poolNonEmpty = weightsPool().length > 0;
+        const ce = console.error; console.error = () => {};
+        R.validClean = validateData().length;
+        const pat = EX.kbgoblet.pattern; delete EX.kbgoblet.pattern;
+        R.validStillFires = validateData().some(e => /kbgoblet: has equip but no pattern/.test(e));
+        EX.kbgoblet.pattern = pat; R.validRestored = validateData().length;
+        console.error = ce;
+
+        /* ---- "Recent sessions": by date, and each ✕ removes its own row ---- */
+        const dates = ['2026-01-01','2026-10-20','2026-05-05','2026-03-03','2026-09-09','2026-02-02','2026-08-08','2026-04-04','2026-07-07','2026-06-06'];
+        STATE.ruckLog = dates.map((d, i) => ({ date: d, mins: 10 + i }));
+        save(); openAct('ruck'); await wait(150);
+        const rowDates = () => [...document.querySelectorAll('#sheet .kv')].map(k => (k.textContent.match(/\d{4}-\d{2}-\d{2}/) || [''])[0]).filter(Boolean);
+        R.ruckShown = JSON.stringify(rowDates());
+        const x1 = [...document.querySelectorAll('#sheet button[aria-label="Remove this activity"]')][0];
+        if (x1) x1.click(); await wait(150);
+        R.ruckLeft = JSON.stringify(STATE.ruckLog.map(x => x.date).sort());
+        closeSheet(); await wait(150);
+        STATE.skipLog = dates.map((d, i) => ({ date: d, mins: 10 + i }));
+        save(); openSkipping(); await wait(150);
+        R.skipShown = JSON.stringify(rowDates());
+        const x2 = [...document.querySelectorAll('#sheet button[aria-label="Remove this skipping entry"]')][2];
+        if (x2) x2.click(); await wait(150);
+        R.skipLeftHas = STATE.skipLog.map(x => x.date).includes('2026-08-08');
+        R.skipLeftN = STATE.skipLog.length;
+        closeSheet(); await wait(150);
+        /* FLOOR: rows on one date keep the writer's newest-first order */
+        R.stable = JSON.stringify(recentRows([{ date: '2026-05-05', mins: 1 }, { date: '2026-05-05', mins: 2 }], 8).map(r => r.x.mins));
+        R.junkLast = JSON.stringify(recentRows([{ date: 'nope', mins: 1 }, { date: '2026-05-05', mins: 2 }], 8).map(r => r.x.mins));
+
+        /* ---- the backup goes to Drive through the share sheet ---- */
+        STATE.settings.foodAiKey = 'SECRET-KEY-526';
+        const shared = [];
+        const realCan = navigator.canShare, realShare = navigator.share;
+        const setShare = (can, impl) => {
+          Object.defineProperty(navigator, 'canShare', { configurable: true, value: can });
+          Object.defineProperty(navigator, 'share', { configurable: true, value: impl });
+        };
+        setShare(() => true, async d => { shared.push(d); });
+        STATE._lastExport = '2025-01-01'; save();
+        go('guide'); await wait(150);
+        const sb = [...document.querySelectorAll('#v-guide button')].find(b => /Save backup to Google Drive/.test(b.textContent));
+        R.shareButton = !!sb;
+        toasts = []; dl.length = 0;
+        if (sb) sb.click(); await wait(600);
+        const f = shared[0] && shared[0].files && shared[0].files[0];
+        R.sharedName = f ? f.name : null; R.sharedType = f ? f.type : null;
+        const txt = f ? await f.text() : '';
+        let parsed = null; try { parsed = JSON.parse(txt); } catch (e) {}
+        R.sharedParses = !!parsed && !!parsed.profile;
+        R.sharedNoKey = !txt.includes('SECRET-KEY-526');
+        R.shareStamp = STATE._lastExport === todayISO();
+        R.shareToast = toasts.join(' | ');
+        R.shareNoDownload = dl.length === 0;
+        /* a share the athlete closes is NOT a backup */
+        STATE._lastExport = '2025-01-01'; toasts = [];
+        setShare(() => true, async () => { const e = new Error('x'); e.name = 'AbortError'; throw e; });
+        await shareBackup(); await wait(100);
+        R.abortStamp = STATE._lastExport; R.abortToast = toasts.join(' | ');
+        /* a phone that cannot share a file says so and downloads instead */
+        toasts = []; dl.length = 0;
+        setShare(() => false, async () => {});
+        await shareBackup(); await wait(300);
+        R.fallbackDl = dl.map(d => d.name).join(',');
+        R.fallbackToast = toasts.join(' | ');
+        setShare(realCan, realShare);
+        R.importAccept = (document.querySelector('#importFile') || {}).accept || '';
+
+        /* ---- the training days go into the phone's calendar ---- */
+        STATE.profile.days = [1, 3, 5]; STATE.settings.reminderTime = '07:30';
+        R.ics = trainingCalendarICS(new Date(2026, 9, 27, 12, 0));   // a Tuesday
+        STATE.profile.days = [0];
+        R.icsSun = trainingCalendarICS(new Date(2026, 9, 27, 12, 0));
+        STATE.settings.reminderTime = 'junk';
+        R.icsJunkTime = trainingCalendarICS(new Date(2026, 9, 27, 12, 0));
+        STATE.profile.days = [1, 3, 5]; STATE.settings.reminderTime = '07:30'; save();
+        go('guide'); await wait(150);
+        dl.length = 0;
+        const cb = [...document.querySelectorAll('#v-guide button')].find(b => /Add these days to my calendar/.test(b.textContent));
+        R.calButton = !!cb;
+        if (cb) cb.click(); await wait(200);
+        R.calDl = dl.map(d => d.name).join(',');
+      } finally {
+        HTMLAnchorElement.prototype.click = realClick; window.toast = realToast;
+        delete STATE.settings.foodAiKey; save();
+      }
+      return R;
+    });
+    t.ok('the bike needs a trainer: no trainer, no bike (v526)', r.bikeNoGear === false, JSON.stringify(r));
+    t.ok('FLOOR: and a trainer owner still has it', r.bikeGear === true, JSON.stringify(r));
+    t.ok('FLOOR: a trainer owner in bike mode still rides in the concurrent session', r.concOwner && r.concOwner.exId === 'bike' && r.concOwner.swapped === false, JSON.stringify(r.concOwner));
+    t.ok('an athlete with no trainer is not handed a ride', r.concNone && r.concNone.exId !== 'bike' && r.concNone.why === 'gear', JSON.stringify(r.concNone));
+    t.ok('and the note names the kit, not a joint', /Equipment you have/.test(r.concNoneNote || '') && !/flagged joint/.test(r.concNoneNote || ''), r.concNoneNote);
+    t.ok('and the place it names really is in Settings', r.settingsHasEquipLabel === true, JSON.stringify(r));
+    t.eq('FLOOR: a flagged joint is still named as the joint', r.concJointWhy, 'joint', JSON.stringify(r));
+    t.ok('the bike never lands in the weights circuit', r.poolHasBike === false && r.poolNonEmpty === true, JSON.stringify(r));
+    t.eq('GUARD: the validator is clean with the bike carrying equip', r.validClean, 0, JSON.stringify(r));
+    t.ok('FLOOR: and its geared-without-pattern rule still fires for real kit', r.validStillFires === true && r.validRestored === 0, JSON.stringify(r));
+    t.eq('"Recent sessions" on the ruck sheet is the newest eight, newest first (v526)', r.ruckShown,
+      JSON.stringify(['2026-10-20','2026-09-09','2026-08-08','2026-07-07','2026-06-06','2026-05-05','2026-04-04','2026-03-03']), JSON.stringify(r));
+    t.ok('and its first ✕ removes the newest session, not the first row stored', !JSON.parse(r.ruckLeft).includes('2026-10-20') && JSON.parse(r.ruckLeft).length === 9, r.ruckLeft);
+    t.eq('the skipping sheet is by date too', r.skipShown,
+      JSON.stringify(['2026-10-20','2026-09-09','2026-08-08','2026-07-07','2026-06-06','2026-05-05','2026-04-04','2026-03-03']), JSON.stringify(r));
+    t.ok('and its third ✕ removes the third newest', r.skipLeftHas === false && r.skipLeftN === 9, JSON.stringify(r));
+    t.eq('FLOOR: rows on one date keep the newest-first order the writer gave them', r.stable, '[1,2]', JSON.stringify(r));
+    t.eq('and a row with no usable date sorts last', r.junkLast, '[2,1]', JSON.stringify(r));
+    t.ok('Settings carries the Save-to-Drive button', r.shareButton === true, JSON.stringify(r));
+    t.ok('tapping it hands a .txt file to the share sheet', /^coreforge-backup-\d{4}-\d{2}-\d{2}\.txt$/.test(r.sharedName || '') && r.sharedType === 'text/plain', JSON.stringify(r));
+    t.ok('the shared file is the real backup', r.sharedParses === true, JSON.stringify(r));
+    t.ok('and carries no API key', r.sharedNoKey === true, JSON.stringify(r));
+    t.ok('a completed share counts as a backup', r.shareStamp === true && /Backup shared/.test(r.shareToast) && r.shareNoDownload === true, JSON.stringify(r));
+    t.ok('a share the athlete closes is NOT a backup', r.abortStamp === '2025-01-01' && /Not shared/.test(r.abortToast), JSON.stringify(r));
+    t.ok('a phone that cannot share says so and downloads instead', /\.json$/.test(r.fallbackDl) && /downloaded instead/.test(r.fallbackToast), JSON.stringify(r));
+    t.ok('the import accepts the shared .txt file', /\.txt/.test(r.importAccept) && /\.json|application\/json/.test(r.importAccept), r.importAccept);
+    t.ok('the calendar file starts on the next training day, at the reminder time', /\r\nDTSTART:20261028T073000\r\n/.test(r.ics), r.ics);
+    t.ok('and repeats on exactly those days', /\r\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR\r\n/.test(r.ics), r.ics);
+    t.ok('and alerts 15 minutes before', /BEGIN:VALARM\r\nTRIGGER:-PT15M/.test(r.ics) && /^BEGIN:VCALENDAR\r\n/.test(r.ics) && /END:VCALENDAR\r\n$/.test(r.ics), r.ics);
+    t.ok('a Sunday-only athlete starts on Sunday and repeats on Sunday', /DTSTART:20261101T073000/.test(r.icsSun) && /BYDAY=SU\r\n/.test(r.icsSun), r.icsSun);
+    t.ok('FLOOR: a junk reminder time falls back to 18:00', /DTSTART:\d{8}T180000/.test(r.icsJunkTime), r.icsJunkTime);
+    t.ok('the Settings button downloads the calendar file', r.calButton === true && r.calDl === 'coreforge-training-days.ics', JSON.stringify(r));
   }
 
   /* ============ TWO CONTROLS KNEW ONE WAY TO CLOSE A DAY (v491) ============

@@ -23285,6 +23285,63 @@ Two v490 floors held the old behaviour and were re-aimed rather than deleted:
 offered exactly knee, shoulder and wrist; the inherited-key case now asserts
 every button carries a real joint and nothing named `constructor`.
 
+## The rest of one review, shipped together (v526)
+
+Four more changes ride in the same version as the pain-stop offer.
+
+- **The bike needs a trainer.** `EX.bike` declared no `equip`, so
+  `hasGearFor('bike')` answered yes for everybody, and the concurrent
+  session's endurance half — `CONC_CARDIO`, lowest-impact first, bike first —
+  could hand a twenty-minute ride to an athlete with no trainer. It carries
+  `equip:['bike']` now. Two things had relied on it having none:
+  `weightsPool()` (it requires `equip`, so it now excludes
+  `STANDALONE_CARDIO` by name) and the validator's *"has equip but no
+  pattern"* rule (standalone cardio is exempt, and a floor proves the rule
+  still fires for real kit). The concurrent note now says WHICH reason refused
+  the athlete's own mode — kit not ticked, or a flagged joint — because
+  telling a trainer-less athlete about "one of your flagged joints" is false.
+- **"Recent sessions" by date, each ✕ on its own row.** `recentRows()` sorts
+  the ruck/grip/box and skipping history newest-first and carries each row's
+  RAW index through the sort, because `removeAct()`/`removeSkip()` splice by
+  position — sorting alone would have deleted a different session. This is
+  the item v508 recorded and deliberately deferred.
+- **Save the backup to Google Drive.** `shareBackup()` hands the same file
+  `exportData()` downloads (built once, in `buildBackup()`) to the phone's
+  share sheet. **It is shared as `.txt`**, because Chrome's share sheet
+  refuses `.json`; the import now accepts both. The "last backup" stamp is set
+  only when the share completes — a closed share sheet is not a backup — and a
+  phone that cannot share a file says so and downloads instead.
+  `privacy.html` names it under exporting, not as an exception: the athlete
+  picks the destination and the app sends nothing itself.
+- **Training days into the phone calendar.** `trainingCalendarICS()` builds
+  one weekly repeating event on the athlete's own days at their reminder time
+  with a 15-minute alert, starting on the next training day (a repeating rule
+  counts from its start). The time is floating local time. The calendar does
+  the reminding, so it fires when the app is closed.
+
+**What a sandbox cannot prove:** the share sheet and the calendar import are
+platform features. Every check stubs them and proves the WIRING — the file,
+its name and type, its content, and what the app records — not that a real
+Android phone shows Drive or imports the event. A real-device confirmation is
+the ship gate for those two.
+
+Twenty-two mutants for these four, all caught by name.
+
+**The full suite found what giving the bike a trainer requirement broke.**
+`SAFE_SWAP` sent a knee-flagged steady run to the bike — a swap target that
+now needs kit its source did not, which suite 21's integrity sweep exists to
+refuse. It lands on shadow boxing: aerobic, zero impact, no kit, no joint
+flags. Two older checks pinned "the bike needs no equipment" and were
+re-aimed, not deleted.
+
+**And it exposed a scanner that had been passing by luck.** `totalTUT()` has
+had no app caller since v445, and v388's reachability check called it
+reachable — because its comment stripper does not know regex literals, so a
+quote inside one flipped the string state and a COMMENT naming `totalTUT()`
+was scanned as code. New code in this version shifted that parity. It is on
+the suite-driven allowlist now, with the reason; teaching the stripper regex
+literals is recorded rather than done here.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

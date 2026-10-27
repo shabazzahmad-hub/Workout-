@@ -1290,8 +1290,11 @@ export default async function run() {
       return out;
     });
 
-    t.eq('guard: none of the four is gear-gated, so nothing else keeps them out',
-      r.ungated.length, 4, r.ungated);
+    /* v526 gave the bike a trainer requirement, so gear now keeps it out for
+       an athlete WITHOUT one — and nothing but this list keeps it out for one
+       who owns a trainer. The other three are still gated by nothing. */
+    t.eq('guard: sprint, ruck and skip are gear-gated by nothing, so only the list keeps them out',
+      JSON.stringify(r.ungated), JSON.stringify(['sprint', 'ruck', 'skip']), r.ungated);
     t.ok('guard: four flagged joints really do bite on the cardio region',
       r.cardioSeen >= 20 && r.cardioRisky >= 10, JSON.stringify(r));
 

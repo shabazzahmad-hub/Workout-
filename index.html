@@ -1587,7 +1587,12 @@ const EX = {
     steps:['Stand with feet about shoulder-width, toes turned slightly out.','Sit all the way down into a deep squat, heels flat on the floor.','Keep the chest tall and let the elbows rest inside the knees.','Hold and breathe, sinking a little deeper each breath.'],
     cues:['Heels stay planted','Chest tall, back long','Relax into the position'],mistakes:['Heels lifting off the floor','Rounding the low back']},
   /* -- Special-section cardio (not in the daily program) -- */
-  bike:{name:'Bike Trainer',region:'cardio',unit:'time',img:'ex-bike.jpg',anchor:null,hardness:1,base:40,rest:20,
+  /* equip:['bike'] (v526). It declared none, so hasGearFor('bike') answered
+     yes for everybody and the concurrent session's endurance half — which
+     walks CONC_CARDIO lowest-impact first, the bike first — could hand a
+     twenty-minute ride to an athlete who owns no trainer. bikeSwap() already
+     asked the gear list itself; this makes every other path ask it too. */
+  bike:{name:'Bike Trainer',region:'cardio',unit:'time',img:'ex-bike.jpg',anchor:null,hardness:1,base:40,rest:20,equip:['bike'],
     why:'Low-impact interval cardio on your road bike and trainer — a huge aerobic and fat-loss stimulus that spares the joints.',
     steps:['Set the road bike on the trainer and clip or strap in.','On "work", ride hard — high cadence or heavier resistance.','On "rest", spin easy to recover.','Repeat for the intervals, staying smooth and strong.'],
     cues:['Drive from the legs','Steady, strong breathing','Relax the upper body'],mistakes:['Coasting through the work bouts','Bouncing in the saddle']},
@@ -8340,7 +8345,10 @@ function openPlayer(opts){
   plEnterReady(true);
 }
 /* ===== WEIGHTS SESSION (equipment track) ===== */
-function weightsPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>EX[k].equip&&EX[k].equip.every(g=>gear.includes(g)));}
+/* Standalone cardio is kept out by name, not by the accident of having no
+   pattern: the bike carries equip since v526, and a twenty-minute ride is not
+   a circuit station. */
+function weightsPool(){const gear=STATE.profile.gear||[];return Object.keys(EX).filter(k=>EX[k].equip&&EX[k].equip.every(g=>gear.includes(g))&&!STANDALONE_CARDIO.includes(k));}
 /* weightsPool() answered "do you own ANY tagged kit", which is not the same
    question as "can we build you a session". A bench alone satisfied the pool and
    then produced an empty circuit, and the empty-state told the athlete to add the
@@ -9865,7 +9873,10 @@ function concEndurance(){
     const wanted=concCardioExFor(cardioMode());
     const first=ok(wanted);
     if(first)return {exId:first,swapped:false,wanted};
-    for(const r of CONC_CARDIO){const alt=ok(r.exId);if(alt)return {exId:alt,swapped:true,wanted};}
+    /* Two reasons the athlete's own mode can be refused, and they need
+       different sentences: kit they have not ticked, or a flagged joint. */
+    let why='joint';try{if(wanted&&EX[wanted]&&!hasGearFor(wanted))why='gear';}catch(e){}
+    for(const r of CONC_CARDIO){const alt=ok(r.exId);if(alt)return {exId:alt,swapped:true,wanted,why};}
     return null;
   }catch(e){return null;}
 }
@@ -9947,6 +9958,7 @@ function concEnduranceNote(end){
   const nm=_ve(EX[end.exId]?EX[end.exId].name:end.exId);
   if(!end.swapped)return `Endurance half: <b>${nm}</b>, your own cardio mode.`;
   const was=end.wanted&&EX[end.wanted]?_ve(EX[end.wanted].name):'your cardio mode';
+  if(end.why==='gear')return `Endurance half: <b>${nm}</b>. ${was} needs kit that is not ticked under Settings ▸ Equipment you have, so this drops to the lowest-impact option you can do instead — tick it there if you own one.`;
   return `Endurance half: <b>${nm}</b>. ${was} is on one of your flagged joints, so this drops to the lowest-impact option you can do instead — change it in Today ▸ Workout ▸ Movement if you would rather pick another.`;
 }
 function openConcurrent(){
@@ -10189,10 +10201,28 @@ function actStats(k){
     best:l.reduce((m,x)=>Math.max(m,_actNum(x.secs)),0),last:l[0]||null};
 }
 function removeAct(k,i){const l=actLog(k);if(rowAt(l,i)){l.splice(i,1);save();openAct(k);}}
+/* "RECENT SESSIONS" BY DATE, AND EACH ✕ KEEPS ITS OWN ROW (v526). These
+   lists are head-newest because the writers unshift, so .slice(0,8) was the
+   eight newest only while nothing reordered them — a restored backup can, and
+   the sheet then labelled the wrong eight "recent". Sorting before the slice
+   was the obvious fix and the wrong one alone: removeAct(k,i) and
+   removeSkip(i) splice the RAW list by position, so a sorted row would delete
+   a different session. Each row carries its raw index through the sort.
+   The sort is stable, so rows on one date keep the newest-first order the
+   writer gave them; a row with no usable date sorts last. */
+function recentRows(list,n){
+  try{
+    const key=x=>(x&&isDateISO(x.date))?x.date:'';
+    return (Array.isArray(list)?list:[]).map((x,i)=>({x,i}))
+      .filter(r=>r.x&&typeof r.x==='object')
+      .sort((a,b)=>{const da=key(a.x),db=key(b.x);return da<db?1:da>db?-1:0;})
+      .slice(0,n);
+  }catch(e){return [];}
+}
 function actHistoryHTML(k){
-  const l=actLog(k).slice(0,8);if(!l.length)return '';
+  const l=recentRows(actLog(k),8);if(!l.length)return '';
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
-    l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
+    l.map(({x,i})=>`<div class="kv" style="border-top:1px solid var(--line)">
       <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.dist>0?distShow(x.dist)+' · ':''}${x.wt?rowLoadShow(x.wt,x.unit)+' load · ':''}${x.secs?'best '+x.secs+'s · ':''}${x.rounds?plural(x.rounds,'round')+' · ':''}${_ve(x.date)}</span></span>
       <button class="chip" aria-label="Remove this activity" onclick="removeAct('${k}',${i})">✕</button></div>`).join('')+`</div>`;
 }
@@ -10437,9 +10467,9 @@ function skipStats(){
 }
 function removeSkip(i){const l=skipLog();if(rowAt(l,i)){l.splice(i,1);save();openSkipping();}}
 function skipHistoryHTML(){
-  const l=skipLog().slice(0,8);if(!l.length)return '';
+  const l=recentRows(skipLog(),8);if(!l.length)return '';
   return `<div class="section-label" style="margin-top:14px">Recent sessions</div><div class="card" style="padding:0 12px">`+
-    l.map((x,i)=>`<div class="kv" style="border-top:1px solid var(--line)">
+    l.map(({x,i})=>`<div class="kv" style="border-top:1px solid var(--line)">
       <span><b>${x.mins} min</b> <span class="tiny muted">· ${x.rounds?plural(x.rounds,'round')+' · ':''}${_ve(x.date)}</span></span>
       <button class="chip" aria-label="Remove this skipping entry" onclick="removeSkip(${i})">✕</button></div>`).join('')+`</div>`;
 }
@@ -16256,7 +16286,7 @@ function backupNudgeHTML(){
     if(sinceExport!==null&&sinceExport<21)return '';
     if(STATE._backupNudgeDismissed&&(Date.now()-STATE._backupNudgeDismissed)<21*86400000)return '';
     return `<div class="note info" style="margin-top:12px"><b>No backup in a while.</b> Your progress lives only on this phone — a lost or reset device would take it with it. Takes ten seconds.
-      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="exportData()">⬇ Export backup</button><button class="btn sm ghost" onclick="dismissBackupNudge()">Not now</button></div></div>`;
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="shareBackup()">☁ Save to Drive</button><button class="btn sm ghost" onclick="exportData()">⬇ Download</button><button class="btn sm ghost" onclick="dismissBackupNudge()">Not now</button></div></div>`;
   }catch(e){return '';}
 }
 function dismissBackupNudge(){STATE._backupNudgeDismissed=Date.now();save();render();}
@@ -19024,12 +19054,14 @@ const SAFE_SWAP={
   // parallettes — a flagged SHOULDER still has to leave the support hold, and
   // the landing spot stays in the same region rather than a generic filler.
   tucklsit:'hollow',plegraise:'legraise',ppushup:'kneepushup',
-  /* A flagged knee off a steady run lands on the TRAINER, because the swap
-     has to keep the aerobic quality as well as clear the joint — zero impact,
-     same stimulus. The generic dead-end in safeSwap() takes any equipment-free
-     move of the same region, which for a twenty-minute bout would hand back a
-     crab walk. */
-  steadyrun:'bike',
+  /* A flagged knee off a steady run lands on SHADOW BOXING: the swap has to
+     keep the aerobic quality as well as clear the joint, and it must need no
+     kit the run did not. It used to land on the trainer, which was right until
+     v526 made the bike need one — a swap target that needs equipment its
+     source did not hands a trainer-less athlete something they cannot do. The
+     generic dead-end in safeSwap() takes any equipment-free move of the same
+     region, which for a twenty-minute bout could hand back a crab walk. */
+  steadyrun:'shadowbox',
   // legs / plyometrics
   pistol:'squat',boxpistol:'squat',jumpsquat:'squat',tuckjump:'squat',broadjump:'squat',
   splitjump:'reverselunge',bulgarian:'splitsquat',walkinglunge:'reverselunge',
@@ -19316,7 +19348,51 @@ function trainingDaysHTML(){
     <div class="tiny muted" style="margin-top:8px" data-daysnote>About <b>${plural(wks,'week')}</b> to finish all ${total} sessions at this pace.${
       rest>0?` Your ${plural(rest,'rest day')} ${rest===1?'does':'do'} not count against your streak.`:''}</div>
     ${n<7?`<button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="trainEveryDay()">Train every day (7)</button>`:''}
+    <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="downloadTrainingCalendar()">📅 Add these days to my calendar</button>
+    <div class="tiny muted" style="margin-top:6px">One repeating event on these days, at your reminder time, so your phone's calendar reminds you even when the app is closed. Change your days later? Download it again and delete the old event.</div>
   </div>`;
+}
+/* THE TRAINING DAYS AS A CALENDAR FILE (v526). One weekly repeating event on
+   the athlete's own days, at their reminder time, with a 15-minute alert, so
+   the PHONE'S calendar does the reminding — it fires when the app is closed,
+   which a web page's own notification cannot promise. Built on the device; no
+   network is used.
+
+   The days are JavaScript weekday numbers (0 is Sunday), the same ones
+   scheduledDays() hands every other reader, so the file and the app cannot
+   disagree about which days are training days. DTSTART is the first training
+   day from today, because a repeating rule counts from it. The time is
+   FLOATING (no Z), so it stays at the athlete's local time. */
+const ICS_DAYS=['SU','MO','TU','WE','TH','FR','SA'];
+function trainingCalendarICS(now){
+  const d0=now instanceof Date?new Date(now.getTime()):new Date();
+  const days=scheduledDays().filter(x=>Number.isInteger(x)&&x>=0&&x<=6);
+  const use=days.length?days:[0,1,2,3,4,5,6];
+  const tm=/^\d{2}:\d{2}$/.test(String(STATE.settings&&STATE.settings.reminderTime||''))?STATE.settings.reminderTime:'18:00';
+  const [hh,mm]=tm.split(':');
+  let start=new Date(d0.getFullYear(),d0.getMonth(),d0.getDate());
+  for(let i=0;i<7&&!use.includes(start.getDay());i++)start.setDate(start.getDate()+1);
+  let mins=45;try{const t=typicalSessionMin();if(t>0&&t<300)mins=Math.round(t);}catch(e){}
+  const p2=n=>String(n).padStart(2,'0');
+  const ymd=localISO(start).replace(/-/g,'');
+  const stamp=d0.toISOString().replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z');
+  const byday=[0,1,2,3,4,5,6].filter(x=>use.includes(x)).map(x=>ICS_DAYS[x]).join(',');
+  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//CoreForge//Training days//EN','CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT','UID:coreforge-training-days','DTSTAMP:'+stamp,
+    'DTSTART:'+ymd+'T'+p2(hh)+p2(mm)+'00','DURATION:PT'+mins+'M',
+    'RRULE:FREQ=WEEKLY;BYDAY='+byday,
+    'SUMMARY:CoreForge training','DESCRIPTION:Open CoreForge for today\'s session.',
+    'BEGIN:VALARM','TRIGGER:-PT15M','ACTION:DISPLAY','DESCRIPTION:CoreForge training in 15 minutes','END:VALARM',
+    'END:VEVENT','END:VCALENDAR',''].join('\r\n');
+}
+function downloadTrainingCalendar(){
+  try{
+    const blob=new Blob([trainingCalendarICS(new Date())],{type:'text/calendar'});
+    const u=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=u;a.download='coreforge-training-days.ics';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>{try{URL.revokeObjectURL(u);}catch(e){}},5000);
+    toast('Calendar file downloaded — open it to add your training days');
+  }catch(e){toast('Could not make the calendar file');}
 }
 function toggleReminders(){
   if(STATE.settings.reminderOn){STATE.settings.reminderOn=false;save();renderGuide();return;}
@@ -24795,8 +24871,9 @@ h+=`<div class="section-label">What changes, and when</div>
   h+=`<div class="section-label">Your data</div><div class="card pad">
     <p class="sm muted" style="margin-top:0">Your progress auto-saves on this phone and works offline. For extra safety, export a backup file you can re-import anytime.</p>
     ${dataHealthNoteHTML()}
-    <div class="btnrow"><button class="btn ghost sm" style="width:100%" onclick="exportData()">⬇ Export backup</button><button class="btn ghost sm" style="width:100%" onclick="$('#importFile').click()">⬆ Import backup</button></div>
-    <input type="file" id="importFile" aria-label="Choose a backup file to restore" accept="application/json" style="display:none" onchange="importData(event)">
+    <button class="btn primary sm" style="width:100%;margin-bottom:8px" onclick="shareBackup()">☁ Save backup to Google Drive or another app</button>
+    <div class="btnrow"><button class="btn ghost sm" style="width:100%" onclick="exportData()">⬇ Download backup</button><button class="btn ghost sm" style="width:100%" onclick="$('#importFile').click()">⬆ Import backup</button></div>
+    <input type="file" id="importFile" aria-label="Choose a backup file to restore" accept="application/json,text/plain,.json,.txt" style="display:none" onchange="importData(event)">
     ${hasPreImportSnapshot()?'<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="undoImport()">↩ Undo last import</button>':''}
     ${hasCrossTabSnapshot()?'<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="undoCrossTab()">↩ Restore what this tab had</button>':''}
     ${(STATE.photos||[]).length?`<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="savePhotoFiles()">🖼️ Save my ${(STATE.photos||[]).length} progress photo${(STATE.photos||[]).length===1?'':'s'} as pictures</button>
@@ -25057,10 +25134,9 @@ const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed
    not one a restart can drop. */
 const META_KEYS=['_base','_rev'];
 const BACKUP_STRIP=TRANSIENT_KEYS.concat(META_KEYS);
-async function exportData(){
-  // Record it on THIS device before cloning, so backupNudgeHTML() stops
-  // asking and the exported file itself carries an accurate "as of" stamp.
-  STATE._lastExport=todayISO();save();
+/* The backup file's CONTENT, in one place, so the download and the share
+   sheet cannot write two different files (v526). */
+async function buildBackup(){
   // Never write the on-device API keys into a shareable backup file.
   const clone=JSON.parse(JSON.stringify(STATE));
   if(clone.settings){delete clone.settings.azureKey;delete clone.settings.foodAiKey;}
@@ -25078,13 +25154,56 @@ async function exportData(){
     }
   }catch(e){}
   const missing=(clone.photos||[]).length-Object.keys(clone._photoData).length;
-  const blob=new Blob([JSON.stringify(clone,null,2)],{type:'application/json'});
+  return {json:JSON.stringify(clone,null,2),n:Object.keys(clone._photoData||{}).length,missing};
+}
+function backupCountText(b){
+  return (b.n?(' · '+plural(b.n,'photo')+' included'):'')+(b.missing>0?(' · '+plural(b.missing,'photo file')+' missing'):'');
+}
+async function exportData(){
+  // Record it on THIS device before cloning, so backupNudgeHTML() stops
+  // asking and the exported file itself carries an accurate "as of" stamp.
+  STATE._lastExport=todayISO();save();
+  const b=await buildBackup();
+  const blob=new Blob([b.json],{type:'application/json'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');
   a.href=url;a.download='coreforge-backup-'+todayISO()+'.json';a.click();
   setTimeout(()=>{try{URL.revokeObjectURL(url);}catch(e){}},5000);   // the share-card paths already defer; revoking in the same tick can kill the download
-  const n=Object.keys(clone._photoData||{}).length;
-  toast('Backup downloaded'+(n?(' · '+n+' photo'+(n===1?'':'s')+' included'):'')+(missing>0?(' · '+missing+' photo file'+(missing===1?'':'s')+' missing'):''));
+  toast('Backup downloaded'+backupCountText(b));
   try{render();}catch(e){}   // the "no backup in a while" nudge clears immediately, not on the next unrelated render
+}
+/* ONE TAP TO GOOGLE DRIVE, OR ANYWHERE ELSE (v526). Everything lives on one
+   phone, and a downloaded file sits in that same phone's Downloads folder —
+   so a lost phone takes the backup with it. The share sheet hands the same
+   file to an app the athlete picks; CoreForge itself sends nothing anywhere.
+
+   IT IS SHARED AS .txt, and that is a platform rule rather than a choice:
+   Chrome's share sheet refuses a .json file, and text/plain is on its list.
+   The content is the same JSON, and the import accepts either extension.
+
+   THE "LAST BACKUP" STAMP IS SET ONLY ON SUCCESS. A share the athlete closes
+   is not a backup, and stamping it would silence the 21-day reminder for a
+   file that went nowhere. Where the phone cannot share a file at all, it says
+   so and downloads instead, rather than doing nothing. */
+async function shareBackup(){
+  try{
+    const b=await buildBackup();
+    const name='coreforge-backup-'+todayISO()+'.txt';
+    let file=null;try{file=new File([b.json],name,{type:'text/plain'});}catch(e){}
+    if(!(file&&navigator.canShare&&navigator.share&&navigator.canShare({files:[file]}))){
+      toast('This phone cannot hand the file to another app from here, so it was downloaded instead');
+      return exportData();
+    }
+    try{
+      await navigator.share({files:[file],title:'CoreForge backup'});
+    }catch(e){
+      if(e&&e.name==='AbortError'){toast('Not shared — nothing was saved');return;}
+      toast('Sharing failed, so it was downloaded instead');
+      return exportData();
+    }
+    STATE._lastExport=todayISO();save();
+    toast('Backup shared'+backupCountText(b));
+    try{render();}catch(e){}
+  }catch(e){toast('Could not make the backup');}
 }
 /* API keys are a DEVICE credential, and exportData() strips them — so a backup
    file holds no opinion about them at all. That is what makes "restore" the one
@@ -26800,7 +26919,9 @@ function validateData(){
     if(e.unit==='reps'&&e.repCap>0&&e.base>e.repCap)
       errs.push(k+': base '+e.base+' exceeds its own repCap '+e.repCap);
     if(e.unit==='time'&&e.repCap)errs.push(k+': repCap on a timed hold is dead');
-    if(e.equip&&e.equip.length&&!e.pattern)errs.push(k+': has equip but no pattern — unreachable in the Weights circuit');
+    /* Standalone cardio is exempt: it has its own card and timer and is kept
+       out of the circuit on purpose, so "unreachable there" is the design. */
+    if(e.equip&&e.equip.length&&!e.pattern&&!STANDALONE_CARDIO.includes(k))errs.push(k+': has equip but no pattern — unreachable in the Weights circuit');
     if(e.demo!==undefined&&!(typeof e.demo==='string'&&DEMO_URL_RE.test(e.demo)))
       errs.push(k+': demo is not a YouTube watch, shorts or youtu.be address');
     /* PRESENCE IS NOT MEMBERSHIP. A pattern the circuit never asks for is
