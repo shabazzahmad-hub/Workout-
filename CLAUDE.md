@@ -23238,6 +23238,53 @@ is a square crop of a wide frame from its own clip. The drag clip walks FORWARD
 while the steps say walk backwards; the athlete accepted it as a reminder, and
 that difference is recorded rather than hidden.
 
+## Every pain stop gets an offer (v526)
+
+v490 made the pain card offer *Work around my <joint>* and read only the region
+map, so **75 of the 198 movements (measured today) stopped for pain and were
+offered nothing**.
+Its own comment declined `JOINT_RISK` as "a second definition". Asked for
+directly, and it is the right call: `JOINT_RISK` is the list `safeSwap()` acts
+on, so it is not a guess about the movement.
+
+`painRowJoints(row)` answers in order, and the order is what keeps the card and
+`painPattern()` agreeing:
+
+| measured over the library | count | the card |
+|---|---|---|
+| region maps to a joint | 123 | unchanged — one button |
+| unmapped, loads one listed joint | 38 | one button naming it |
+| unmapped, loads several | 20 | *Which of these hurt?* — one button each |
+| unmapped, loads none (dead bug, squat, carries) | 17 | *Which joint hurt?* — all five |
+
+- **The app asks rather than guesses** when it does not know. Tapping one flags
+  only that joint; the others stay unflagged.
+- **The region is never interpolated** into the card any more. For an unmapped
+  movement it is stored data an import controls, so *It is fine* calls the
+  no-argument `dismissPainNow()`, and every joint in an attribute is a
+  `JOINTS` key. `adoptPainLimit()` refuses anything else.
+- **Answering clears the report the card showed.** An unmapped row survives the
+  old region filter, so `adoptPainLimit(joint,1)` drops today's latest row or
+  the card keeps asking. *It is fine* on a mapped region still clears every
+  report of it, as before — pinned as a floor.
+
+Thirteen mutants, twelve caught by name. **One is equivalent and recorded as
+such**: dropping the `,1` from the ONE-button branch changes nothing, because a
+single offer is always the last unflagged joint the movement names, so flagging
+it empties the offer whatever happens to the row. The `,1` stays for symmetry
+with the picker, where it is load-bearing.
+
+**A junk joint was first caught by a page error, not by name.** Flagging
+`'constructor'` made the render throw, and the error boundary retries through
+`normalizeState()`, which scrubbed it back out of `STATE` — so the named check
+read a clean list on the defect. The check stubs `render()` for the one call.
+The boundary is the neighbour that supplies the answer, again.
+
+Two v490 floors held the old behaviour and were re-aimed rather than deleted:
+*"a region the map does not know is offered nothing"* now pins burpee being
+offered exactly knee, shoulder and wrist; the inherited-key case now asserts
+every button carries a real joint and nothing named `constructor`.
+
 ## Rendering
 
 **`renderToday()` has a `sess.pos.dayInWeek === 0` branch for the weekly

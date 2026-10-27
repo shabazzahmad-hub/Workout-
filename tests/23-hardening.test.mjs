@@ -14779,8 +14779,13 @@ export default async function () {
       STATE.pain = [{ exId: 'squat', region: 'constructor', date: todayISO(), ptr: p }];
       STATE.profile.limitations = []; save(); paint();
       const c3 = card();
-      R.inheritedNoOffer = !!(c3 && ![...c3.querySelectorAll('button')]
-        .some(b => /work around my/i.test(b.innerText)));
+      /* v526: an unmapped report now gets a picker, so the inherited key is
+         ASKED about rather than offered nothing — what must hold is that no
+         button it renders carries anything but a real joint. */
+      const realJ = JOINTS.map(j => j[0]);
+      const c3j = c3 ? [...c3.querySelectorAll('[data-painjoint]')].map(b => b.dataset.painjoint) : [];
+      R.inheritedNoOffer = !!c3 && c3j.length > 0 && c3j.every(k => realJ.includes(k))
+        && !/constructor/i.test(c3.innerHTML);
       R.inheritedNoFunction = !!(c3 && !/function\s|=>/.test(c3.innerHTML));
 
       /* and the boot repair drops a row whose region is not a string at all */
@@ -14797,12 +14802,14 @@ export default async function () {
       R.staleNoOffer = !!(card() && ![...card().querySelectorAll('button')]
         .some(b => /work around my/i.test(b.innerText)));
 
-      /* FLOOR: a region the map does not know promises nothing and offers nothing */
+      /* v526: a region the map does not know is offered the joints the
+         movement LOADS (JOINT_RISK) rather than nothing — burpee loads knee,
+         shoulder and wrist, pinned as a value. */
       STATE.pain = [{ exId: 'burpee', region: 'cardio', date: todayISO(), ptr: p }];
       STATE.profile.limitations = []; save(); paint();
       const c4 = card();
-      R.unmappedNoOffer = !!(c4 && ![...c4.querySelectorAll('button')]
-        .some(b => /work around my/i.test(b.innerText)));
+      R.unmappedNoOffer = !!c4 && JSON.stringify([...c4.querySelectorAll('[data-painjoint]')]
+        .map(b => b.dataset.painjoint)) === JSON.stringify(['knee', 'shoulder', 'wrist']);
       R.unmappedNoPromise = !!(c4 && !/tell me where it hurt/i.test(c4.innerText));
       return R;
     });
@@ -14816,11 +14823,156 @@ export default async function () {
     t.ok('FLOOR: and the card defers to the pattern prompt rather than repeating it', r.cardDefersToPattern === true, JSON.stringify(r));
     t.ok('GUARD: an inherited key really is truthy on the region map', r.gInheritedIsTruthy === true, JSON.stringify(r));
     t.ok('painJoint() refuses it and still answers for a real region (v490)', r.jointOfInherited === null && r.jointOfReal === 'knee', JSON.stringify({ inh: r.jointOfInherited, real: r.jointOfReal }));
-    t.ok('so an inherited key offers nothing and puts no function on the glass', r.inheritedNoOffer === true && r.inheritedNoFunction === true, JSON.stringify(r));
+    t.ok('so an inherited key offers only real joints and puts no function on the glass', r.inheritedNoOffer === true && r.inheritedNoFunction === true, JSON.stringify(r));
     t.ok('and the boot repair drops a row whose region is not a string', r.repairKept === 1 && r.repairKeptReal === true, JSON.stringify(r));
     t.ok('FLOOR: a report from three days ago is not offered on today\u2019s card', r.staleNoOffer === true, JSON.stringify(r));
-    t.ok('FLOOR: a region the map does not know is offered nothing', r.unmappedNoOffer === true, JSON.stringify(r));
+    t.ok('a region the map does not know is offered the joints its movement loads (v526)', r.unmappedNoOffer === true, JSON.stringify(r));
     t.ok('FLOOR: and is promised nothing either', r.unmappedNoPromise === true, JSON.stringify(r));
+  }
+
+  /* ============ EVERY PAIN STOP GETS AN OFFER (v526) =======================
+     The region map knows 123 of the 200 movements. The other 77 stopped for
+     pain and were offered nothing, so the athlete had to find the joint setting
+     in Settings alone. Now an unmapped movement is offered the joints it loads
+     (JOINT_RISK), and one that loads none is asked which joint hurt. Every
+     button is DRIVEN, not the helper called. */
+  {
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const R = {};
+      const card = () => [...document.querySelectorAll('#v-today .note.warn')]
+        .find(n => /stopped for pain/i.test(n.innerText)) || null;
+      const paint = () => { setTodayTab('workout'); renderToday(); };
+      const btns = () => { const c = card(); return c ? [...c.querySelectorAll('button')] : []; };
+      const offered = () => { const c = card(); return c ? [...c.querySelectorAll('[data-painjoint]')].map(b => b.dataset.painjoint) : []; };
+      const realJ = JOINTS.map(j => j[0]);
+
+      /* the class: every movement in the library gets a non-empty offer of real joints */
+      const all = Object.keys(EX).map(k => ({ k, n: painRowJoints({ exId: k, region: EX[k].region }) }));
+      R.total = all.length;
+      R.gMapped = all.filter(x => x.n.mapped).length;
+      R.gUnmapped = all.filter(x => !x.n.mapped).length;
+      R.noOffer = all.filter(x => !x.n.joints.length || !x.n.joints.every(j => realJ.includes(j))).map(x => x.k);
+
+      /* build the pain-stop state the card renders in */
+      STATE.logs = {}; STATE.progressPtr = 3; delete STATE._trainAgain;
+      STATE.pain = []; STATE.profile.limitations = []; save();
+      openPlayer(); await new Promise(z => setTimeout(z, 250));
+      hurtStop(); await new Promise(z => setTimeout(z, 700));
+      const at = (exId) => {
+        STATE.pain = [{ exId, region: EX[exId].region, date: todayISO(), ptr: 3 }];
+        STATE.profile.limitations = []; save(); paint();
+      };
+      R.gStopped = todayStoppedForPain();
+
+      /* one joint: revcrunch loads the lower back only */
+      at('revcrunch');
+      R.gRevUnmapped = !painJoint(EX.revcrunch.region);
+      const one = btns().find(b => /work around my/i.test(b.innerText));
+      R.singleText = one ? one.innerText : null;
+      if (one) one.click();
+      await new Promise(z => setTimeout(z, 200)); paint();
+      R.singleFlagged = JSON.stringify(STATE.profile.limitations);
+      R.singleGone = btns().length === 0;
+
+      /* several joints: kneetoelbow loads shoulder and lower back — tapping one flags ONLY that one */
+      at('kneetoelbow');
+      R.multiOffered = JSON.stringify(offered());
+      const lb = btns().find(b => b.dataset.painjoint === 'lowback');
+      if (lb) lb.click();
+      await new Promise(z => setTimeout(z, 200)); paint();
+      R.multiFlagged = JSON.stringify(STATE.profile.limitations);
+      R.multiGone = offered().length === 0;
+
+      /* FLOOR: a joint already flagged is not offered again */
+      STATE.pain = [{ exId: 'kneetoelbow', region: EX.kneetoelbow.region, date: todayISO(), ptr: 3 }];
+      STATE.profile.limitations = ['shoulder']; save(); paint();
+      R.flaggedExcluded = JSON.stringify(btns().filter(b => /work around my/i.test(b.innerText)).map(b => b.innerText));
+
+      /* none: deadbug loads no listed joint, so the athlete is asked */
+      at('deadbug');
+      const c = card();
+      R.askedText = c ? c.innerText : '';
+      R.askedOffered = JSON.stringify(offered());
+      const kn = btns().find(b => b.dataset.painjoint === 'knee');
+      if (kn) kn.click();
+      await new Promise(z => setTimeout(z, 200)); paint();
+      R.askedFlagged = JSON.stringify(STATE.profile.limitations);
+      R.askedGone = offered().length === 0;
+
+      /* "It is fine" on an unmapped report clears THAT report only */
+      const old = { exId: 'deadbug', region: EX.deadbug.region, date: '2026-01-05', ptr: 1 };
+      STATE.pain = [old, { exId: 'deadbug', region: EX.deadbug.region, date: todayISO(), ptr: 3 }];
+      STATE.profile.limitations = []; save(); paint();
+      const fine = btns().find(b => /it is fine/i.test(b.innerText));
+      if (fine) fine.click();
+      await new Promise(z => setTimeout(z, 200)); paint();
+      R.fineLeft = JSON.stringify(STATE.pain);
+      R.fineFlaggedNothing = (STATE.profile.limitations || []).length === 0;
+
+      /* FLOOR: on a mapped report "It is fine" still clears every report of that region */
+      const mk = Object.keys(EX).find(k => painJoint(EX[k].region));
+      STATE.pain = [{ exId: mk, region: EX[mk].region, date: '2026-01-05', ptr: 1 },
+                    { exId: mk, region: EX[mk].region, date: todayISO(), ptr: 3 }];
+      save(); paint();
+      const fine2 = btns().find(b => /it is fine/i.test(b.innerText));
+      if (fine2) fine2.click();
+      await new Promise(z => setTimeout(z, 200));
+      R.mappedFineLeft = (STATE.pain || []).length;
+
+      /* the region is stored data an import controls: it never reaches an attribute */
+      STATE.pain = [{ exId: 'deadbug', region: "x');window.__pwn526=1;//", date: todayISO(), ptr: 3 }];
+      save(); paint();
+      const cx = card();
+      R.payloadAbsent = !!cx && !/__pwn526/.test(cx.innerHTML) && offered().length > 0;
+      for (const b of btns()) if (b.dataset.painjoint === 'wrist') b.click();
+      await new Promise(z => setTimeout(z, 200));
+      R.pwned = !!window.__pwn526;
+
+      /* and the one-button branch too: revcrunch with a payload region is still
+         offered one joint, and its "It is fine" must not carry the region */
+      STATE.pain = [{ exId: 'revcrunch', region: "y');window.__pwn526b=1;//", date: todayISO(), ptr: 3 }];
+      STATE.profile.limitations = []; save(); paint();
+      const cy = card();
+      R.payloadAbsent1 = !!cy && !/__pwn526b/.test(cy.innerHTML) && btns().some(b => /work around my/i.test(b.innerText));
+      const fine3 = btns().find(b => /it is fine/i.test(b.innerText));
+      if (fine3) fine3.click();
+      await new Promise(z => setTimeout(z, 200));
+      R.pwned1 = !!window.__pwn526b;
+
+      /* FLOOR: only a real joint is ever flagged */
+      /* render() is stubbed for the call: a junk joint makes the render throw,
+         and the error boundary repairs it back out of STATE — which would let
+         this check pass on the defect it exists to catch. */
+      STATE.profile.limitations = [];
+      const realRender = render; render = () => {};
+      try { adoptPainLimit('constructor', 1); } finally { render = realRender; }
+      R.junkFlagged = JSON.stringify(STATE.profile.limitations);
+      return R;
+    });
+    t.ok('GUARD: the region map still answers for most of the library', r.gMapped >= 100, JSON.stringify(r));
+    t.ok('GUARD: and some movements really are outside it', r.gUnmapped > 0, JSON.stringify(r));
+    t.eq('every movement in the library gets an offer of real joints (v526)', JSON.stringify(r.noOffer), '[]', JSON.stringify(r));
+    t.ok('GUARD: the card really is in its pain-stop state', r.gStopped === true, JSON.stringify(r));
+    t.ok('GUARD: the reverse crunch really is outside the region map', r.gRevUnmapped === true, JSON.stringify(r));
+    t.eq('a one-joint movement offers one button naming that joint', r.singleText, 'Work around my lower back', JSON.stringify(r));
+    t.eq('and tapping it flags that joint', r.singleFlagged, '["lowback"]', JSON.stringify(r));
+    t.ok('and the card stops asking about a stop the athlete answered', r.singleGone === true, JSON.stringify(r));
+    t.eq('a movement that loads two joints offers both', r.multiOffered, '["shoulder","lowback"]', JSON.stringify(r));
+    t.eq('and tapping one flags ONLY that one', r.multiFlagged, '["lowback"]', JSON.stringify(r));
+    t.ok('and the card stops asking', r.multiGone === true, JSON.stringify(r));
+    t.eq('FLOOR: a joint already flagged is not offered again', r.flaggedExcluded, '["Work around my lower back"]', JSON.stringify(r));
+    t.ok('a movement that loads no listed joint asks which joint hurt', /which joint hurt/i.test(r.askedText), JSON.stringify({ text: r.askedText.slice(0, 300) }));
+    t.eq('and offers every joint', r.askedOffered, '["knee","shoulder","wrist","lowback","elbow"]', JSON.stringify(r));
+    t.eq('and the athlete’s pick is the one flagged', r.askedFlagged, '["knee"]', JSON.stringify(r));
+    t.ok('and the card stops asking', r.askedGone === true, JSON.stringify(r));
+    t.ok('"It is fine" on an unmapped report clears that report and keeps the older one', /2026-01-05/.test(r.fineLeft) && JSON.parse(r.fineLeft).length === 1, JSON.stringify(r));
+    t.ok('and flags nothing', r.fineFlaggedNothing === true, JSON.stringify(r));
+    t.eq('FLOOR: on a mapped report "It is fine" still clears every report of that region', r.mappedFineLeft, 0, JSON.stringify(r));
+    t.ok('a stored region never reaches the card’s markup', r.payloadAbsent === true, JSON.stringify(r));
+    t.ok('and nothing it carried ran', r.pwned === false, JSON.stringify(r));
+    t.ok('and the one-button branch keeps it out too', r.payloadAbsent1 === true && r.pwned1 === false, JSON.stringify(r));
+    t.eq('FLOOR: only a real joint is ever flagged', r.junkFlagged, '[]', JSON.stringify(r));
   }
 
   /* ============ TWO CONTROLS KNEW ONE WAY TO CLOSE A DAY (v491) ============

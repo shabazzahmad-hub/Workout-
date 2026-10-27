@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='525';
+const APP_VERSION='526';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -4972,8 +4972,7 @@ function sessionDoneCardHTML(sess,log,doneSets){
        produced this report. */
     return `<div class="note warn"><b>🩹 Session ${sess.ptr!=null?sess.ptr+1:''} — you stopped for pain.</b>
       Right call. That is what the button is for, and it is <b>not</b> logged as a completed session.
-      Your program still moved on, so the next one is below.${(()=>{const j=painJustNow();return j?`
-      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="adoptPainLimit('${j.joint}')">Work around my ${_ve(j.joint)}</button><button class="btn sm ghost" onclick="dismissPain('${j.region}')">It is fine</button></div>`:'';})()}</div>`;
+      Your program still moved on, so the next one is below.${(()=>{const j=painJustNow();return j?painOfferHTML(j):'';})()}</div>`;
   }
   return `<div class="note ok">
     <div style="font-size:17px;font-weight:900">✅ ${partial?'Session done — partial':'Session done'}</div>
@@ -8106,9 +8105,10 @@ function painPattern(){
 
    IT READS THE SAME REGION MAP painPattern() READS, so the two offers cannot
    disagree about what "the joint that hurt" means. Measured, 123 of the 200
-   movements carry a region that maps; the rest name a joint only in
-   JOINT_RISK, which would be a second definition, so they get no button and
-   the card promises them nothing.
+   movements carry a region that maps. v490 gave the other 77 no button at all;
+   v526 asks JOINT_RISK for them instead (see painRowJoints below), and only
+   when the region map has no answer, so the two still agree everywhere both
+   know a movement.
 
    It stands down when the pattern prompt is already offering the same joint:
    both render on Today's workout tab, and two notes telling the athlete to
@@ -8123,19 +8123,54 @@ function painPattern(){
 function painJoint(region){
   try{return Object.prototype.hasOwnProperty.call(PAIN_JOINT,region)?PAIN_JOINT[region]:null;}catch(e){return null;}
 }
+/* EVERY STOP GETS AN OFFER (v526). The region map knows 123 of the 200
+   movements; the other 77 used to stop for pain and be offered nothing, so the
+   athlete had to find the joint setting in Settings on their own. The joints a
+   movement LOADS are already listed in JOINT_RISK — the list safeSwap() acts
+   on — so that is the second answer, asked only when the region map has none.
+   A movement that loads no listed joint gets every joint to pick from: the
+   app does not know where it hurt, so it asks rather than guesses.
+
+   The region map still wins when it answers, so painPattern() and this card
+   agree about every movement they both know. Every joint offered is a member
+   of JOINTS, which is what keeps the onclick below safe by construction. */
+function painRowJoints(row){
+  try{
+    const mapped=painJoint(row&&row.region);
+    if(mapped)return {joints:[mapped],mapped:true};
+    const id=row&&row.exId;
+    const keys=JOINTS.map(j=>j[0]);
+    if(typeof id!=='string'||!exKnown(id))return {joints:keys,mapped:false,asked:true};
+    const loads=keys.filter(k=>Object.prototype.hasOwnProperty.call(JOINT_RISK,k)&&Array.isArray(JOINT_RISK[k])&&JOINT_RISK[k].includes(id));
+    return loads.length?{joints:loads,mapped:false}:{joints:keys,mapped:false,asked:true};
+  }catch(e){return {joints:[],mapped:false};}
+}
 function painJustNow(){
   try{
     const rows=Array.isArray(STATE.pain)?STATE.pain:[];
     const last=rows[rows.length-1];
     if(!last||last.date!==todayISO())return null;
-    const joint=painJoint(last.region);
-    if(!joint)return null;
+    const named=painRowJoints(last);
     const lims=(STATE.profile&&Array.isArray(STATE.profile.limitations))?STATE.profile.limitations:[];
-    if(lims.includes(joint))return null;          // already training around it
     const pat=painPattern();
-    if(pat&&pat.joint===joint)return null;        // the prompt above already offers this one
-    return {joint,region:last.region};
+    /* already training around it, or the pattern prompt above already offers it */
+    const joints=named.joints.filter(j=>!lims.includes(j)&&!(pat&&pat.joint===j));
+    if(!joints.length)return null;
+    return {joint:joints[0],joints,region:last.region,mapped:named.mapped,asked:!!named.asked};
   }catch(e){return null;}
+}
+/* The card's own buttons. Each joint is a JOINTS key (painJustNow() filtered
+   it), so it is a literal in the attribute; the region is never interpolated,
+   because for an unmapped movement it is stored data an import controls. */
+function painOfferHTML(j){
+  try{
+    const lab=k=>{const r=JOINTS.find(x=>x[0]===k);return r?r[1].toLowerCase():k;};
+    if(j.joints.length===1)return `
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="adoptPainLimit('${j.joint}',1)">Work around my ${_ve(lab(j.joint))}</button><button class="btn sm ghost" onclick="dismissPainNow()">It is fine</button></div>`;
+    return `
+      <div style="margin-top:10px"><b>${j.asked?'Which joint hurt?':'Which of these hurt?'}</b> Pick it and the app swaps the movements that load it out of every session from here.</div>
+      <div class="btnrow" style="margin-top:8px;flex-wrap:wrap">${j.joints.map(k=>`<button class="btn sm primary" data-painjoint="${k}" aria-label="Work around my ${_ve(lab(k))}" onclick="adoptPainLimit('${k}',1)">${_ve(lab(k).charAt(0).toUpperCase()+lab(k).slice(1))}</button>`).join('')}<button class="btn sm ghost" onclick="dismissPainNow()">It is fine</button></div>`;
+  }catch(e){return '';}
 }
 function painPromptHTML(){
   try{
@@ -8146,15 +8181,34 @@ function painPromptHTML(){
       <div class="tiny muted" style="margin-top:8px">Pain that persists past a couple of weeks is worth a physio, not an app.</div></div>`;
   }catch(e){return '';}
 }
-function adoptPainLimit(joint){
+function adoptPainLimit(joint,fromCard){
   try{
+    if(!JOINTS.some(j=>j[0]===joint))return;      // only a real joint is ever flagged
     const P=STATE.profile;
     if(!Array.isArray(P.limitations))P.limitations=[];
     if(!P.limitations.includes(joint))P.limitations.push(joint);
     // the reports have done their job; clearing them stops the prompt repeating
     STATE.pain=(STATE.pain||[]).filter(x=>painJoint(x&&x.region)!==joint);
+    /* The card names the report it is about — the latest one — and an unmapped
+       movement's row survives the filter above, so it goes here or the card
+       keeps asking about a stop the athlete has just answered. */
+    if(fromCard&&Array.isArray(STATE.pain)&&STATE.pain.length){
+      const last=STATE.pain[STATE.pain.length-1];
+      if(last&&last.date===todayISO())STATE.pain.pop();
+    }
     save();render();
     toast('Working around your '+joint+' from now on');
+  }catch(e){}
+}
+/* "It is fine" on the card. A mapped region clears every report of it, as it
+   always did; an unmapped movement clears only the report the card showed,
+   because its region is not a joint and must not sweep up unrelated rows. */
+function dismissPainNow(){
+  try{
+    const j=painJustNow();if(!j)return;
+    if(j.mapped){dismissPain(j.region);return;}
+    if(Array.isArray(STATE.pain)&&STATE.pain.length)STATE.pain.pop();
+    save();render();
   }catch(e){}
 }
 function dismissPain(region){
