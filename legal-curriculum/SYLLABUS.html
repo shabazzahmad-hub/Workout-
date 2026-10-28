@@ -1,0 +1,94 @@
+<title>Think Like a Lawyer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column, a quiet control bar at the top, a brass rule under each section heading.
+   The study-desk palette: slate paper, ink, brass accent. */
+:root{
+  --bg:#f4f5f7; --paper:#ffffff; --ink:#1a222c; --ink-2:#4a5664; --rule:#d8dce2;
+  --brass:#8c6d1f; --brass-soft:#f1e9d2; --now:#fff6d6; --good:#2f6b3a; --on-brass:#ffffff;
+  --display:"EB Garamond",Georgia,"Times New Roman",serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121820; --paper:#1a222c; --ink:#e9ecf0; --ink-2:#a9b3bf; --rule:#2c3744;
+  --brass:#d6b35b; --brass-soft:#2a2a1f; --now:#2e2a16; --good:#8fd19a; --on-brass:#1a222c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121820; --paper:#1a222c; --ink:#e9ecf0; --ink-2:#a9b3bf; --rule:#2c3744;
+  --brass:#d6b35b; --brass-soft:#2a2a1f; --now:#2e2a16; --good:#8fd19a; --on-brass:#1a222c; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0 48px}
+.wrap{max-width:680px;margin:0 auto}
+header{padding-block:28px 8px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--brass)}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(30px,6vw,40px);line-height:1.15;margin:8px 0 6px;text-wrap:balance}
+.meta{color:var(--ink-2);font-size:14px;display:flex;flex-wrap:wrap;gap:6px 14px}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);border:1px solid var(--rule);border-radius:10px;
+  padding:10px 12px;margin:14px 0 22px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button,select{font:inherit;font-size:14px;font-weight:500;border-radius:8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);padding:8px 12px;cursor:pointer}
+button.primary{background:var(--brass);border-color:var(--brass);color:var(--on-brass)}
+button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+.bar .status{font-family:var(--mono);font-size:12px;color:var(--ink-2);flex:1 1 120px;min-width:0}
+.bar .spacer{flex:1 1 auto}
+article{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:8px 22px 22px}
+article h2{font-family:var(--display);font-weight:600;font-size:24px;margin:26px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--brass);text-wrap:balance}
+article p{margin:10px 0}
+article ul,article ol{margin:8px 0 8px 22px;padding:0}
+article li{margin:4px 0}
+.bottom{background:var(--brass-soft);border-radius:8px;padding:12px 14px;margin-top:14px}
+.bottom p{margin:0}
+.now{background:var(--now);border-radius:4px;box-shadow:0 0 0 4px var(--now)}
+details{border:1px solid var(--rule);border-radius:8px;padding:8px 12px;margin:10px 0}
+summary{cursor:pointer;font-weight:600}
+.tag{display:inline-block;font-family:var(--mono);font-size:12px;border:1px solid var(--brass);color:var(--brass);border-radius:6px;padding:1px 8px;margin:2px 4px 2px 0}
+footer{color:var(--ink-2);font-size:13px;margin-top:18px;line-height:1.5}
+@media (prefers-reduced-motion:no-preference){.now{transition:background .2s}}
+</style>
+<style>
+section{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:6px 18px 14px;margin:14px 0}
+section h2{font-family:var(--display);font-weight:600;font-size:22px;margin:14px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--brass);text-wrap:balance}
+.tnum{display:block;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--brass);margin-bottom:2px}
+section ol{list-style:none;margin:6px 0 0;padding:0}
+section li{display:flex;gap:12px;align-items:baseline;padding:5px 0;border-top:1px solid var(--rule)}
+section li:first-child{border-top:0}
+.n{font-family:var(--mono);font-size:13px;color:var(--ink-2);min-width:2.2em;font-variant-numeric:tabular-nums}
+.rules{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:6px 18px 14px;margin:14px 0}
+.rules ul{margin:8px 0 0 20px;padding:0} .rules li{margin:5px 0}
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">A private daily course · 56 lessons · 14 topics</div>
+  <h1>Think Like a Lawyer</h1>
+  <div class="meta"><span>One lesson a day, about 10 minutes</span><span>Delivered at 8:30 PM Mountain</span><span>Started October 27, 2026</span></div>
+</header>
+<div class="rules">
+  <h2 style="font-family:var(--display);font-weight:600;font-size:22px;margin:14px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--brass)">How each lesson is built</h2>
+  <ul>
+    <li>Plain English first. Then the professional framework. Then one worked example.</li>
+    <li>One beginner mistake. One checklist. One self-test. One task to apply today.</li>
+    <li>Round hypothetical numbers only. No project figures. No retired facts.</li>
+    <li>Any law, rate or treaty is cited to a primary source or tagged "unverified".</li>
+    <li>Every lesson names the licensed professional who must sign off before you act.</li>
+    <li>Every page has a Listen button that reads the lesson aloud.</li>
+  </ul>
+</div>
+<section><h2><span class='tnum'>Topic 1</span>Thinking like a lawyer</h2><ol><li><span class='n'>1</span>The question behind the question: IRAC and reframing</li><li><span class='n'>2</span>Facts first: fact, assumption, inference, conclusion</li><li><span class='n'>3</span>Reading a rule: elements, exceptions, burdens</li><li><span class='n'>4</span>Risk thinking: worst case, probability, reversibility, one-way doors</li></ol></section>
+<section><h2><span class='tnum'>Topic 2</span>Legal document structuring</h2><ol><li><span class='n'>5</span>Anatomy of a contract: parties, recitals, definitions, operative clauses, boilerplate</li><li><span class='n'>6</span>Definitions and precision: how one word moves money</li><li><span class='n'>7</span>Conditions precedent, covenants, representations, warranties</li><li><span class='n'>8</span>Remedies, termination, dispute resolution, governing law</li></ol></section>
+<section><h2><span class='tnum'>Topic 3</span>AI as a legal tool</h2><ol><li><span class='n'>9</span>What AI does better than most lawyers, and what it cannot do</li><li><span class='n'>10</span>Verify before asserting: primary sources and hallucination traps</li><li><span class='n'>11</span>Drafting with AI: rubric, red team, defect list</li><li><span class='n'>12</span>The brief to counsel: arrive prepared, cut fees</li></ol></section>
+<section><h2><span class='tnum'>Topic 4</span>Corporate law</h2><ol><li><span class='n'>13</span>The corporation as a separate person: limited liability and its limits</li><li><span class='n'>14</span>Shares, classes and rights: voting, dividends, redemption</li><li><span class='n'>15</span>Directors, officers, shareholders: duties and the minute book</li><li><span class='n'>16</span>Shareholder agreements: control, exits, deadlock, death</li></ol></section>
+<section><h2><span class='tnum'>Topic 5</span>Holdco and Opco structuring</h2><ol><li><span class='n'>17</span>Why two companies: the creditor wall</li><li><span class='n'>18</span>Moving value upstream: intercorporate dividends (concepts)</li><li><span class='n'>19</span>Lending between related companies and documenting it</li><li><span class='n'>20</span>Operating discipline: separate books, separate bank, no commingling</li></ol></section>
+<section><h2><span class='tnum'>Topic 6</span>Trust structuring</h2><ol><li><span class='n'>21</span>What a trust is: settlor, trustee, beneficiary, trust property</li><li><span class='n'>22</span>Discretionary family trusts: what discretion buys and costs</li><li><span class='n'>23</span>Trustee duties and the trust deed: powers, protectors, replacement</li><li><span class='n'>24</span>Trusts and tax: attribution and the deemed disposition clock (concepts)</li></ol></section>
+<section><h2><span class='tnum'>Topic 7</span>Cross-border business structuring</h2><ol><li><span class='n'>25</span>Where a company lives: incorporation, residence, management and control</li><li><span class='n'>26</span>Stacking entities across borders: what each layer buys</li><li><span class='n'>27</span>Local content, beneficial ownership and look-through rules</li><li><span class='n'>28</span>Repatriating money: dividends, loans, fees and leakage</li></ol></section>
+<section><h2><span class='tnum'>Topic 8</span>CRA tax advisor</h2><ol><li><span class='n'>29</span>How the CRA thinks: self-assessment, audit triggers, documentation</li><li><span class='n'>30</span>Corporate tax basics: active income, investment income, integration (concepts)</li><li><span class='n'>31</span>Personal vs corporate: salary, dividends, shareholder loans and benefits</li><li><span class='n'>32</span>Compliance calendar: filings, elections and the cost of being late</li></ol></section>
+<section><h2><span class='tnum'>Topic 9</span>Cross-border tax strategist</h2><ol><li><span class='n'>33</span>Residence and source: who taxes what</li><li><span class='n'>34</span>Tax treaties: what they do, tie-breakers, withholding</li><li><span class='n'>35</span>Foreign affiliates: exempt and taxable surplus (concepts, sign-off required)</li><li><span class='n'>36</span>Anti-avoidance: GAAR thinking and substance over form</li></ol></section>
+<section><h2><span class='tnum'>Topic 10</span>Financial architect</h2><ol><li><span class='n'>37</span>The capital stack: equity, debt, mezzanine, who is paid first</li><li><span class='n'>38</span>Reading a lender: DSCR, LTV, covenants, bankability</li><li><span class='n'>39</span>Pro forma discipline: sources and uses, sensitivities, the killing number</li><li><span class='n'>40</span>Gates and sequencing: what must be true before you ask for money</li></ol></section>
+<section><h2><span class='tnum'>Topic 11</span>Wealth architect</h2><ol><li><span class='n'>41</span>Capital preservation first: margin of safety and priorities</li><li><span class='n'>42</span>Asset location vs asset allocation</li><li><span class='n'>43</span>Liquidity, concentration and the developer's trap</li><li><span class='n'>44</span>Generational design: control today, transfer tomorrow</li></ol></section>
+<section><h2><span class='tnum'>Topic 12</span>Land conveyance</h2><ol><li><span class='n'>45</span>Title: what you own and how it is proved</li><li><span class='n'>46</span>The conveyance process: agreement, searches, transfer, registration</li><li><span class='n'>47</span>Encumbrances: mortgages, liens, easements, lender consents</li><li><span class='n'>48</span>Transferring land into a company: triggers, costs, timing</li></ol></section>
+<section><h2><span class='tnum'>Topic 13</span>Estate planning</h2><ol><li><span class='n'>49</span>What estate planning is: control, taxes, who decides when you cannot</li><li><span class='n'>50</span>Powers of attorney and personal directives</li><li><span class='n'>51</span>The deemed disposition at death and how structures soften it (concepts)</li><li><span class='n'>52</span>Beneficiary designations, joint ownership and probate traps</li></ol></section>
+<section><h2><span class='tnum'>Topic 14</span>Will planning</h2><ol><li><span class='n'>53</span>What a valid will needs and what makes one fail</li><li><span class='n'>54</span>Executors, guardians, specific vs residual gifts</li><li><span class='n'>55</span>Wills and trusts together: testamentary and spousal trusts, minors</li><li><span class='n'>56</span>The review cycle: updates, cross-border wills, final checklist</li></ol></section>
+
+<footer>Education only. This course teaches how to think about a problem. It is not legal, tax or financial advice, and it does not replace a licensed professional.</footer>
+</div>

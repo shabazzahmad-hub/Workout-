@@ -1,0 +1,173 @@
+<title>Lesson 1: The Question Behind the Question</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column, a quiet control bar at the top, a brass rule under each section heading.
+   The study-desk palette: slate paper, ink, brass accent. */
+:root{
+  --bg:#f4f5f7; --paper:#ffffff; --ink:#1a222c; --ink-2:#4a5664; --rule:#d8dce2;
+  --brass:#8c6d1f; --brass-soft:#f1e9d2; --now:#fff6d6; --good:#2f6b3a; --on-brass:#ffffff;
+  --display:"EB Garamond",Georgia,"Times New Roman",serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121820; --paper:#1a222c; --ink:#e9ecf0; --ink-2:#a9b3bf; --rule:#2c3744;
+  --brass:#d6b35b; --brass-soft:#2a2a1f; --now:#2e2a16; --good:#8fd19a; --on-brass:#1a222c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121820; --paper:#1a222c; --ink:#e9ecf0; --ink-2:#a9b3bf; --rule:#2c3744;
+  --brass:#d6b35b; --brass-soft:#2a2a1f; --now:#2e2a16; --good:#8fd19a; --on-brass:#1a222c; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0 48px}
+.wrap{max-width:680px;margin:0 auto}
+header{padding-block:28px 8px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--brass)}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(30px,6vw,40px);line-height:1.15;margin:8px 0 6px;text-wrap:balance}
+.meta{color:var(--ink-2);font-size:14px;display:flex;flex-wrap:wrap;gap:6px 14px}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);border:1px solid var(--rule);border-radius:10px;
+  padding:10px 12px;margin:14px 0 22px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button,select{font:inherit;font-size:14px;font-weight:500;border-radius:8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);padding:8px 12px;cursor:pointer}
+button.primary{background:var(--brass);border-color:var(--brass);color:var(--on-brass)}
+button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+.bar .status{font-family:var(--mono);font-size:12px;color:var(--ink-2);flex:1 1 120px;min-width:0}
+.bar .spacer{flex:1 1 auto}
+article{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:8px 22px 22px}
+article h2{font-family:var(--display);font-weight:600;font-size:24px;margin:26px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--brass);text-wrap:balance}
+article p{margin:10px 0}
+article ul,article ol{margin:8px 0 8px 22px;padding:0}
+article li{margin:4px 0}
+.bottom{background:var(--brass-soft);border-radius:8px;padding:12px 14px;margin-top:14px}
+.bottom p{margin:0}
+.now{background:var(--now);border-radius:4px;box-shadow:0 0 0 4px var(--now)}
+details{border:1px solid var(--rule);border-radius:8px;padding:8px 12px;margin:10px 0}
+summary{cursor:pointer;font-weight:600}
+.tag{display:inline-block;font-family:var(--mono);font-size:12px;border:1px solid var(--brass);color:var(--brass);border-radius:6px;padding:1px 8px;margin:2px 4px 2px 0}
+footer{color:var(--ink-2);font-size:13px;margin-top:18px;line-height:1.5}
+@media (prefers-reduced-motion:no-preference){.now{transition:background .2s}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Think Like a Lawyer · Topic 1 of 14 · Thinking like a lawyer</div>
+  <h1>Lesson 1: The Question Behind the Question</h1>
+  <div class="meta"><span>Lesson 1 of 56</span><span>About 10 minutes</span><span>Tuesday, October 27, 2026</span></div>
+</header>
+
+<div class="bar" role="group" aria-label="Listen to this lesson">
+  <button class="primary" id="btnPlay">▶ Listen</button>
+  <button id="btnStop" disabled>■ Stop</button>
+  <select id="rate" aria-label="Reading speed"><option value="0.9">Slow</option><option value="1" selected>Normal</option><option value="1.15">Brisk</option><option value="1.3">Fast</option></select>
+  <select id="voice" aria-label="Voice"></select>
+  <span class="status" id="status">Tap Listen to hear the lesson read aloud.</span>
+</div>
+
+<article id="lesson">
+  <div class="bottom" data-speak>
+    <p><strong>Bottom line.</strong> A lawyer does not answer the question you asked. A lawyer finds the real issue under it, names the rule that decides it, applies the facts, and only then gives a conclusion. Learn to do that first step yourself, and every meeting with a professional gets shorter and cheaper.</p>
+  </div>
+
+  <h2>In plain English</h2>
+  <p>When most people ask a legal question, they ask it as a yes-or-no. "Can I move my land into my company?" "Can I pay my brother from the Holdco?" A lawyer hears something different. A lawyer hears a bundle of smaller questions hiding inside the big one.</p>
+  <p>Here is a comparison. A doctor does not answer "can I run a marathon?" with yes or no. The doctor asks about your heart, your knees, and your training. Then the doctor answers a better question: "what would have to be true for a marathon to be safe for you?" Thinking like a lawyer is the same move.</p>
+  <p>The habit has four parts. Find the <strong>issue</strong>, the real thing in dispute or at risk. Find the <strong>rule</strong>, the law or contract term that decides it. <strong>Apply</strong> the rule to your exact facts. Then <strong>conclude</strong>. Lawyers call this IRAC. It is the oldest tool in legal training, and it works for business decisions too.</p>
+
+  <h2>The framework</h2>
+  <p><strong>IRAC</strong> stands for Issue, Rule, Application, Conclusion. Run it in that order, every time.</p>
+  <ol>
+    <li><strong>Issue.</strong> Rewrite the question so it names what is actually at stake. "Can I transfer the land?" becomes "What does a transfer trigger: tax, fees, consents, and who must agree?"</li>
+    <li><strong>Rule.</strong> Name the source that decides each piece. A statute, a regulation, a contract clause, a bank covenant, a trust deed. If you do not know the source, that is your first task, not a reason to guess.</li>
+    <li><strong>Application.</strong> Put your real facts against the rule. Not the facts you wish you had. The land is in one name, the company may not yet exist, the bank may hold a charge. Each fact changes the answer.</li>
+    <li><strong>Conclusion.</strong> Now give the answer, with its conditions attached. "Yes, if the company exists, if the lender consents, and if the tax cost is acceptable." A conclusion without conditions is a guess.</li>
+  </ol>
+  <p>Add one more question that lawyers ask by reflex: <strong>who has the power to decide this?</strong> A regulator, a lender, a co-owner, a trustee, a court. If the answer is "someone other than me", your real task is to satisfy that person, not to convince yourself.</p>
+
+  <h2>A worked example</h2>
+  <p>Hypothetical. A developer owns a building lot in her own name. She asks: "Can I just put the land into my new company?"</p>
+  <p><strong>Issue.</strong> The real issues are: does the company exist yet; what does the transfer cost in tax and government fees; does any lender or co-owner have to agree; and does moving the land change who the regulator thinks is the owner.</p>
+  <p><strong>Rule.</strong> Four different sources decide those four issues: company law for existence, tax law for the cost, the mortgage document for consent, and the planning authority's own rules for ownership. One question, four rulebooks.</p>
+  <p><strong>Application.</strong> Suppose the company is not yet registered. Then the answer to the whole question is "not yet", whatever the tax rules say. Suppose it is registered, but a bank holds a mortgage that says "no transfer without our written consent". Then the next step is a letter to the bank, not a deed.</p>
+  <p><strong>Conclusion.</strong> "Yes, once the company exists, with the bank's written consent, after a tax professional has priced the transfer in both countries." Notice that the conclusion is a sequence of steps, not a word.</p>
+  <p>Professional Sign-Off Required: real estate counsel in the land's jurisdiction, and a tax advisor in each country involved, before any transfer document is signed.</p>
+
+  <h2>The beginner mistake</h2>
+  <p>Accepting the question as it was asked. A yes-or-no question invites a yes-or-no answer, and a yes-or-no answer hides every condition that matters. The second mistake follows from the first: acting on the "yes" before anyone checked the conditions. Most expensive legal problems start with a true "yes" that was missing three "ifs".</p>
+
+  <h2>Checklist</h2>
+  <ul>
+    <li>Rewrite the question so it names what is at risk.</li>
+    <li>List every rulebook that touches it. Expect more than one.</li>
+    <li>Write your real facts down. Mark each one: known, assumed, or unverified.</li>
+    <li>Ask who has the power to decide. Plan to satisfy that person.</li>
+    <li>State the conclusion as "yes, if…" with every condition listed.</li>
+    <li>Name which licensed professional must sign off before you act.</li>
+  </ul>
+
+  <h2>Self-test</h2>
+  <p>A friend asks you: "Can my company lend me money to buy a house?" Before you answer, write the four IRAC lines.</p>
+  <details><summary>Show a model answer</summary>
+    <p><strong>Issue:</strong> Not "can it lend" but "what does a loan from a company to its owner trigger: tax on the owner, rules on repayment timing, and what the company's own documents allow."</p>
+    <p><strong>Rule:</strong> Tax law on shareholder loans, the company's articles and any shareholder agreement, and any bank covenant that limits related-party loans. [Specific rules unverified — confirm independently.]</p>
+    <p><strong>Application:</strong> Depends on the repayment period, whether interest is charged, and whether the company's lender must consent.</p>
+    <p><strong>Conclusion:</strong> "Possibly, if it is repaid within the period the tax rules allow, documented as a real loan, and not blocked by the bank." Professional Sign-Off Required: tax advisor.</p>
+  </details>
+
+  <h2>Apply it today</h2>
+  <p>Take one live question on your desk this week. Write it the way you first thought it. Under it, write the IRAC version: the issue, the rulebooks, your facts marked known or unverified, and a "yes, if…" conclusion. Bring that page to your next professional meeting. You will spend the meeting on the conditions, not on the question.</p>
+
+  <h2>Sources and sign-offs</h2>
+  <p>IRAC is a standard method taught in common-law legal education. This lesson teaches the method only. It cites no statute and gives no jurisdiction-specific advice. The reader's seed video (YouTube, mrBWJYkDNkI) could not be opened from the build environment and will be folded in when its transcript is supplied.</p>
+  <p><span class="tag">Education only</span><span class="tag">No project figures used</span><span class="tag">Sign-off: counsel + tax before any transfer</span></p>
+</article>
+
+<footer>Think Like a Lawyer · a private daily course. This page teaches how to think about a problem. It is not legal, tax or financial advice, and it does not replace a licensed professional.</footer>
+</div>
+
+<script>
+(function(){
+  var synth=window.speechSynthesis;
+  var play=document.getElementById('btnPlay'),stop=document.getElementById('btnStop'),rate=document.getElementById('rate'),voiceSel=document.getElementById('voice'),status=document.getElementById('status');
+  if(!synth||!window.SpeechSynthesisUtterance){play.disabled=true;status.textContent='This browser cannot read aloud. The text below is complete.';return;}
+  var queue=[],i=0,playing=false,paused=false,current=null;
+  function chunks(){
+    var els=document.querySelectorAll('#lesson h2, #lesson p, #lesson li, #lesson summary');
+    var out=[];
+    for(var k=0;k<els.length;k++){var el=els[k];var closed=el.closest('details');if(closed&&!closed.open&&el.tagName!=='SUMMARY')continue;var t=(el.textContent||'').replace(/\s+/g,' ').trim();if(t)out.push({el:el,text:t});}
+    return out;
+  }
+  function voices(){
+    var vs=synth.getVoices().filter(function(v){return /^en/i.test(v.lang);});
+    if(!vs.length)vs=synth.getVoices();
+    var keep=voiceSel.value;voiceSel.innerHTML='';
+    vs.forEach(function(v){var o=document.createElement('option');o.value=v.name;o.textContent=v.name.replace(/^Microsoft |^Google /,'')+' · '+v.lang;voiceSel.appendChild(o);});
+    if(keep)voiceSel.value=keep;
+    try{var saved=localStorage.getItem('ttl-voice');if(saved&&!keep)voiceSel.value=saved;}catch(e){}
+    if(!vs.length)status.textContent='No voices are installed on this device. Tap Listen to try again.';
+  }
+  voices();synth.onvoiceschanged=voices;
+  function clear(){if(current){current.el.classList.remove('now');current=null;}}
+  function speakNext(){
+    if(i>=queue.length){finish();return;}
+    clear();current=queue[i];current.el.classList.add('now');
+    current.el.scrollIntoView({block:'center',behavior:'smooth'});
+    var u=new SpeechSynthesisUtterance(current.text);
+    u.rate=parseFloat(rate.value)||1;
+    var v=synth.getVoices().filter(function(x){return x.name===voiceSel.value;})[0];if(v)u.voice=v;
+    u.onend=function(){if(!playing)return;i++;speakNext();};
+    u.onerror=function(){if(!playing)return;i++;speakNext();};
+    status.textContent='Reading '+(i+1)+' of '+queue.length;
+    synth.speak(u);
+  }
+  function finish(){playing=false;paused=false;clear();synth.cancel();play.textContent='▶ Listen';stop.disabled=true;status.textContent='Finished. Tap Listen to hear it again.';}
+  play.addEventListener('click',function(){
+    if(!playing){queue=chunks();i=0;playing=true;paused=false;synth.cancel();play.textContent='❚❚ Pause';stop.disabled=false;speakNext();return;}
+    if(!paused){synth.pause();paused=true;play.textContent='▶ Resume';status.textContent='Paused.';return;}
+    synth.resume();paused=false;play.textContent='❚❚ Pause';status.textContent='Reading '+(i+1)+' of '+queue.length;
+  });
+  stop.addEventListener('click',function(){finish();status.textContent='Stopped.';});
+  rate.addEventListener('change',function(){if(playing&&!paused){synth.cancel();speakNext();}});
+  voiceSel.addEventListener('change',function(){try{localStorage.setItem('ttl-voice',voiceSel.value);}catch(e){}if(playing&&!paused){synth.cancel();speakNext();}});
+  window.addEventListener('pagehide',function(){synth.cancel();});
+})();
+</script>
