@@ -49,8 +49,10 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 /* Everything at the root is published as before, except what only development
    needs. A file left off this list is a file a phone asks for and gets a 404. */
+/* legal-curriculum is a private course delivered as claude.ai pages. It is not part
+   of the app and must never reach the public site. */
 const SKIP = new Set(['.DS_Store', '.git', '.github', 'node_modules', 'tests', 'tools', 'dist',
-  'package.json', 'package-lock.json', '.gitignore']);
+  'package.json', 'package-lock.json', '.gitignore', 'legal-curriculum']);
 
 /* A plain inline <script> — not one with a src, and not a data block such as
    type="application/json", which terser cannot parse and must not touch. */

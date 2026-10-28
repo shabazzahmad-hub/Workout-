@@ -6,8 +6,13 @@ Address him as Mr Shabazz. One lesson per calendar day, Mountain time (America/E
 ## Steps
 
 1. Get the course files.
-   - `git fetch origin claude/legal-expertise-curriculum-88wclh && git checkout claude/legal-expertise-curriculum-88wclh`
-   - If that branch does not exist, run `git fetch origin main && git checkout -B claude/legal-expertise-curriculum-88wclh origin/main`.
+   - `git fetch origin main claude/legal-expertise-curriculum-88wclh`
+   - If the branch does not exist, run `git checkout -B claude/legal-expertise-curriculum-88wclh origin/main`.
+   - If it exists, check out the branch. Then, if its pull request was already merged (every lesson file on the
+     branch is also on `origin/main`), reset it: `git checkout -B claude/legal-expertise-curriculum-88wclh origin/main`
+     and `git push --force-with-lease -u origin claude/legal-expertise-curriculum-88wclh`. Never stack new commits on
+     already-merged history; the next pull request would show as dirty.
+   - If it exists and has lessons not yet on `main`, keep it and run `git merge origin/main` so the branch is current.
    - Read `legal-curriculum/SYLLABUS.md` in full. Read `legal-curriculum/template/lesson.html` in full.
    - List `legal-curriculum/lessons/`. Lesson files are named `NN-slug.md` and `NN-slug.html`.
 
