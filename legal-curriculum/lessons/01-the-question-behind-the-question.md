@@ -37,4 +37,4 @@ Rewrite the question · list every rulebook · mark facts known/assumed/unverifi
 Take one live question, write it as asked, then write the IRAC version, bring it to the next professional meeting.
 
 ## Sources and sign-offs
-IRAC is a standard common-law teaching method. No statute cited. Seed video not yet folded in (transcript pending).
+IRAC is a standard common-law teaching method. No statute cited. Seed video: Greg Baker on At The Top (Baker v Macquarie University [2026] FWC 3054). Baker's self-represented win is the long case for this lesson's habit: a prepared non-lawyer who frames the issue correctly can hold the line on paper.

@@ -108,7 +108,30 @@ Order: foundations first, then structure, then tax, then money, then land, then 
 55. Wills and trusts together: testamentary and spousal trusts, minors
 56. The review cycle: updates, cross-border wills, final checklist
 
-## Source video
-The reader supplied a YouTube video (https://youtu.be/mrBWJYkDNkI) as the seed for the course.
-The author could not open YouTube from the build environment. When the reader pastes the transcript,
-fold its points into the lesson they fit best and note the fold in that lesson's "Sources" section.
+## Source video (folded in)
+
+Seed: "AI is already better at lawyering than humans" with Greg Baker, At The Top podcast,
+https://youtu.be/mrBWJYkDNkI. The author worked from the episode description supplied by the reader,
+not a transcript. The central facts were checked against news coverage on 2026-10-27:
+Baker, a computing lecturer at Macquarie University, represented himself at the Fair Work Commission
+with AI agents (ChatGPT and Claude) and won. Decision: Baker v Macquarie University [2026] FWC 3054,
+12 August 2026. The university was reported to be considering an appeal. From 20 October 2026 the
+FWC requires disclosure when generative AI prepared a filing. [Sources: Monash Lens, Lawyers Weekly,
+ACS Information Age, The Lawyer Mag, 2026.] Read the decision itself before quoting its reasoning.
+
+Where each point of the episode lands in the course:
+
+| Episode point | Lesson |
+|---|---|
+| AI is already better at legal REASONING on paper; written submissions favour AI | 9 |
+| Verify every citation. The FWC also billed a worker $1,230 for "plain wrong" AI advice (2026) | 10 |
+| Structure a case like a software project: Git repository, versions, a build process for the bundle | 11 |
+| Anticipate the other side's arguments; draft the rebuttal before the hearing | 11 |
+| Arrive prepared so the professional's time goes on judgment, not on research | 12 |
+| Responsibility is the one thing AI cannot carry; the signer still answers for the filing | 9, 12 |
+| Disclosure duties when AI prepared a document (FWC rule, Oct 2026) | 10 |
+| The identity question: a profession is not a person. Build identity beyond the role | 44 |
+| Where the facts and the law both live in writing, a prepared non-lawyer can hold the line | 1, 4 |
+
+Rule for the course author: attribute these as "Baker says" or "as reported", never as settled fact.
+Baker's forecasts (AGI by 2029, white-collar displacement) are opinions and are taught as such.
