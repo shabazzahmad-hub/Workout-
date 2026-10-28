@@ -42,6 +42,14 @@ Address him as Mr Shabazz. One lesson per calendar day, Mountain time (America/E
    - Load the `artifact-design` skill, then publish the HTML with the Artifact tool, `icon` = "book",
      `description` = one sentence naming the lesson. Write the returned URL into the `.md` front matter.
 
+4b. Refresh the pinned roadmap page.
+   - Run `python3 -I legal-curriculum/tools/build_roadmap.py`. It rebuilds `legal-curriculum/SYLLABUS.html` from the
+     lesson files, so the new lesson appears in the "Delivered lessons" table and is linked in its topic.
+   - The roadmap is pinned in the sidebar at https://claude.ai/artifact/Kq1tfDtiPMKTJ8UArEA5Li. Keep that link.
+     First read it with the Artifact tool (`action: "read"`, that `url`). If the live page carries a change that is not
+     in the builder, add it to `tools/build_roadmap.py` and rebuild. Then publish `SYLLABUS.html` with that same `url`.
+     Never publish it without `url`: that creates a second, unpinned page. Omit `icon`.
+
 5. Save and notify.
    - `git add legal-curriculum && git commit -m "Lesson NN: <title>"` and `git push -u origin claude/legal-expertise-curriculum-88wclh`.
      On a network failure retry up to 4 times (2s, 4s, 8s, 16s). If a draft PR for the branch is not open, open one.
