@@ -55,7 +55,9 @@ def elite():
         if t.startswith('FINAL CP'): titles[w] = 'Final checkpoint' + t[8:]
     weeks = {}
     for f in sorted(glob.glob(os.path.join(d, 'lessons', 'w*.json'))):
-        w = int(re.search(r'w(\d+)\.json', f).group(1)); weeks[w] = json.load(open(f, encoding='utf-8'))
+        w = int(re.search(r'w(\d+)\.json', f).group(1))
+        if w > int(os.environ.get('MAXWEEK', '9999')): continue  # publish only weeks known complete
+        weeks[w] = json.load(open(f, encoding='utf-8'))
     # rules so far, and recorded audio for the first two lessons
     rules = {}
     for w, ls in weeks.items():
