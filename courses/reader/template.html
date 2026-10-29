@@ -64,8 +64,13 @@ li.current{box-shadow:inset 3px 0 0 var(--accent)}
 .lhead{padding-block:14px 4px}
 .lhead h1{font-family:var(--display);font-weight:var(--dw);font-size:clamp(26px,5.6vw,36px);line-height:1.15;margin:6px 0;text-wrap:balance;letter-spacing:-.01em}
 .lmeta{color:var(--ink-2);font-size:14px;display:flex;flex-wrap:wrap;gap:4px 14px}
-.listen{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);border:1px solid var(--rule);border-radius:calc(var(--r) + 2px);
-  padding:10px;margin:14px 0 18px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;box-shadow:0 6px 18px var(--shadow)}
+.listen{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--paper);border-top:1px solid var(--rule);box-shadow:0 -8px 24px var(--shadow);
+  padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.listen .in{max-width:720px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.listen #play{font-size:16px;min-height:46px;padding:10px 20px;flex:0 0 auto}
+.listen .more{display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1 1 100%}
+#view{padding-bottom:150px}
+.copybox{width:100%;min-height:160px;font:inherit;font-size:14px;margin-top:8px;border:1px solid var(--rule);border-radius:var(--r);background:var(--paper);color:var(--ink);padding:8px}
 .listen .status{font-family:var(--mono);font-size:12px;color:var(--ink-2);flex:1 1 140px;min-width:0}
 .listen label{font-size:13px;color:var(--ink-2);display:flex;gap:6px;align-items:center}
 .listen select{max-width:46vw}
@@ -124,15 +129,19 @@ footer{color:var(--ink-3);font-size:13px;margin-top:22px;line-height:1.5;max-wid
       <h1 id="ltitle"></h1>
       <div class="lmeta" id="lmeta"></div>
     </div>
-    <div class="listen" role="group" aria-label="Listen to this lesson">
-      <button class="primary" id="play" type="button">▶ Listen</button>
+    <div class="listen" role="group" aria-label="Play this lesson aloud"><div class="in">
+      <button class="primary" id="play" type="button">▶ Play</button>
       <button id="stop" type="button" disabled>■ Stop</button>
-      <select id="rate" aria-label="Reading speed"><option value="0.85">Slow</option><option value="1" selected>Normal</option><option value="1.15">Brisk</option><option value="1.3">Fast</option><option value="1.5">Very fast</option></select>
-      <select id="voice" aria-label="Voice"></select>
-      <label><input type="checkbox" id="auto"> Keep playing the next lesson</label>
-      <span class="status" id="status">Tap Listen to hear the full lesson read aloud.</span>
-    </div>
+      <button id="copy" type="button">Copy lesson</button>
+      <span class="status" id="status">Tap Play to hear the full lesson.</span>
+      <div class="more">
+        <select id="rate" aria-label="Reading speed"><option value="0.85">Slow</option><option value="1" selected>Normal</option><option value="1.15">Brisk</option><option value="1.3">Fast</option><option value="1.5">Very fast</option></select>
+        <select id="voice" aria-label="Voice"></select>
+        <label><input type="checkbox" id="auto"> Keep playing the next lesson</label>
+      </div>
+    </div></div>
     <div id="rec" class="rec" hidden><p>Recorded audio for this lesson</p><audio id="recaudio" controls preload="none"></audio></div>
+    <div id="copywrap" hidden><p class="about">Copying was blocked here. The full lesson text is selected below: copy it, then paste it into a Claude chat and tap that message's play button to hear it in your Claude voice.</p><textarea class="copybox" id="copytext" readonly></textarea></div>
     <article id="lesson"></article>
     <div class="pager"><button type="button" id="prev"></button><button type="button" id="next"></button></div>
   </div>
@@ -236,7 +245,7 @@ function openLesson(n,autoplay){
   $('leyebrow').textContent=C.short+' · Week '+M.w+' · '+dayLabel(M)+(M.a?' · '+M.a:'');
   $('ltitle').textContent=M.t;
   $('lmeta').innerHTML='<span>Lesson '+M.n+' of '+IDX.length+'</span>'+(M.who?'<span>'+esc(M.who)+(M.role?', '+esc(M.role):'')+'</span>':'')+'<span>'+esc(weekTitle(M.w))+'</span>';
-  $('lesson').innerHTML='<p class="err">Loading the lesson…</p>';
+  $('lesson').innerHTML='<p class="err">Loading the lesson…</p>';$('copywrap').hidden=true;
   setPager(n);window.scrollTo(0,0);setHash('lesson-'+n);
   loadWeek(M.w).then(function(d){
     var L=d.filter(function(x){return x.n===n;})[0];
@@ -266,7 +275,7 @@ var play=$('play'),stopB=$('stop'),rate=$('rate'),voiceSel=$('voice'),status=$('
 rate.value=S.rate||'1';auto.checked=!!S.auto;
 auto.addEventListener('change',function(){S.auto=auto.checked;save();});
 rate.addEventListener('change',function(){S.rate=rate.value;save();if(playing&&!paused){synth.cancel();speakNext();}});
-if(!synth||!window.SpeechSynthesisUtterance){play.disabled=true;status.textContent='This browser cannot read aloud. The full text is below.';}
+if(!synth||!window.SpeechSynthesisUtterance){play.disabled=true;status.textContent='This browser cannot read aloud. Use Copy lesson, then play it in a Claude chat.';}
 function fillVoices(){
   if(!synth)return;var all=synth.getVoices();var vs=all.filter(function(v){return /^en/i.test(v.lang);});if(!vs.length)vs=all;
   voiceSel.innerHTML='';vs.forEach(function(v){var o=document.createElement('option');o.value=v.name;o.textContent=v.name.replace(/^Microsoft |^Google /,'')+' · '+v.lang;voiceSel.appendChild(o);});
@@ -304,15 +313,23 @@ function speakNext(){
 function wake(){try{if(navigator.wakeLock&&!lock)navigator.wakeLock.request('screen').then(function(l){lock=l;l.addEventListener('release',function(){lock=null;});}).catch(function(){});}catch(e){}}
 function unwake(){try{if(lock)lock.release();}catch(e){}lock=null;}
 function startSpeech(){if(!synth||!cur)return;synth.cancel();queue=chunks();qi=0;playing=true;paused=false;play.textContent='❚❚ Pause';stopB.disabled=false;wake();speakNext();}
-function stopSpeech(){if(!synth)return;playing=false;paused=false;synth.cancel();if(curEl)curEl.classList.remove('now');curEl=null;play.textContent='▶ Listen';stopB.disabled=true;unwake();}
+function stopSpeech(){if(!synth)return;playing=false;paused=false;synth.cancel();if(curEl)curEl.classList.remove('now');curEl=null;play.textContent='▶ Play';stopB.disabled=true;unwake();}
 function finished(){stopSpeech();status.textContent='Finished.';if(S.read&&cur)S.read[cur.n]=1;save();
-  if(auto.checked&&cur&&byN[cur.n+1]){status.textContent='Starting the next lesson…';openLesson(cur.n+1,true);}else status.textContent='Finished. Tap Listen to hear it again.';}
+  if(auto.checked&&cur&&byN[cur.n+1]){status.textContent='Starting the next lesson…';openLesson(cur.n+1,true);}else status.textContent='Finished. Tap Play to hear it again.';}
 play.addEventListener('click',function(){
   if(!playing){startSpeech();return;}
   if(!paused){paused=true;synth.cancel();play.textContent='▶ Resume';status.textContent='Paused at part '+(qi+1)+'.';unwake();return;}
   paused=false;play.textContent='❚❚ Pause';wake();speakNext();
 });
 stopB.addEventListener('click',function(){stopSpeech();status.textContent='Stopped.';});
+function lessonText(){if(!cur)return '';var parts=[];chunksAll().forEach(function(c){parts.push(c);});return parts.join('\n\n');}
+function chunksAll(){var out=[$('ltitle').textContent];var els=$('lesson').querySelectorAll('h3,h4,p,li,summary');
+  for(var k=0;k<els.length;k++){var el=els[k];if(el.tagName==='LI'&&el.parentElement.closest('li'))continue;var t=(el.textContent||'').replace(/\s+/g,' ').trim();if(t)out.push((el.tagName==='LI'?'- ':'')+t);}return out;}
+$('copy').addEventListener('click',function(){
+  var t=lessonText();if(!t)return;
+  function fallback(){var w=$('copywrap'),a=$('copytext');w.hidden=false;a.value=t;a.focus();a.select();status.textContent='Select the text below and copy it.';}
+  try{navigator.clipboard.writeText(t).then(function(){status.textContent='Copied. Paste it into a Claude chat, then tap play on that message.';},fallback);}catch(e){fallback();}
+});
 window.addEventListener('pagehide',function(){if(synth)synth.cancel();});
 document.addEventListener('visibilitychange',function(){if(!document.hidden&&playing&&!paused)wake();});
 
