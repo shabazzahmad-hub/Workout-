@@ -46,7 +46,8 @@ Address him as Mr Shabazz. One lesson per calendar day, Mountain time (America/E
 4. Build the page, make its audio, and publish both.
    - Copy `legal-curriculum/template/lesson.html` to `legal-curriculum/lessons/NN-slug.html`.
    - Replace only the `<title>`, the `<header>` text (eyebrow, h1, meta line) and the content inside `<article>`.
-     Keep the `<style>`, the control bar, the `audio-map` script tag and the player `<script>` unchanged.
+     Keep the `<style>`, both Listen bars (one at the top, one after the lesson), the `audio-map` script tag and
+     the player `<script>` unchanged.
    - Make the recording. The Claude app has no built-in read-aloud voice, so the Listen button plays a file:
      ```
      TTS=$(bash legal-curriculum/tools/tts_setup.sh)

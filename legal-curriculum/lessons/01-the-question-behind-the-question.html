@@ -33,6 +33,7 @@ button.primary{background:var(--brass);border-color:var(--brass);color:var(--on-
 button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
 .bar .status{font-family:var(--mono);font-size:12px;color:var(--ink-2);flex:1 1 120px;min-width:0}
 .bar .spacer{flex:1 1 auto}
+.bar.end{position:static;margin:22px 0 0}
 .bar input[type=range]{flex:1 1 140px;min-width:100px;accent-color:var(--brass);margin:0}
 article{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:8px 22px 22px}
 article h2{font-family:var(--display);font-weight:600;font-size:24px;margin:26px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--brass);text-wrap:balance}
@@ -124,6 +125,12 @@ footer{color:var(--ink-2);font-size:13px;margin-top:18px;line-height:1.5}
   <p><span class="tag">Education only</span><span class="tag">No project figures used</span><span class="tag">Sign-off: counsel + tax before any transfer</span></p>
 </article>
 
+<div class="bar end" role="group" aria-label="Listen to this lesson from the end">
+  <button class="primary" id="btnPlay2">▶ Listen to this lesson</button>
+  <button id="btnStop2" disabled>■ Stop</button>
+  <span class="status" id="status2">Plays the recording of the whole lesson.</span>
+</div>
+
 <footer>Think Like a Lawyer · a private daily course. This page teaches how to think about a problem. It is not legal, tax or financial advice, and it does not replace a licensed professional.</footer>
 </div>
 
@@ -174,6 +181,14 @@ footer{color:var(--ink-2);font-size:13px;margin-top:18px;line-height:1.5}
   rate.addEventListener('change',function(){A.playbackRate=parseFloat(rate.value)||1;});
   seek.addEventListener('input',function(){var d=A.duration;if(isFinite(d))A.currentTime=seek.value/1000*d;});
   if('mediaSession' in navigator&&window.MediaMetadata){try{navigator.mediaSession.metadata=new MediaMetadata({title:document.title,artist:'Think Like a Lawyer'});}catch(e){}}
+  /* The bottom bar drives the same player: one recording, two places to tap it. */
+  var play2=document.getElementById('btnPlay2'),stop2=document.getElementById('btnStop2');
+  if(play2&&stop2){
+    play2.addEventListener('click',function(){play.click();});
+    stop2.addEventListener('click',function(){stop.click();});
+    new MutationObserver(function(){play2.textContent=play.textContent==='▶ Listen'?'▶ Listen to this lesson':play.textContent;}).observe(play,{childList:true,characterData:true,subtree:true});
+    new MutationObserver(function(){stop2.disabled=stop.disabled;}).observe(stop,{attributes:true,attributeFilter:['disabled']});
+  }
   window.addEventListener('pagehide',function(){A.pause();if(window.speechSynthesis)speechSynthesis.cancel();});
 
   /* Fallback: the device voice, only if the recording cannot be played. */
