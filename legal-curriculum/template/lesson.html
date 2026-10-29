@@ -33,6 +33,7 @@ button.primary{background:var(--brass);border-color:var(--brass);color:var(--on-
 button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
 .bar .status{font-family:var(--mono);font-size:12px;color:var(--ink-2);flex:1 1 120px;min-width:0}
 .bar .spacer{flex:1 1 auto}
+.bar.end{position:static;margin:22px 0 0}
 article{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:8px 22px 22px}
 article h2{font-family:var(--display);font-weight:600;font-size:24px;margin:26px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--brass);text-wrap:balance}
 article p{margin:10px 0}
@@ -121,14 +122,20 @@ footer{color:var(--ink-2);font-size:13px;margin-top:18px;line-height:1.5}
   <p><span class="tag">Education only</span><span class="tag">No project figures used</span><span class="tag">Sign-off: counsel + tax before any transfer</span></p>
 </article>
 
+<div class="bar end" role="group" aria-label="Listen to this lesson from the end">
+  <button class="primary" id="btnPlay2">▶ Listen to this lesson</button>
+  <button id="btnStop2" disabled>■ Stop</button>
+  <span class="status" id="status2">Reads the whole lesson aloud, from the top.</span>
+</div>
+
 <footer>Think Like a Lawyer · a private daily course. This page teaches how to think about a problem. It is not legal, tax or financial advice, and it does not replace a licensed professional.</footer>
 </div>
 
 <script>
 (function(){
   var synth=window.speechSynthesis;
-  var play=document.getElementById('btnPlay'),stop=document.getElementById('btnStop'),rate=document.getElementById('rate'),voiceSel=document.getElementById('voice'),status=document.getElementById('status');
-  if(!synth||!window.SpeechSynthesisUtterance){play.disabled=true;status.textContent='This browser cannot read aloud. The text below is complete.';return;}
+  var play=document.getElementById('btnPlay'),stop=document.getElementById('btnStop'),play2=document.getElementById('btnPlay2'),stop2=document.getElementById('btnStop2'),status2=document.getElementById('status2'),rate=document.getElementById('rate'),voiceSel=document.getElementById('voice'),status=document.getElementById('status');
+  if(!synth||!window.SpeechSynthesisUtterance){play.disabled=true;if(play2)play2.disabled=true;if(status2)status2.textContent='This browser cannot read aloud. The text above is complete.';status.textContent='This browser cannot read aloud. The text below is complete.';return;}
   var queue=[],i=0,playing=false,paused=false,current=null;
   function chunks(){
     var els=document.querySelectorAll('#lesson h2, #lesson p, #lesson li, #lesson summary');
@@ -168,6 +175,13 @@ footer{color:var(--ink-2);font-size:13px;margin-top:18px;line-height:1.5}
   stop.addEventListener('click',function(){finish();status.textContent='Stopped.';});
   rate.addEventListener('change',function(){if(playing&&!paused){synth.cancel();speakNext();}});
   voiceSel.addEventListener('change',function(){try{localStorage.setItem('ttl-voice',voiceSel.value);}catch(e){}if(playing&&!paused){synth.cancel();speakNext();}});
+  // The bottom bar drives the same reader: one queue, two places to tap it.
+  if(play2&&stop2){
+    play2.addEventListener('click',function(){play.click();});
+    stop2.addEventListener('click',function(){stop.click();});
+    new MutationObserver(function(){play2.textContent=play.textContent==='▶ Listen'?'▶ Listen to this lesson':play.textContent;stop2.disabled=stop.disabled;}).observe(play,{childList:true,characterData:true,subtree:true});
+    new MutationObserver(function(){stop2.disabled=stop.disabled;}).observe(stop,{attributes:true,attributeFilter:['disabled']});
+  }
   window.addEventListener('pagehide',function(){synth.cancel();});
 })();
 </script>

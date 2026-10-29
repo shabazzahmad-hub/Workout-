@@ -38,7 +38,7 @@ Address him as Mr Shabazz. One lesson per calendar day, Mountain time (America/E
 4. Build and publish the page.
    - Copy `legal-curriculum/template/lesson.html` to `legal-curriculum/lessons/NN-slug.html`.
    - Replace only the content inside `<article>` and the `<title>`. Keep the `<style>` and `<script>` unchanged.
-     The script provides the Listen (read-aloud) button; do not remove it.
+     The script provides the Listen (read-aloud) buttons, one bar at the top and one after the lesson; do not remove either.
    - Load the `artifact-design` skill, then publish the HTML with the Artifact tool, `icon` = "book",
      `description` = one sentence naming the lesson. Write the returned URL into the `.md` front matter.
 
