@@ -123,7 +123,7 @@ tr:last-child td{{border-bottom:0}}
     <li>Round hypothetical numbers only. No project figures. No retired facts.</li>
     <li>Any law, rate or treaty is cited to a primary source or tagged "unverified".</li>
     <li>Every lesson names the licensed professional who must sign off before you act.</li>
-    <li>Every page has a Listen button that reads the lesson aloud.</li>
+    <li>Every page has a Listen button that plays a recording of the lesson.</li>
     <li>Delivered lessons are in the table above and linked in each topic below. Tap a title to open it.</li>
   </ul>
 </div>

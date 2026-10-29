@@ -1,0 +1,2 @@
+# Lesson recordings live in the published pages; tools/make_audio.py rebuilds them.
+lessons/*.mp3
