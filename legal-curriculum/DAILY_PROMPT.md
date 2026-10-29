@@ -78,9 +78,14 @@ Address him as Mr Shabazz. One lesson per calendar day, Mountain time (America/E
      On a network failure retry up to 4 times (2s, 4s, 8s, 16s). If a draft PR for the branch is not open, open one.
    - Append one row for the lesson to the table in `legal-curriculum/README.md` before committing.
    - Load the `PushNotification` tool and send: "Lesson NN of 56 — <title>" with the artifact URL.
-   - Finish with a short chat message: lesson number, title, the link, and one sentence on what it covers.
+   - Your LAST chat message is the whole lesson, in full. Mr Shabazz taps the Claude app's own play button under
+     that message to hear it read aloud, so the message is the main way he takes the lesson. Write it for listening:
+     start with "Lesson NN of 56: <title>", then every section of the lesson in order, with each heading as a short
+     plain line. Use full sentences and short bullet points. No tables, no links inside sentences, no code, no
+     emoji, no symbols such as arrows. Put the model answer to the self-test after its question. End with one line:
+     "The page for this lesson: <artifact URL>".
 
 ## Do not
 - Do not email anything. Do not contact any person. Do not touch any file outside `legal-curriculum/`.
 - Do not bump `APP_VERSION` or `CACHE`. This course does not ship with the app.
-- Do not restate the whole lesson in chat. The page is the lesson.
+- Do not put anything after the lesson message. It must be the last message, so its play button reads the lesson.
