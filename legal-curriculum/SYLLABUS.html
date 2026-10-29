@@ -33,6 +33,7 @@ button.primary{background:var(--brass);border-color:var(--brass);color:var(--on-
 button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
 .bar .status{font-family:var(--mono);font-size:12px;color:var(--ink-2);flex:1 1 120px;min-width:0}
 .bar .spacer{flex:1 1 auto}
+.bar input[type=range]{flex:1 1 140px;min-width:100px;accent-color:var(--brass);margin:0}
 article{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:8px 22px 22px}
 article h2{font-family:var(--display);font-weight:600;font-size:24px;margin:26px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--brass);text-wrap:balance}
 article p{margin:10px 0}
@@ -62,7 +63,7 @@ a:focus-visible{outline:3px solid var(--brass);outline-offset:2px;border-radius:
 .ready{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--good);margin-left:auto;padding-left:8px;white-space:nowrap}
 section li .t{display:flex;gap:8px;align-items:baseline}
 .progress{height:8px;background:var(--rule);border-radius:4px;overflow:hidden;margin:10px 0 4px}
-.progress span{display:block;height:100%;width:2%;background:var(--brass)}
+.progress span{display:block;height:100%;width:4%;background:var(--brass)}
 .count{font-family:var(--mono);font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .tablewrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:15px}
@@ -80,11 +81,11 @@ tr:last-child td{border-bottom:0}
 </header>
 <div class="panel">
   <h2>Delivered lessons</h2>
-  <div class="progress" role="progressbar" aria-label="Course progress" aria-valuemin="0" aria-valuemax="56" aria-valuenow="1"><span></span></div>
-  <div class="count">1 of 56 delivered · Next: lesson 2, tonight or tomorrow at 8:30 PM Mountain.</div>
+  <div class="progress" role="progressbar" aria-label="Course progress" aria-valuemin="0" aria-valuemax="56" aria-valuenow="2"><span></span></div>
+  <div class="count">2 of 56 delivered · Next: lesson 3, tonight or tomorrow at 8:30 PM Mountain.</div>
   <div class="tablewrap"><table>
     <thead><tr><th>#</th><th>Date</th><th>Lesson</th></tr></thead>
-    <tbody><tr><td class='num'>1</td><td>October 27, 2026</td><td><a href="https://claude.ai/artifact/8Y8CTX5JUKtVeS9aBURyDS">The Question Behind the Question</a></td></tr></tbody>
+    <tbody><tr><td class='num'>2</td><td>October 28, 2026</td><td><a href="https://claude.ai/artifact/UYNrNrDT3hRHzskCSgxsdv">Facts First: Fact, Assumption, Inference, Conclusion</a></td></tr><tr><td class='num'>1</td><td>October 27, 2026</td><td><a href="https://claude.ai/artifact/8Y8CTX5JUKtVeS9aBURyDS">The Question Behind the Question</a></td></tr></tbody>
   </table></div>
 </div>
 <div class="panel rules">
@@ -95,11 +96,11 @@ tr:last-child td{border-bottom:0}
     <li>Round hypothetical numbers only. No project figures. No retired facts.</li>
     <li>Any law, rate or treaty is cited to a primary source or tagged "unverified".</li>
     <li>Every lesson names the licensed professional who must sign off before you act.</li>
-    <li>Every page has a Listen button that reads the lesson aloud.</li>
+    <li>Every page has a Listen button that plays a recording of the lesson.</li>
     <li>Delivered lessons are in the table above and linked in each topic below. Tap a title to open it.</li>
   </ul>
 </div>
-<section><h2><span class='tnum'>Topic 1</span>Thinking like a lawyer</h2><ol><li><span class='n'>1</span><span class='t'><a href="https://claude.ai/artifact/8Y8CTX5JUKtVeS9aBURyDS">The question behind the question: IRAC and reframing</a><span class="ready">Ready</span></span></li><li><span class='n'>2</span><span class='t'>Facts first: fact, assumption, inference, conclusion</span></li><li><span class='n'>3</span><span class='t'>Reading a rule: elements, exceptions, burdens</span></li><li><span class='n'>4</span><span class='t'>Risk thinking: worst case, probability, reversibility, one-way doors</span></li></ol></section>
+<section><h2><span class='tnum'>Topic 1</span>Thinking like a lawyer</h2><ol><li><span class='n'>1</span><span class='t'><a href="https://claude.ai/artifact/8Y8CTX5JUKtVeS9aBURyDS">The question behind the question: IRAC and reframing</a><span class="ready">Ready</span></span></li><li><span class='n'>2</span><span class='t'><a href="https://claude.ai/artifact/UYNrNrDT3hRHzskCSgxsdv">Facts first: fact, assumption, inference, conclusion</a><span class="ready">Ready</span></span></li><li><span class='n'>3</span><span class='t'>Reading a rule: elements, exceptions, burdens</span></li><li><span class='n'>4</span><span class='t'>Risk thinking: worst case, probability, reversibility, one-way doors</span></li></ol></section>
 <section><h2><span class='tnum'>Topic 2</span>Legal document structuring</h2><ol><li><span class='n'>5</span><span class='t'>Anatomy of a contract: parties, recitals, definitions, operative clauses, boilerplate</span></li><li><span class='n'>6</span><span class='t'>Definitions and precision: how one word moves money</span></li><li><span class='n'>7</span><span class='t'>Conditions precedent, covenants, representations, warranties</span></li><li><span class='n'>8</span><span class='t'>Remedies, termination, dispute resolution, governing law</span></li></ol></section>
 <section><h2><span class='tnum'>Topic 3</span>AI as a legal tool</h2><ol><li><span class='n'>9</span><span class='t'>What AI does better than most lawyers, and what it cannot do</span></li><li><span class='n'>10</span><span class='t'>Verify before asserting: primary sources and hallucination traps</span></li><li><span class='n'>11</span><span class='t'>Drafting with AI: rubric, red team, defect list</span></li><li><span class='n'>12</span><span class='t'>The brief to counsel: arrive prepared, cut fees</span></li></ol></section>
 <section><h2><span class='tnum'>Topic 4</span>Corporate law</h2><ol><li><span class='n'>13</span><span class='t'>The corporation as a separate person: limited liability and its limits</span></li><li><span class='n'>14</span><span class='t'>Shares, classes and rights: voting, dividends, redemption</span></li><li><span class='n'>15</span><span class='t'>Directors, officers, shareholders: duties and the minute book</span></li><li><span class='n'>16</span><span class='t'>Shareholder agreements: control, exits, deadlock, death</span></li></ol></section>

@@ -33,6 +33,7 @@ button.primary{background:var(--brass);border-color:var(--brass);color:var(--on-
 button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
 .bar .status{font-family:var(--mono);font-size:12px;color:var(--ink-2);flex:1 1 120px;min-width:0}
 .bar .spacer{flex:1 1 auto}
+.bar input[type=range]{flex:1 1 140px;min-width:100px;accent-color:var(--brass);margin:0}
 article{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:8px 22px 22px}
 article h2{font-family:var(--display);font-weight:600;font-size:24px;margin:26px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--brass);text-wrap:balance}
 article p{margin:10px 0}
@@ -57,10 +58,12 @@ footer{color:var(--ink-2);font-size:13px;margin-top:18px;line-height:1.5}
 
 <div class="bar" role="group" aria-label="Listen to this lesson">
   <button class="primary" id="btnPlay">▶ Listen</button>
+  <button id="btnBack" aria-label="Back 15 seconds" disabled>↺ 15</button>
   <button id="btnStop" disabled>■ Stop</button>
-  <select id="rate" aria-label="Reading speed"><option value="0.9">Slow</option><option value="1" selected>Normal</option><option value="1.15">Brisk</option><option value="1.3">Fast</option></select>
-  <select id="voice" aria-label="Voice"></select>
-  <span class="status" id="status">Tap Listen to hear the lesson read aloud.</span>
+  <select id="rate" aria-label="Reading speed"><option value="0.85">Slow</option><option value="1" selected>Normal</option><option value="1.15">Brisk</option><option value="1.3">Fast</option><option value="1.5">Faster</option></select>
+  <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Position in the lesson" disabled>
+  <span class="status" id="status" aria-live="polite">Tap Listen to hear the lesson.</span>
+  <audio id="audio" src="lesson.mp3" preload="metadata"></audio>
 </div>
 
 <article id="lesson">
@@ -124,50 +127,66 @@ footer{color:var(--ink-2);font-size:13px;margin-top:18px;line-height:1.5}
 <footer>Think Like a Lawyer · a private daily course. This page teaches how to think about a problem. It is not legal, tax or financial advice, and it does not replace a licensed professional.</footer>
 </div>
 
+<script type="application/json" id="audio-map">{"voice": "af_heart", "seconds": 399.6, "blocks": 40, "starts": [0.0, 3.42, 21.02, 22.85, 38.62, 56.35, 75.29, 77.0, 83.04, 93.77, 106.33, 118.77, 131.6, 148.33, 150.18, 157.84, 172.18, 186.5, 205.04, 218.31, 229.23, 231.17, 252.08, 253.66, 256.71, 260.37, 265.76, 269.92, 274.11, 278.01, 279.71, 286.6, 288.09, 299.06, 312.43, 320.07, 332.15, 333.96, 353.42, 355.48]}</script>
 <script>
+/* The Listen button plays lesson.mp3, a recording published with this page (made by
+   legal-curriculum/tools/make_audio.py). It does not need the device's read-aloud voice, which
+   the Claude app does not have. The audio map gives the start second of each block so the line
+   being read is highlighted. Only if the recording cannot load does it fall back to the
+   device voice, when there is one. */
 (function(){
-  var synth=window.speechSynthesis;
-  var play=document.getElementById('btnPlay'),stop=document.getElementById('btnStop'),rate=document.getElementById('rate'),voiceSel=document.getElementById('voice'),status=document.getElementById('status');
-  if(!synth||!window.SpeechSynthesisUtterance){play.disabled=true;status.textContent='This browser cannot read aloud. The text below is complete.';return;}
-  var queue=[],i=0,playing=false,paused=false,current=null;
-  function chunks(){
-    var els=document.querySelectorAll('#lesson h2, #lesson p, #lesson li, #lesson summary');
-    var out=[];
-    for(var k=0;k<els.length;k++){var el=els[k];var closed=el.closest('details');if(closed&&!closed.open&&el.tagName!=='SUMMARY')continue;var t=(el.textContent||'').replace(/\s+/g,' ').trim();if(t)out.push({el:el,text:t});}
-    return out;
+  var A=document.getElementById('audio'),play=document.getElementById('btnPlay'),stop=document.getElementById('btnStop'),
+      back=document.getElementById('btnBack'),rate=document.getElementById('rate'),seek=document.getElementById('seek'),status=document.getElementById('status');
+  var map={};try{map=JSON.parse(document.getElementById('audio-map').textContent)||{};}catch(e){}
+  function textOf(el){var c=el.cloneNode(true);c.querySelectorAll('.tag').forEach(function(t){t.remove();});return (c.textContent||'').replace(/\s+/g,' ').trim();}
+  function blocks(){
+    var all=[].slice.call(document.querySelectorAll('header h1, #lesson h2, #lesson p, #lesson li, #lesson summary'));
+    var set=new Set(all);
+    return all.filter(function(el){for(var p=el.parentElement;p;p=p.parentElement){if(set.has(p))return false;}return !!textOf(el);});
   }
-  function voices(){
-    var vs=synth.getVoices().filter(function(v){return /^en/i.test(v.lang);});
-    if(!vs.length)vs=synth.getVoices();
-    var keep=voiceSel.value;voiceSel.innerHTML='';
-    vs.forEach(function(v){var o=document.createElement('option');o.value=v.name;o.textContent=v.name.replace(/^Microsoft |^Google /,'')+' · '+v.lang;voiceSel.appendChild(o);});
-    if(keep)voiceSel.value=keep;
-    try{var saved=localStorage.getItem('ttl-voice');if(saved&&!keep)voiceSel.value=saved;}catch(e){}
-    if(!vs.length)status.textContent='No voices are installed on this device. Tap Listen to try again.';
-  }
-  voices();synth.onvoiceschanged=voices;
-  function clear(){if(current){current.el.classList.remove('now');current=null;}}
-  function speakNext(){
-    if(i>=queue.length){finish();return;}
-    clear();current=queue[i];current.el.classList.add('now');
-    current.el.scrollIntoView({block:'center',behavior:'smooth'});
-    var u=new SpeechSynthesisUtterance(current.text);
-    u.rate=parseFloat(rate.value)||1;
-    var v=synth.getVoices().filter(function(x){return x.name===voiceSel.value;})[0];if(v)u.voice=v;
-    u.onend=function(){if(!playing)return;i++;speakNext();};
-    u.onerror=function(){if(!playing)return;i++;speakNext();};
-    status.textContent='Reading '+(i+1)+' of '+queue.length;
-    synth.speak(u);
-  }
-  function finish(){playing=false;paused=false;clear();synth.cancel();play.textContent='▶ Listen';stop.disabled=true;status.textContent='Finished. Tap Listen to hear it again.';}
+  var B=blocks(),starts=(map.starts&&map.starts.length===B.length)?map.starts:null,cur=-1,usedFallback=false;
+  function fmt(s){s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+':'+('0'+(s%60)).slice(-2);}
+  function mark(i){if(i===cur)return;if(cur>=0&&B[cur])B[cur].classList.remove('now');cur=i;if(i<0||!B[i])return;
+    B[i].classList.add('now');var d=B[i].closest('details');if(d&&!d.open)d.open=true;
+    var r=B[i].getBoundingClientRect();if(r.top<70||r.bottom>window.innerHeight-20)B[i].scrollIntoView({block:'center',behavior:'smooth'});}
+  function at(t){if(!starts)return -1;var i=-1;for(var k=0;k<starts.length;k++){if(starts[k]<=t+0.05)i=k;else break;}return i;}
+  function show(){var d=A.duration;status.textContent=fmt(A.currentTime)+' / '+(isFinite(d)?fmt(d):'…');if(isFinite(d)&&d>0&&!seek.matches(':active'))seek.value=Math.round(A.currentTime/d*1000);}
+  function label(){play.textContent=A.paused?(A.currentTime>0&&!A.ended?'▶ Resume':'▶ Listen'):'❚❚ Pause';stop.disabled=back.disabled=A.paused&&A.currentTime===0;}
+  if(map.seconds)status.textContent='Recording, '+Math.round(map.seconds/60)+' min. Tap Listen.';
+  try{A.preservesPitch=true;}catch(e){}
+  A.addEventListener('loadedmetadata',function(){seek.disabled=false;show();});
+  A.addEventListener('timeupdate',function(){show();mark(A.paused&&A.currentTime===0?-1:at(A.currentTime));});
+  A.addEventListener('play',label);A.addEventListener('pause',label);
+  A.addEventListener('ended',function(){label();mark(-1);status.textContent='Finished. Tap Listen to hear it again.';});
+  A.addEventListener('error',function(){if(!A.paused||play.dataset.wanted)fallback();else status.textContent='Tap Listen to hear the lesson.';});
   play.addEventListener('click',function(){
-    if(!playing){queue=chunks();i=0;playing=true;paused=false;synth.cancel();play.textContent='❚❚ Pause';stop.disabled=false;speakNext();return;}
-    if(!paused){synth.pause();paused=true;play.textContent='▶ Resume';status.textContent='Paused.';return;}
-    synth.resume();paused=false;play.textContent='❚❚ Pause';status.textContent='Reading '+(i+1)+' of '+queue.length;
+    if(usedFallback){speak();return;}
+    play.dataset.wanted='1';
+    if(A.paused){A.playbackRate=parseFloat(rate.value)||1;if(A.ended)A.currentTime=0;
+      var p=A.play();status.textContent='Loading the recording…';if(p&&p.catch)p.catch(function(err){if(err&&err.name==='NotAllowedError'){status.textContent='Tap Listen again to start.';}else fallback();});}
+    else A.pause();
   });
-  stop.addEventListener('click',function(){finish();status.textContent='Stopped.';});
-  rate.addEventListener('change',function(){if(playing&&!paused){synth.cancel();speakNext();}});
-  voiceSel.addEventListener('change',function(){try{localStorage.setItem('ttl-voice',voiceSel.value);}catch(e){}if(playing&&!paused){synth.cancel();speakNext();}});
-  window.addEventListener('pagehide',function(){synth.cancel();});
+  stop.addEventListener('click',function(){if(usedFallback){stopSpeak();return;}A.pause();A.currentTime=0;mark(-1);label();show();status.textContent='Stopped.';});
+  back.addEventListener('click',function(){A.currentTime=Math.max(0,A.currentTime-15);});
+  /* Tap a paragraph to jump there, once listening has started. Taps on the model-answer toggle are left alone. */
+  if(starts)B.forEach(function(el,i){if(el.tagName==='SUMMARY')return;el.addEventListener('click',function(){
+    if(usedFallback||(A.paused&&A.currentTime===0))return;A.currentTime=starts[i];if(A.paused)A.play();});});
+  rate.addEventListener('change',function(){A.playbackRate=parseFloat(rate.value)||1;});
+  seek.addEventListener('input',function(){var d=A.duration;if(isFinite(d))A.currentTime=seek.value/1000*d;});
+  if('mediaSession' in navigator&&window.MediaMetadata){try{navigator.mediaSession.metadata=new MediaMetadata({title:document.title,artist:'Think Like a Lawyer'});}catch(e){}}
+  window.addEventListener('pagehide',function(){A.pause();if(window.speechSynthesis)speechSynthesis.cancel();});
+
+  /* Fallback: the device voice, only if the recording cannot be played. */
+  var synth=window.speechSynthesis,q=0,speaking=false;
+  function fallback(){
+    if(usedFallback)return;
+    if(!synth||!window.SpeechSynthesisUtterance){status.textContent='The recording could not load. Check the connection, then tap Listen again.';play.dataset.wanted='';return;}
+    usedFallback=true;seek.disabled=true;speak();
+  }
+  function next(){if(!speaking)return;if(q>=B.length){stopSpeak();status.textContent='Finished.';return;}
+    mark(q);var u=new SpeechSynthesisUtterance(textOf(B[q]));u.rate=parseFloat(rate.value)||1;
+    u.onend=u.onerror=function(){if(speaking){q++;next();}};status.textContent='Device voice: '+(q+1)+' of '+B.length;synth.speak(u);}
+  function speak(){if(speaking){synth.cancel();speaking=false;play.textContent='▶ Listen';return;}synth.cancel();speaking=true;q=Math.max(0,cur);play.textContent='❚❚ Stop';stop.disabled=false;next();}
+  function stopSpeak(){speaking=false;synth.cancel();q=0;mark(-1);play.textContent='▶ Listen';stop.disabled=true;}
 })();
 </script>
