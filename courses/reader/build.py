@@ -115,8 +115,28 @@ def finance():
         footer='Development Finance · a private course. Education only; not financial, tax or legal advice. Ratios such as a 1.20 debt service coverage ratio are common lender practice, not law.')
     return weeks, cfg, meta, 'finance'
 
+def converted(folder, key, theme):
+    d = os.path.join(ROOT, folder)
+    m = json.load(open(os.path.join(d, 'meta.json'), encoding='utf-8'))
+    weeks = {}
+    for f in sorted(glob.glob(os.path.join(d, 'lessons', 'w*.json'))):
+        w = int(re.search(r'w(\d+)\.json', f).group(1)); weeks[w] = json.load(open(f, encoding='utf-8'))
+    n = sum(len(v) for v in weeks.values())
+    cfg = dict(key=key, short=m.get('short', m['title']), pad=2, groups=None,
+               weekTitles={int(k): v for k, v in m.get('weekTitles', {}).items()},
+               dayNames=m.get('dayNames', ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']))
+    about = ''.join('<p>' + esc(x) + '</p>' for x in str(m.get('about', '')).split('\n') if x.strip())
+    meta = dict(title=m['title'], eyebrow=m.get('eyebrow') or ('A %d-week course · %d lessons' % (len(weeks), n)),
+                sub=m.get('sub', ''), about=about,
+                footer=m['title'] + ' · a private course. Education only; not legal, tax, engineering or financial advice. Confirm any code, rule or rate with the responsible licensed professional.')
+    return weeks, cfg, meta, theme
+
+BUILDERS = {'elite': elite, 'lawyer': lawyer, 'finance': finance,
+            'banking': lambda: converted('banking-finance', 'banking', 'finance'),
+            'construction': lambda: converted('construction-lessons', 'construction', 'elite')}
+
 def build(name):
-    weeks, cfg, meta, theme = {'elite': elite, 'lawyer': lawyer, 'finance': finance}[name]()
+    weeks, cfg, meta, theme = BUILDERS[name]()
     out = os.path.join(ROOT, 'dist', name); os.makedirs(os.path.join(out, 'data'), exist_ok=True)
     idx = []
     for w in sorted(weeks):
