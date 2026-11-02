@@ -676,6 +676,12 @@ v243–v244, v267, v281)*:
 8. **A photo that cannot be generated twice is evidence about the EXERCISE**, not
    the prompt. `psupport` shipped and was dropped one version later for exactly
    this.
+9. **Ask for a photo ONLY for an exercise that has the grey placeholder.** Find
+   them by measuring, not by memory: a flat-grey `ex-*.jpg` (pixel spread under
+   12 at 40x40) is a placeholder; anything else is a real photo. A real photo in
+   a different style (a dark backdrop) is NOT a reason to ask again. v531: an
+   8-image request included 4 exercises that already had real photos, and the
+   athlete had to say so. Only the 4 placeholders were used.
 
 ## A balance trainer is not a stability ball (v283)
 
