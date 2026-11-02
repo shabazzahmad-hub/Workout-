@@ -23849,3 +23849,16 @@ baseline `pull` test, so the clip went there (the squat-thrust salvage again).
 Trimmed to 2.0–8.5 s to cut the sit-down at both ends, `crop=720:720:252:0`.
 **Avoid "hanging" and body-position words that read as harm in a video
 prompt.** The Feet-Elevated Row keeps its still.
+
+## Every movement gets the demo search, clip or not (v530)
+
+Asked for directly: "add the YouTube search with the exercise names for all
+new exercises, and check for those that do not have it." Measured first: v520
+already gave every movement WITHOUT a clip a search built from its own name,
+so new exercises were covered automatically. The gap was the **24 movements
+with their own clip**, which got no link by design.
+
+They get the search now, as **"Watch another demo"**, with a note that the
+app's own clip is the main demo and works offline. A check sweeps the whole
+library and requires a name search on every movement, so a new exercise
+cannot ship without one — nothing has to be written for it.

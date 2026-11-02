@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='529';
+const APP_VERSION='530';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -15113,8 +15113,14 @@ function exJointsHTML(exId){
    curation and cannot rot. The picked link must be a YouTube watch, shorts or
    youtu.be address and nothing else — DEMO_URL_RE is fully anchored, so an
    address cannot carry a quote or a stray host — and validateData() refuses
-   one that is not. A movement with its own clip in the library gets no link:
-   the clip is the better demo and it works offline. */
+   one that is not.
+
+   EVERY MOVEMENT GETS THE SEARCH, INCLUDING ONE WITH ITS OWN CLIP (v530).
+   Asked for directly: a movement with a clip used to get no link at all, so
+   24 movements had no way to see a second angle. The clip stays the main
+   demo — it plays offline and it is the movement the app means — so there
+   the link is a quieter "another demo" and says so. A new exercise is
+   covered the day it is added, because nothing has to be written for it. */
 const DEMO_URL_RE=/^https:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)[A-Za-z0-9_-]{6,20}(?:[?&][A-Za-z0-9_=&.-]*)?$/;
 /* THE EXERCISE NAME IS ALWAYS IN THE SEARCH. The search words are built in
    one place from the movement's own name, the sheet prints them so the
@@ -15126,10 +15132,10 @@ function demoSearchURL(exId){return 'https://www.youtube.com/results?search_quer
 function demoLink(exId){
   if(!exKnown(exId))return null;
   const ex=EX[exId];
-  if(ex.vid)return null;
+  const clip=typeof ex.vid==='string'&&!!ex.vid;
   const search=demoSearchURL(exId),query=demoQuery(exId);
-  if(typeof ex.demo==='string'&&DEMO_URL_RE.test(ex.demo))return {url:ex.demo,picked:true,search,query};
-  return {url:search,picked:false,search,query};
+  if(typeof ex.demo==='string'&&DEMO_URL_RE.test(ex.demo))return {url:ex.demo,picked:true,search,query,clip};
+  return {url:search,picked:false,search,query,clip};
 }
 function exDemoHTML(exId){
   try{
@@ -15139,9 +15145,10 @@ function exDemoHTML(exId){
     const off=navigator.onLine===false;
     const q=`<b>“${_ve(d.query)}”</b>`;
     const note=off?'You are offline. The demo needs a connection.'
-      :(d.picked?'A demo picked for this movement.':'Searches YouTube for '+q+'. The first result is not always the best demo.')+' Opens YouTube in a new tab, which needs a connection.';
+      :(d.clip?'This movement has its own video in the app, which works offline. This is a second angle. ':'')
+       +(d.picked?'A demo picked for this movement.':'Searches YouTube for '+q+'. The first result is not always the best demo.')+' Opens YouTube in a new tab, which needs a connection.';
     const more=d.picked?`<a class="tiny" data-demo="search" style="display:block;margin-top:6px;color:inherit" href="${_ve(d.search)}" target="_blank" rel="noopener noreferrer">Or search YouTube for ${q}</a>`:'';
-    return `<a class="btn ghost" data-demo="${d.picked?'picked':'search'}" style="margin-top:14px;display:block;text-align:center;text-decoration:none" href="${_ve(d.url)}" target="_blank" rel="noopener noreferrer">▶ Watch a demo on YouTube</a>
+    return `<a class="btn ghost" data-demo="${d.picked?'picked':'search'}" style="margin-top:14px;display:block;text-align:center;text-decoration:none" href="${_ve(d.url)}" target="_blank" rel="noopener noreferrer">▶ Watch ${d.clip?'another':'a'} demo on YouTube</a>
     <div class="tiny muted" style="margin-top:6px">${note}</div>${more}`;
   }catch(e){return '';}
 }

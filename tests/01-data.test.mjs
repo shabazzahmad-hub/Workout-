@@ -2634,6 +2634,8 @@ export default async function run() {
       o.search = read('revcrunch');
       o.name = EX.revcrunch.name;
       o.withClip = read('kbswing');
+      o.clipName = EX.kbswing.name;
+      o.missing = Object.keys(EX).filter(k => !demoLink(k));
       EX.revcrunch.demo = 'https://www.youtube.com/watch?v=abcDEF12345';
       o.picked = read('revcrunch');
       openExerciseInfo('revcrunch');
@@ -2652,7 +2654,7 @@ export default async function run() {
       /* EVERY movement with a demo carries its own name in the search — the
          class, not one example, so a future name with odd characters is
          covered the day it is added. */
-      o.swept = 0; o.noName = [];
+      o.swept = 0; o.noName = []; o.exCount = Object.keys(EX).length;
       Object.keys(EX).forEach(k => { const L = demoLink(k); if (!L) return; o.swept++;
         const q = new URL(L.search).searchParams.get('search_query') || '';
         if (!q.startsWith(EX[k].name)) o.noName.push(k); });
@@ -2670,7 +2672,11 @@ export default async function run() {
     t.ok('and it opens in a new tab, with no opener', !!d.search && d.search.target === '_blank' &&
       /noopener/.test(d.search.rel) && /noreferrer/.test(d.search.rel), JSON.stringify(d.search));
     t.ok('and it says it needs a connection', !!d.search && /connection/.test(d.search.note), d.search && d.search.note);
-    t.eq('FLOOR: a movement with its own clip gets no link', d.withClip, null, JSON.stringify(d.withClip));
+    t.eq('a movement with its own clip still gets a search by name (v530)', d.withClip && d.withClip.kind, 'search', JSON.stringify(d.withClip));
+    t.ok('and it carries that movement\'s name', !!d.withClip && d.withClip.href.includes(encodeURIComponent(d.clipName)), JSON.stringify(d.withClip));
+    t.ok('and says the clip in the app is the main demo', !!d.withClip && /own video in the app/.test(d.withClip.note), JSON.stringify(d.withClip));
+    t.ok('FLOOR: a movement with no clip says nothing about one', !!d.search && !/own video/.test(d.search.note), d.search && d.search.note);
+    t.eq('every movement in the library has a demo search, new ones included', d.missing, [], JSON.stringify(d.missing));
     t.eq('a picked link wins over the search', d.picked && d.picked.href, 'https://www.youtube.com/watch?v=abcDEF12345',
       JSON.stringify(d.picked));
     t.eq('and says it was picked', d.picked && d.picked.kind, 'picked', '');
@@ -2684,6 +2690,7 @@ export default async function run() {
     t.eq('FLOOR: and the link is still there for when it comes back', d.offline && d.offline.kind, 'search', '');
     t.eq('an inherited key is not an exercise', d.inherited, null, JSON.stringify(d.inherited));
     t.ok('guard: the name sweep really read the library', d.swept > 100, String(d.swept));
+    t.ok('guard: and it read every movement, the ones with a clip too', d.swept === d.exCount, d.swept + ' of ' + d.exCount);
     t.eq('every demo search starts with the exercise name', d.noName, [], JSON.stringify(d.noName));
     t.ok('and the sheet shows the words it will search for', d.shown.includes('“' + d.name + ' exercise proper form”'),
       d.shown);
