@@ -23836,3 +23836,16 @@ build the case: no flagged joint (the corrective never at risk), no per-side
 movement, and a 15-minute cap that fit before the two-movement floor was
 reached. A hand-built session driven through `fitSessionToTime()` covers all
 three.
+
+## A failed Feet-Elevated Row became the Inverted Row's video (v529)
+
+Two attempts at the Feet-Elevated Row. The first prompt was **refused by
+Gemini's policy filter** — most likely "his body ... hanging below the bar"
+read as a person hanging. Removing *hanging*, *lies under* and *his body*, and
+naming the exercise, got a video. It was the wrong one: heels on the **floor**,
+the bench under his back. That is a clean plain **Inverted Row** — face up,
+body straight, two pulls to the bar — and that exercise had no video and is the
+baseline `pull` test, so the clip went there (the squat-thrust salvage again).
+Trimmed to 2.0–8.5 s to cut the sit-down at both ends, `crop=720:720:252:0`.
+**Avoid "hanging" and body-position words that read as harm in a video
+prompt.** The Feet-Elevated Row keeps its still.
