@@ -905,6 +905,162 @@ export default async function run() {
     t.eq('so the figure is the same after a boot', arch.after.min, arch.before.min, arch);
   }
 
+  /* ---- v528: SHORT ON TIME ------------------------------------------------
+     "I have 20 minutes today." The cut is applied at buildSession(), the one
+     builder, so the card, the player, the completion gate and the log all see
+     the same shortened session. Every check below drives the real chip. */
+  {
+    const tc = await page.evaluate(() => {
+      const o = {};
+      delete STATE._timeCap;
+      // find a session long enough that a 15-minute cap has to cut something
+      let p = STATE.progressPtr;
+      for (let q = 0; q < 60; q++) { if (sessionVolume(buildSession(q)).minutes >= 26) { p = q; break; } }
+      STATE.progressPtr = p; delete STATE.logs[p]; delete STATE._trainAgain;
+      o.ptr = p;
+      const full = buildSession(p);
+      o.fullMin = sessionVolume(full).minutes;
+      o.fullJSON = JSON.stringify(full);
+      o.fullTargets = Object.fromEntries([...full.main, full.finisher].map(m => [m.exId, m.target]));
+      o.fullFin = full.finisher.exId;
+      // FLOOR: with no cap the builder is byte-identical to the plan
+      o.noCapSame = JSON.stringify(buildSession(p)) === o.fullJSON;
+      go('today'); TODAY_TAB = 'workout'; renderToday();
+      const v = document.querySelector('#v-today');
+      o.chips = [...v.querySelectorAll('[onclick^="setTimeCap("]')].map(b => b.getAttribute('onclick'));
+      const b15 = v.querySelector('[onclick="setTimeCap(15)"]');
+      o.hasChip = !!b15;
+      if (!b15) return o;
+      b15.click();
+      o.stamp = STATE._timeCap;
+      const cut = buildSession(p);
+      o.cut = cut.cut || null;
+      o.cutMin = sessionVolume(cut).minutes;
+      o.moves = cut.main.filter(m => !m.corrective).length;
+      o.finKept = cut.finisher.exId === o.fullFin;
+      o.targetsSame = [...cut.main, cut.finisher].every(m => o.fullTargets[m.exId] === m.target);
+      o.perSetEven = [...cut.main, cut.finisher].every(m => !sidePerSet(m.exId) || (m.sets % 2 === 0 && m.sets >= 2));
+      o.setsFloor = cut.main.every(m => m.sets >= Math.min(2, (full.main.find(f => f.exId === m.exId) || {}).sets || 2));
+      o.fullFlag = JSON.stringify(buildSession(p, { full: true })) === o.fullJSON;
+      const v2 = document.querySelector('#v-today');
+      o.note = (v2.querySelector('[data-timecap]') || {}).textContent || '';
+      o.heroMin = (v2.querySelector('.hp-stat:nth-child(2) b') || {}).textContent || '';
+      o.cards = v2.querySelectorAll('.exlist .excard, .exlist [data-ex]').length;
+      // the guided player runs the same shortened session
+      openPlayer();
+      o.playerItems = PLAYER.items.length;
+      o.cutItems = cut.main.length + 1;
+      playerTeardown();
+      // the Full chip clears it and the plan comes back whole
+      renderToday();
+      const f = document.querySelector('#v-today [onclick="setTimeCap(0)"]');
+      if (f) f.click();
+      o.cleared = STATE._timeCap === undefined && JSON.stringify(buildSession(p)) === o.fullJSON;
+      return o;
+    });
+    t.ok('guard: the session really is longer than the cap', tc.fullMin > 15, tc);
+    t.ok('FLOOR: with no cap the session is exactly the plan', tc.noCapSame, tc);
+    t.ok('the workout tab offers the time chips', tc.hasChip, tc);
+    t.ok('and never offers a time longer than the session itself', !tc.chips.includes('setTimeCap(' + 45 + ')') || tc.fullMin > 45, tc);
+    t.ok('tapping a chip stamps the cap with today and the session', tc.stamp && tc.stamp.min === 15 && tc.stamp.ptr === tc.ptr, tc);
+    t.ok('the session is cut', !!tc.cut && tc.cutMin < tc.fullMin, tc);
+    t.ok('it keeps at least two movements', tc.moves >= 2, tc);
+    t.ok('the finisher is never cut', tc.finKept, tc);
+    t.ok('reps and hold times are unchanged', tc.targetsSame, tc);
+    t.ok('a per-side movement stays even', tc.perSetEven, tc);
+    t.ok('no movement drops below two sets', tc.setsFloor, tc);
+    t.ok('{full:true} still returns the plan as written', tc.fullFlag, tc);
+    t.ok('the card says what was cut and that load is not raised', /Fitted to/.test(tc.note) && /not raise your load/.test(tc.note), tc);
+    t.eq('the card headline quotes the shortened minutes', tc.heroMin, '~' + tc.cutMin, tc);
+    t.eq('the guided player runs the shortened session', tc.playerItems, tc.cutItems, tc);
+    t.ok('the Full chip clears it and the plan comes back whole', tc.cleared, tc);
+  }
+  {
+    const lg = await page.evaluate(() => {
+      const o = {};
+      const p = STATE.progressPtr;
+      delete STATE._timeCap; delete STATE.logs[p];
+      const full = buildSession(p);
+      // log a set on the LAST main movement, which a tight cap would drop first
+      const last = full.main.filter(m => !m.corrective).slice(-1)[0];
+      STATE.logs[p] = { date: todayISO(), ex: { [last.exId]: { sets: [true], done: false } }, feel: null, done: false };
+      setTimeCap(15);
+      const cut = buildSession(p);
+      o.keptLogged = cut.main.some(m => m.exId === last.exId);
+      o.keptSets = (cut.main.find(m => m.exId === last.exId) || {}).sets >= 1;
+      // finish the shortened session through the real controls
+      delete STATE.logs[p];
+      const before = STATE.adapt = 1.1;
+      const s = buildSession(p);
+      [...s.main, s.finisher].forEach(m => toggleEx(m.exId));
+      _lastSessionClock = null;
+      commitSession('easy');
+      const l = STATE.logs[p];
+      o.done = l.done === true; o.partial = l.partial;
+      o.short = l.short;
+      o.adaptDelta = +(STATE.adapt - before).toFixed(4);
+      o.ptrMoved = STATE.progressPtr === p + 1;
+      o.itemsMatch = (l.items || []).length === s.main.length + 1;
+      o.capVoid = !buildSession(STATE.progressPtr).cut;
+      go('progress'); setProgressTab('strength');
+      o.row = (document.querySelector('#v-progress') || {}).textContent || '';
+      o.tagGuard = shortSessionTag({ short: { min: '<b>x</b>' } });
+      // repair: junk dropped, a real stamp survives, backups never carry it
+      STATE._timeCap = { date: 'nope', ptr: -1, min: 99 }; normalizeState();
+      o.junkGone = STATE._timeCap === undefined;
+      STATE._timeCap = { date: todayISO(), ptr: STATE.progressPtr, min: 20 }; normalizeState();
+      o.realKept = !!STATE._timeCap && STATE._timeCap.min === 20;
+      o.transient = TRANSIENT_KEYS.includes('_timeCap');
+      // a closed day offers no chips: the session is already logged
+      delete STATE._timeCap;
+      go('today'); TODAY_TAB = 'workout'; renderToday();
+      o.closedNoChips = !document.querySelector('#v-today [onclick^="setTimeCap("]');
+      return o;
+    });
+    t.ok('a movement with logged work is never cut', lg.keptLogged && lg.keptSets, lg);
+    t.ok('the shortened session logs as done, not partial', lg.done && lg.partial === false, lg);
+    t.ok('and is recorded as a short session', lg.short && lg.short.min === 15 && lg.short.fullMin > 15, lg);
+    t.ok('an "easy" short session does not push the load past the ordinary nudge', lg.adaptDelta <= 0.006 + 1e-9, lg);
+    t.ok('the plan still moves on one session', lg.ptrMoved, lg);
+    t.ok('the log snapshot is the shortened session', lg.itemsMatch, lg);
+    t.ok('the cap is void once the session is logged', lg.capVoid, lg);
+    t.ok('the history row says it was short', /short \(15 min\)/.test(lg.row), lg.row.slice(0, 200));
+    t.eq('a junk stored tag renders nothing', lg.tagGuard, '', lg);
+    t.ok('junk in the stored cap is dropped at boot', lg.junkGone, lg);
+    t.ok('FLOOR: a real cap survives the boot', lg.realKept, lg);
+    t.ok('the cap never travels in a backup', lg.transient, lg);
+    t.ok('a day already trained offers no time chips', lg.closedNoChips, lg);
+  }
+
+  {
+    /* The cases the real session above cannot build: a one-side movement that
+       has to step down, a corrective move for a flagged joint, and a session
+       so long that even two movements will not fit. Driven through the
+       function itself on a hand-built session, with no log behind it. */
+    const sy = await page.evaluate(() => {
+      const o = {};
+      const it = (exId, sets, target, extra) => Object.assign({ exId, sets, target, unit: 'time', rest: 60 }, extra || {});
+      const fin = it('march', 1, 30);
+      // a one-side movement at 4 sets must step to 2, never 3
+      const a = fitSessionToTime({ ptr: 999999, main: [it('sideplank', 4, 90), it('plank', 2, 40)], finisher: fin }, 15);
+      o.guardPerSet = sidePerSet('sideplank');
+      o.sidePlankSets = (a.main.find(m => m.exId === 'sideplank') || {}).sets;
+      // the corrective move is never cut, however tight the cap
+      const big = () => it('plank', 4, 90);
+      const b = fitSessionToTime({ ptr: 999999, main: [big(), big(), big(), big(), it('birddog', 2, 30, { corrective: true, slot: 'corrective' })], finisher: fin }, 15);
+      o.correctiveKept = b.main.some(m => m.corrective);
+      // a session that cannot fit keeps two movements and says it is over
+      o.movesLeft = b.main.filter(m => !m.corrective).length;
+      o.over = b.cut && b.cut.nowMin > 15;
+      return o;
+    });
+    t.ok('guard: Side Plank really is a one-side movement', sy.guardPerSet, sy);
+    t.eq('a one-side movement steps down by two, so it stays balanced', sy.sidePlankSets, 2, sy);
+    t.ok('the corrective move for a flagged joint is never cut', sy.correctiveKept, sy);
+    t.eq('a session that cannot fit still keeps two movements', sy.movesLeft, 2, sy);
+    t.ok('guard: and that session really is still over the cap', sy.over, sy);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }

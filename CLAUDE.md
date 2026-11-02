@@ -23804,3 +23804,35 @@ the library) were named in the prompt as the thing not to draw.
 reps, where a strict rep stays hanging. The movement itself is correct, so a
 second generation slot was not worth it. Cropped `crop=720:720:290:0`, which
 keeps the bar and the boots at full reach.
+
+## Short on time: fit today's session to the minutes you have (v528)
+
+Asked for after comparing a competitor's "adaptive planning" advert. The one
+real gap: Quick workouts were the only short option, and they replace the
+planned session rather than shorten it.
+
+**The cut is applied at `buildSession()`, the one builder**, so the card, the
+guided player, the brief, the set chains, the completion gate and the log
+snapshot all see the same session. A cut applied at the card alone would let
+the gate credit a full session for half the work. `buildSession(p,{full:true})`
+asks for the plan as written (the picker's "Full ~N min" and the Day-1 hero).
+
+**The order of the cuts is the design**: the focus bonus first (an extra, not
+the plan), then sets from the last movement back, never below two (a per-side
+movement steps by two so it stays balanced), then whole movements from the end,
+keeping at least two. The finisher and the corrective move are never cut.
+**Targets never change**, and **logged work is never cut**: a movement with
+marked sets stays, and its count never drops below what is done.
+
+**The cap is stamped `{date, ptr, min}`**, the `_trainAgain` shape, so it voids
+itself once the session is logged or the day changes. It is in
+`TRANSIENT_KEYS` and repaired at boot. A cut session commits as done (not
+partial) — the sets it asked for were done — with `log.short` recorded, the
+history row saying so, and the adaptive load held to the ordinary nudge:
+fewer sets is not evidence the athlete is ready for more.
+
+Twelve mutants. Three escaped first, all because the real session could not
+build the case: no flagged joint (the corrective never at risk), no per-side
+movement, and a 15-minute cap that fit before the two-movement floor was
+reached. A hand-built session driven through `fitSessionToTime()` covers all
+three.

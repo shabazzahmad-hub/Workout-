@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='527';
+const APP_VERSION='528';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -3574,7 +3574,7 @@ function swapStillValid(exId){
   if(!exKnown(exId))return false;
   try{return hasGearFor(exId)&&safeSwap(exId)===exId;}catch(e){console.error('[swapStillValid]',e);return false;}
 }
-function buildSession(ptr){
+function buildSession(ptr,opts){
   const pos=posOf(ptr);
   const cycle=pos.cycle,week=pos.week,level=levelOf(cycle);
   const hasBar=STATE.profile.hasBar!==false; // default true; toggle in settings
@@ -3735,7 +3735,123 @@ function buildSession(ptr){
   // one light stability movement for a flagged joint, on top of everything above
   const corrective=correctiveBonus(pos,used);
   if(corrective)main.push(corrective);
-  return {ptr,pos,cycle,week,session:pos.session,main,finisher,dropped};
+  const out={ptr,pos,cycle,week,session:pos.session,main,finisher,dropped};
+  /* "I have 20 minutes today." Applied HERE, at the one builder, so the card,
+     the guided player, the brief, the set chains, the completion gate and the
+     log snapshot all see the same shortened session. Two readers of one
+     session that disagree about its length is how the gate would credit a
+     full session for half the work. {full:true} asks for the plan as written. */
+  const cap=(opts&&opts.full)?0:timeCapFor(ptr);
+  return cap?fitSessionToTime(out,cap):out;
+}
+/* ============ SHORT ON TIME ==============================================
+   A session cut to fit the minutes the athlete actually has. The order of the
+   cuts is the design, most expendable first:
+     1. the focus bonus — an extra on top of the plan, not part of it;
+     2. sets, from the last movement back, never below two (a per-side
+        movement steps down by two so it stays balanced);
+     3. whole movements from the end, keeping at least two.
+   The finisher and the corrective move for a flagged joint are never cut: one
+   is a single round, and the other is the part of the session protecting a
+   joint. TARGETS NEVER CHANGE — reps and hold times stay what the plan asks,
+   so the load the athlete is measured against is the real one.
+
+   WORK ALREADY LOGGED IS NEVER CUT. A movement with marked sets keeps them,
+   and the set count never drops below what is already done — otherwise
+   picking a time half-way through would delete training from the record.
+
+   The cap is stamped with the date AND the pointer, so it is void the moment
+   the session is logged or the day changes, with no writer having to remember
+   to clear it — the same shape as the _trainAgain stamp. */
+const TIME_CAP_OPTS=[15,20,30,45];
+const TIME_CAP_MIN_MOVES=2;
+function timeCapOk(c){
+  return !!(c&&typeof c==='object'&&!Array.isArray(c)&&isDateISO(c.date)
+    &&typeof c.ptr==='number'&&isFinite(c.ptr)&&c.ptr>=0&&c.ptr===Math.round(c.ptr)
+    &&TIME_CAP_OPTS.includes(c.min));
+}
+function timeCapFor(ptr){
+  try{const c=STATE._timeCap;
+    return (timeCapOk(c)&&c.date===todayISO()&&c.ptr===ptr)?c.min:0;
+  }catch(e){return 0;}
+}
+function fitSessionToTime(sess,min){
+  try{
+    const fullMin=sessionVolume(sess).minutes;
+    if(fullMin<=min)return sess;
+    const log=(STATE.logs||{})[sess.ptr];
+    const doneOf=m=>{try{return setsDoneFor(log&&log.ex&&log.ex[m.exId],m);}catch(e){return 0;}};
+    const main=sess.main.map(m=>Object.assign({},m));
+    const out=Object.assign({},sess,{main});
+    const fits=()=>sessionVolume(out).minutes<=min;
+    const cutNames=[],fewer=new Set();
+    // 1. the focus bonus
+    for(let i=main.length-1;i>=0&&!fits();i--){
+      if(main[i].focus&&doneOf(main[i])===0){cutNames.push(EX[main[i].exId].name);main.splice(i,1);}
+    }
+    // 2. sets, last movement first, never below two
+    let moved=true;
+    while(!fits()&&moved){
+      moved=false;
+      for(let i=main.length-1;i>=0&&!fits();i--){
+        const m=main[i];if(m.corrective)continue;
+        const step=sidePerSet(m.exId)?2:1;
+        const next=m.sets-step;
+        if(next>=2&&next>=doneOf(m)){m.sets=next;fewer.add(m.exId);moved=true;}
+      }
+    }
+    // 3. whole movements from the end, keeping at least two
+    for(let i=main.length-1;i>=0&&!fits();i--){
+      const m=main[i];
+      if(m.corrective||doneOf(m)>0)continue;
+      if(main.filter(x=>!x.corrective).length<=TIME_CAP_MIN_MOVES)break;
+      cutNames.push(EX[m.exId].name);fewer.delete(m.exId);main.splice(i,1);
+    }
+    out.cut={min,fullMin,nowMin:sessionVolume(out).minutes,dropped:cutNames,
+      fewer:[...fewer].map(k=>EX[k].name)};
+    return out;
+  }catch(e){return sess;}
+}
+function setTimeCap(min){
+  try{
+    if(todayClosed())return;
+    if(!min){delete STATE._timeCap;}
+    else{
+      if(!TIME_CAP_OPTS.includes(min))return;
+      STATE._timeCap={date:todayISO(),ptr:todayPtr(),min};
+    }
+    save();
+    try{haptic(8);}catch(e){}
+    renderToday();
+  }catch(e){}
+}
+function timeCapHTML(sess){
+  try{
+    const full=sessionVolume(buildSession(sess.ptr,{full:true})).minutes;
+    const cap=timeCapFor(sess.ptr);
+    const opts=TIME_CAP_OPTS.filter(m=>m<full);
+    if(!cap&&!opts.length)return '';
+    const chips=opts.map(m=>`<button class="chip ${cap===m?'on':''}"${pressed(cap===m)} onclick="setTimeCap(${m})">${m} min</button>`).join('')
+      +`<button class="chip ${cap?'':'on'}"${pressed(!cap)} onclick="setTimeCap(0)">Full ~${full} min</button>`;
+    let note='';
+    const c=sess.cut;
+    if(cap&&c){
+      const parts=[];
+      if(c.dropped.length)parts.push('Left out: <b>'+c.dropped.map(_ve).join(', ')+'</b>.');
+      if(c.fewer.length)parts.push('Fewer sets on: <b>'+c.fewer.map(_ve).join(', ')+'</b>.');
+      const over=c.nowMin>cap?` That is as short as it goes without cutting below two movements, so it is <b>~${c.nowMin} min</b>, not ${cap}.`:'';
+      note=`<div class="note info" data-timecap style="margin:8px 0 0">✂️ <b>Fitted to ~${c.nowMin} min</b> (the full session is ~${full}). ${parts.join(' ')}${over} Reps and hold times are unchanged. It still counts as today's session, logged as a short one, and it will not raise your load.</div>`;
+    }else if(cap){
+      note=`<div class="note info" data-timecap style="margin:8px 0 0">Today's session already fits in ${cap} min — nothing was cut.</div>`;
+    }
+    return `<div class="card pad" style="padding:12px 14px;margin:0 0 10px"><b style="font-size:13px">Short on time?</b> <span class="tiny muted">Fit today's session into:</span>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${chips}</div>${note}</div>`;
+  }catch(e){return '';}
+}
+function shortSessionTag(l){
+  try{const s=l&&l.short;
+    return (s&&typeof s==='object'&&TIME_CAP_OPTS.includes(s.min))?` · short (${s.min} min)`:'';
+  }catch(e){return '';}
 }
 function sessionVolume(sess){
   let tut=0;const list=[...sess.main,sess.finisher];
@@ -4797,7 +4913,7 @@ function skipReassess(){
    anchorUsable fallback covers it, same as every other pre-baseline read). */
 function typicalSessionMin(){
   try{
-    const sess=buildSession(0);
+    const sess=buildSession(0,{full:true});
     const items=[...sess.main,sess.finisher].filter(Boolean);
     const work=plBudgetMin(items,repTempoSetting());
     const wc=Math.round((flowSecs(warmupFlow())+flowSecs(cooldownFlow()))/60);
@@ -5280,6 +5396,7 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
     h+=sessionDoneCardHTML(sess,log,_sets);
     h+=nextSessionHTML();
   }else{
+  h+=timeCapHTML(sess);
   h+=`<div class="section-label">Main work</div><div class="exlist">`;
   sess.main.forEach((m,i)=>h+=exCardHTML(m,log,i));
   h+=`</div>`;
@@ -7653,6 +7770,12 @@ function commitSession(feel){
   log.setsDone=work.setsDone;log.setsAsked=work.setsAsked;
   STATE._undo=snapshotForUndo(p,pos.cycle+'-'+pos.week);
   log.done=true;log.feel=feel;log.completedAt=todayISO();
+  /* A session cut to fit the time is recorded as one. The pointer still moves
+     — the program is a queue and a short session is still today's session —
+     but the record says what it was, and the load below is not raised off it. */
+  let _short=null;
+  try{const _c=buildSession(p).cut;if(_c)_short={min:_c.min,fullMin:_c.fullMin};}catch(e){}
+  if(_short)log.short=_short;else delete log.short;
   if(_lastSessionClock){
     if(_lastSessionClock.ptr===p){
       log.durSec=_lastSessionClock.wall;log.pausedSec=_lastSessionClock.paused;
@@ -7687,6 +7810,8 @@ function commitSession(feel){
       else if(r>=1&&feel==='easy')d=0.025;      // hit it all and it was easy
     }
   }catch(e){}
+  // fewer sets is not evidence the athlete is ready for more
+  if(_short)d=Math.min(d,0.006);
   STATE.adapt=clamp((typeof STATE.adapt==='number'?STATE.adapt:1)+d,0.9,1.30);
   STATE.progressPtr=p+1;
   closeSheet();save();
@@ -24564,7 +24689,7 @@ function sessionHistoryHTML(){
     const feel=l.feel==='easy'?'😎':(l.feel==='hard'?'🥵':'💪');
     const st=sessionStats(p);
     h+=`<button class="kv" style="width:100%;text-align:left;background:none;border:none;border-top:1px solid var(--line);cursor:pointer;padding:12px 14px" onclick="openSessionDetail(${p})">
-      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${_ve(l.completedAt||l.date||'')} · ${st.exDone}/${st.exTotal} moves · ${plural(st.setsDone,'set')} · ${(()=>{const mm=sessionMinutes(l,st);return (mm.measured?'':'~')+mm.min;})()} min</div></span><span style="font-size:18px">${feel}</span></button>`;
+      <span><b>${s.name}</b><div class="tiny muted">Wk ${wk} · ${_ve(l.completedAt||l.date||'')} · ${st.exDone}/${st.exTotal} moves · ${plural(st.setsDone,'set')} · ${(()=>{const mm=sessionMinutes(l,st);return (mm.measured?'':'~')+mm.min;})()} min${shortSessionTag(l)}</div></span><span style="font-size:18px">${feel}</span></button>`;
   });
   h+=`</div>${priorNote}`;return h;
 }
@@ -25125,7 +25250,7 @@ function setDiet(k){if(!DIET_KEYS.includes(k))return;   // the picker is the onl
    restoring an old backup onto a fresh device should not carry forward a flag
    about a repair that happened somewhere else. _backupNudgeDismissed is the
    same shape: a snooze on THIS device's nagging, not a fact about the athlete. */
-const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed','_trainAgain'];
+const TRANSIENT_KEYS=['_undo','_plResume','_dataRepaired','_backupNudgeDismissed','_trainAgain','_timeCap'];
 /* STORAGE BOOKKEEPING, NOT SESSION SCRATCH, and the distinction is load-bearing.
    These two describe this device's own write history, so they must never travel
    in a backup — but restartProgram() clears TRANSIENT_KEYS meaning "the athlete
@@ -26664,6 +26789,8 @@ function normalizeState(){
    const okR=r&&typeof r==='object'&&!Array.isArray(r)&&isDateISO(r.date)
      &&typeof r.from==='number'&&isFinite(r.from)&&r.from>=0&&r.from===Math.round(r.from);
    if(r!==undefined&&!okR)delete STATE._trainAgain;}
+  // the "short on time" cap: a stamped object or nothing
+  if(STATE._timeCap!==undefined&&!timeCapOk(STATE._timeCap))delete STATE._timeCap;
   /* MEMBERSHIP AGAINST THE LIST, never a hardcoded legal value.
 
      This read `!== 'bike'` and was written when jacks and the bike were the
