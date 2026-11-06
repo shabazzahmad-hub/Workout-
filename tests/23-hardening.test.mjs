@@ -4835,7 +4835,14 @@ export default async function () {
       ivStep(0); await wait(200);
       R.phase = INTV.phase;   // workElapsed is only credited in a work phase
       // Five real seconds of the round have gone by with no tick to count them.
-      ivClear(); INTV.deadline = monoNow() + 40000; INTV.remain = 45;
+      /* 39.5 s, not 40. With exactly 40 s left and no time passing, the
+         subtraction (t + 40000 - t) / 1000 is not always exactly 40 in floating
+         point — measured, 3,826 of 100,000 random t give 40.000…1, which
+         Math.ceil turns into 41. A fast CI runner reads the same coarse clock
+         twice, so the check failed there on correct code. Half a second of
+         slack lands on 40 whatever the rounding, and still counts the five
+         lost seconds. */
+      ivClear(); INTV.deadline = monoNow() + 39500; INTV.remain = 45;
       R.start = { remain: INTV.remain, work: INTV.workElapsed };
       ivResync(); ivClear();
       R.one = { remain: INTV.remain, work: INTV.workElapsed };
