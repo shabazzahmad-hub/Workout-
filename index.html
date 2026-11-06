@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='532';
+const APP_VERSION='533';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -10043,8 +10043,13 @@ function concStrengthBlock(){
    plAfterSet() already rests for m.rest between items, so the gap between the
    two blocks is a property of the block that just finished. */
 function buildConcurrent(format){
+  /* MEMBERSHIP, not truthiness (v533). CONCURRENT_FORMATS['constructor'] is
+     truthy, so `if(!f)` let an inherited key build a four-movement session
+     titled after Object. isConcurrent() was written for exactly this and had
+     no caller — the reachability scan only found it once v533 taught it to
+     read regex literals and nested templates. */
+  if(!isConcurrent(format))return null;
   const f=CONCURRENT_FORMATS[format];
-  if(!f)return null;
   const str=concStrengthBlock();
   const end=concEndurance();
   if(!str.length||!end)return null;
@@ -19905,7 +19910,12 @@ function isDateISO(v){if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))ret
      rolls seven days      -> says "last 7 days", never "this week"
 
    A PROGRAM week is a third thing and is not in this class: "volume drops on
-   purpose this week" is a position in the plan, not a date range. */
+   purpose this week" is a position in the plan, not a date range.
+
+   v533 moved the conditioning bar to the OTHER side of the rule. It was a
+   rolling window honestly labelled, and its target is weekly — so it now
+   counts the calendar week and says "this week" again. The sheets and the
+   load-spike banner still roll and still say "last 7 days". */
 function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x;}
 /* Quick sessions were taught to the streak, the heatmap and the 28-day count
    but not to this one, so a travel week of five Quick sessions showed "5 day
@@ -21566,15 +21576,24 @@ const RIDE_TARGET={n:2,min:35};
    only, so an athlete doing the same work with jumping jacks — the portable
    option, and now the default — saw a permanently empty progress bar for
    conditioning he had actually done. */
-/* A ROLLING SEVEN DAYS, and the bar says so — see weekStartD(). A weekly
-   target that never resets would be the other defect, but this one is read as
-   "2 easy sessions in any 7 days" and its heading now states that. */
+/* THE CALENDAR WEEK, Monday to Sunday (v533) — see weekStartD().
+   v505 called this a rolling seven days and relabelled the bar to say so. The
+   label was then true and the target was still wrong: a weekly target that
+   never resets reads "met" for eight days after two Monday rides, so the
+   athlete is never asked for the next week's sessions until the old ones
+   roll off one by one. It now counts from the week start to today, which is
+   what a WEEKLY target means, and the bar says "this week" and when it resets. */
+function ridesWeekDays(){
+  const s=weekStartD(new Date()),out=[];
+  const today=new Date();today.setHours(0,0,0,0);
+  for(const d=new Date(s);d<=today&&out.length<7;d.setDate(d.getDate()+1))out.push(localISO(d));
+  return out;
+}
 function ridesThisWeek(){
   const n=nut();let rides=0,mins=0,kcal=0;
   const perMode={};CARDIO_MODES.forEach(k=>perMode[k]=0);
-  for(let i=0;i<7;i++){
-    const d=new Date();d.setDate(d.getDate()-i);
-    const day=n.days&&n.days[localISO(d)];if(!day)continue;
+  for(const iso of ridesWeekDays()){
+    const day=n.days&&n.days[iso];if(!day)continue;
     let dayMin=0;
     /* Every mode, read through the one table. This counted the bike only, was
        fixed once for jacks (see the comment above), and then the ruck and the
@@ -21606,11 +21625,11 @@ function rideTargetHTML(){
      names could only ever describe two of the four. */
   const breakdown=CARDIO_MODES.filter(k=>r.perMode[k]>0)
     .map(k=>`${r.perMode[k]} ${CARDIO_INFO[k].verb}`).join(' · ');
-  return `<div class="section-label">Easy conditioning · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} in the last 7 days</span></div>
+  return `<div class="section-label">Easy conditioning · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} this week</span></div>
   <div class="card pad">
     <div class="pbar" style="margin:2px 0 10px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     <div class="row" style="justify-content:space-between;align-items:baseline">
-      <div><b>${r.mins} min</b>${breakdown?` <span class="tiny muted">· ${_ve(breakdown)}</span>`:''}<div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy</div></div>
+      <div><b>${r.mins} min</b>${breakdown?` <span class="tiny muted">· ${_ve(breakdown)}</span>`:''}<div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy · resets Monday</div></div>
       <span class="tiny muted">${r.kcal} kcal</span></div>
     <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, nothing burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part. Jumping jacks, the bike, a ruck and a run all count — pick whichever you will actually do today. Plain walking pays your <b>step target</b> above instead, not this one: the app can see a step count but cannot tell a deliberate walk from a busy day.</div>
   </div>`;

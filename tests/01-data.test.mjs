@@ -1747,23 +1747,103 @@ export default async function run() {
     t.ok('guard: found the app script', !!best && best[1].indexOf('function normalizeState') >= 0);
 
     if (best) {
-      // strip comments, respecting strings and template literals
+      /* Strip comments, respecting strings, template literals AND REGEX
+         LITERALS (v533). Before this a regex was read as code, so a quote
+         inside one — /'/ or /["']/ — flipped the string state and the rest
+         of the file was read inside out: a COMMENT naming totalTUT() was
+         scanned as a call and a dead function read as reachable (v526).
+
+         A `/` opens a regex when what comes before it cannot end a value:
+         an operator, an open bracket, a comma, or a keyword such as return.
+         After an identifier, a number, `)` or `]` it is division. A regex body
+         is replaced by `/r/`, because nothing inside one is a call site and
+         its quotes and braces are what broke the two scanners below. */
+      const REGEX_AFTER_CHAR = '(,=:[!&|?{};+-*%<>~^';
+      const REGEX_AFTER_WORD = /(?:^|[^A-Za-z0-9_$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|instanceof|yield|await)$/;
+      const regexCanStart = out => {
+        let k = out.length - 1;
+        while (k >= 0 && /\s/.test(out[k])) k--;
+        if (k < 0) return true;
+        if (REGEX_AFTER_CHAR.indexOf(out[k]) >= 0) return true;
+        return REGEX_AFTER_WORD.test(out.slice(Math.max(0, k - 12), k + 1));
+      };
+      // the end of a regex body that starts at i (the opening slash), or -1
+      const regexEnd = (code, i) => {
+        let j = i + 1, inClass = false;
+        while (j < code.length) {
+          const ch = code[j];
+          if (ch === '\n') return -1;
+          if (ch === '\\') { j += 2; continue; }
+          if (inClass) { if (ch === ']') inClass = false; }
+          else if (ch === '[') inClass = true;
+          else if (ch === '/') return j;
+          j++;
+        }
+        return -1;
+      };
+      /* A STACK, because a template literal can hold code that holds another
+         template: `a ${x ? `<b>${y}</b>` : ''} c`. Toggling on every backtick
+         read the inner template's TEXT as code, which was harmless until the
+         regex rule above met a `</b>` there and swallowed it as a regex. */
       const stripComments = code => {
-        let out = '', i = 0, st = null;
+        let out = '', i = 0;
+        const stack = [{ k: 'code', d: 0 }];
         while (i < code.length) {
+          const top = stack[stack.length - 1];
           const c = code[i], nx = code[i + 1];
-          if (!st) {
+          if (top.k === 'code') {
             if (c === '/' && nx === '*') { const j = code.indexOf('*/', i + 2); i = j < 0 ? code.length : j + 2; out += ' '; continue; }
             if (c === '/' && nx === '/') { const j = code.indexOf('\n', i); i = j < 0 ? code.length : j; continue; }
-            if (c === '"' || c === "'" || c === '`') { st = c; out += c; i++; continue; }
+            if (c === '/' && regexCanStart(out)) {
+              const e = regexEnd(code, i);
+              if (e > i) {
+                let f = e + 1; while (f < code.length && /[a-z]/.test(code[f])) f++;
+                out += '/r/' + code.slice(e + 1, f); i = f; continue;
+              }
+            }
+            if (c === '"' || c === "'") { stack.push({ k: c }); out += c; i++; continue; }
+            if (c === '`') { stack.push({ k: 'tpl' }); out += c; i++; continue; }
+            if (c === '{') top.d++;
+            else if (c === '}') {
+              if (top.d === 0 && stack.length > 1) { stack.pop(); out += c; i++; continue; }
+              top.d--;
+            }
             out += c; i++; continue;
           }
           if (c === '\\') { out += code.slice(i, i + 2); i += 2; continue; }
-          if (c === st) st = null;
+          if (top.k === 'tpl') {
+            if (c === '`') { stack.pop(); out += c; i++; continue; }
+            if (c === '$' && nx === '{') { stack.push({ k: 'code', d: 0 }); out += '${'; i += 2; continue; }
+            out += c; i++; continue;
+          }
+          if (c === top.k) stack.pop();
           out += c; i++;
         }
         return out;
       };
+      /* GUARDS, on SYNTHETIC sources, so they stay true whatever the app
+         becomes. Each one is a shape that broke a scanner here before. */
+      const sp = stripComments;
+      t.ok('guard: a quote inside a regex does not start a string',
+        sp("const r=/a'b/;\n// ghostA()\nfunction f(){}").indexOf('ghostA') < 0);
+      t.ok('guard: a character class holding a slash is one regex',
+        sp("x=s.replace(/[/'\"]/g,'');// ghostB()\nok()").indexOf('ghostB') < 0);
+      t.ok('guard: an escaped slash stays inside the regex',
+        sp("if(/https?:\\/\\//.test(u))go();// ghostC()").indexOf('ghostC') < 0);
+      t.ok('guard: a regex after return is a regex',
+        sp("function g(){return /\"/.test(x)}// ghostD()").indexOf('ghostD') < 0);
+      t.ok('guard: division is still division, and the code after it survives',
+        sp("const q=a/b, w=c/d; keepMe()").indexOf('keepMe') >= 0
+        && sp("const q=a/b, w=c/d;").indexOf('a/b') >= 0);
+      t.ok('guard: division after a closing bracket is not a regex',
+        sp("y=(a+b)/2; z=k[0]/3; keepToo()").indexOf('(a+b)/2') >= 0);
+      t.ok('guard: markup inside a template nested in a template is text, not a regex',
+        sp("h=`a ${x?`<b>t</b>`:''} c`;// ghostF()\nkeep3()").indexOf('ghostF') < 0
+        && sp("h=`a ${x?`<b>t</b>`:''} c`;").indexOf('<b>t</b>') >= 0);
+      t.ok('guard: a comment inside a template expression is still stripped',
+        sp("h=`a ${f(1) /* ghostG() */} c`;").indexOf('ghostG') < 0);
+      t.ok('guard: a regex inside a string is left as text',
+        sp("h='<a href=\"/x/\">';// ghostE()").indexOf('/x/') >= 0);
       const clean = stripComments(best[1]);
 
       const decl = [...clean.matchAll(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/gm)]
@@ -1775,16 +1855,36 @@ export default async function run() {
       /* A one-liner has no `}` in column 0, so a line-anchored search runs past
          it and swallows every top-level registry that follows — which made a
          dozen live builders read as unreachable. Match the brace. */
+      /* The same STACK as the stripper (v533). Toggling on every backtick read
+         a nested template's text as code, so an apostrophe in it opened a
+         string and four functions ran on for hundreds of declarations —
+         openCombat() "contained" 279 functions, which is how a dead one
+         could read as called. Comments and regexes are already gone here. */
       const bodyEnd = start => {
         let i = clean.indexOf('{', start);
         if (i < 0) return null;
-        let depth = 0, q = null;
+        let depth = 0;
+        const stack = [{ k: 'code', d: 0 }];
         while (i < clean.length) {
+          const top = stack[stack.length - 1];
           const c = clean[i];
-          if (q) { if (c === '\\') { i += 2; continue; } if (c === q) q = null; i++; continue; }
-          if (c === '"' || c === "'" || c === '`') { q = c; i++; continue; }
-          if (c === '{') depth++;
-          else if (c === '}') { depth--; if (!depth) return i + 1; }
+          if (top.k === 'code') {
+            if (c === '"' || c === "'") stack.push({ k: c });
+            else if (c === '`') stack.push({ k: 'tpl' });
+            else if (c === '{') { top.d++; depth++; }
+            else if (c === '}') {
+              if (top.d === 0 && stack.length > 1) stack.pop();
+              else { top.d--; depth--; if (!depth) return i + 1; }
+            }
+            i++; continue;
+          }
+          if (c === '\\') { i += 2; continue; }
+          if (top.k === 'tpl') {
+            if (c === '`') stack.pop();
+            else if (c === '$' && clean[i + 1] === '{') { stack.push({ k: 'code', d: 0 }); i += 2; continue; }
+            i++; continue;
+          }
+          if (c === top.k) stack.pop();
           i++;
         }
         return null;
@@ -1794,6 +1894,10 @@ export default async function run() {
         return [nm, st2, en];
       });
       const bodies = new Map(bounds.map(([nm, st2, en]) => [nm, clean.slice(st2, en)]));
+      /* GUARD: no body runs past the next top-level declaration. Before v533
+         four did, by up to 279 functions, and nothing said so. */
+      const overrun = bounds.filter(([, , en], k) => k + 1 < bounds.length && en > bounds[k + 1][1]).map(b => b[0]);
+      t.eq('guard: every function body ends before the next declaration starts', overrun, [], overrun);
 
       let top = '', prev = 0;
       for (const [, st2, en] of bounds) { top += clean.slice(prev, st2); prev = Math.max(prev, en); }
@@ -1825,10 +1929,11 @@ export default async function run() {
          count is exactly the mistake v387 records. */
       /* totalTUT has had no app caller since v445 moved the lifetime minutes to
          totalMinutes(); suites 05 and 08 drive it as the time-under-tension
-         figure that answers a different question. It only read as reachable
-         before because this stripper does not know regex literals, so a quote
-         inside one flipped its string state and a COMMENT naming totalTUT()
-         was scanned as code. v526 code shifted that parity and exposed it. */
+         figure that answers a different question. It once read as reachable
+         because this stripper did not know regex literals — a quote inside
+         one flipped its string state and a COMMENT naming totalTUT() was
+         scanned as code. v533 taught the stripper regex literals, so it now
+         reads as uncalled for the right reason. */
       const KEPT = new Set(['mealPlanHTML', 'todaysWorkedDay', 'logFoodFromList', 'totalTUT']);
       const orphans = [...names].filter(n => !reach.has(n) && !KEPT.has(n)).sort();
       t.eq('no function is unreachable from the markup, the top level or boot()',

@@ -7140,7 +7140,9 @@ export default async function run() {
       /* GUARD: the two windows really do disagree on this athlete. Without it
          every assertion below passes on two windows that happen to agree. */
       o.calendarSessions = sessionsThisWeek();
-      o.rollingRides = ridesThisWeek().rides;
+      /* v533: the conditioning bar moved to the CALENDAR side, so the gap
+         days — last week's — must count for nothing on it now. */
+      o.barRides = ridesThisWeek().rides;
       o.rollingRuckMin = actStats('ruck').last7;
       o.rollingSkipMin = skipStats().last7;
 
@@ -7150,7 +7152,8 @@ export default async function run() {
 
       /* The surfaces that ROLL now say so, and no longer claim the week. */
       const bar = strip(rideTargetHTML());
-      o.bar = { last7: /in the last 7 days/.test(bar), thisWeek: /this week/i.test(bar) };
+      o.bar = { last7: /last 7 days/i.test(bar), thisWeek: /this week/i.test(bar),
+                resets: /resets Monday/.test(bar) };
 
       const sheet = fn => { fn(); const t = strip(document.querySelector('#sheet').innerHTML); closeSheet(); return t; };
       const rd = t => ({ last7: /Min last 7 days/.test(t), thisWeek: /this week/i.test(t) });
@@ -7176,7 +7179,10 @@ export default async function run() {
       /* Every gap day, not "at least two": on a SATURDAY the gap is ONE day, so
          a flat >= 2 failed on correct code one weekday in seven. The calendar
          is part of the state a block has to build. */
-      t.eq('GUARD: and the rolling window sees all of it', w.rollingRides, w.gapDays, JSON.stringify(w));
+      t.eq('GUARD: and the rolling window sees all of it', w.rollingRuckMin, w.gapDays * 30, JSON.stringify(w));
+      /* v533: the conditioning bar is a WEEKLY target, so last week's
+         sessions no longer count toward this week's two. */
+      t.eq('the conditioning bar counts none of last week', w.barRides, 0, JSON.stringify(w));
       t.ok('GUARD: so the two windows genuinely disagree on this athlete',
         w.rollingRuckMin > 0 && w.rollingSkipMin > 0, JSON.stringify(w));
     }
@@ -7184,8 +7190,11 @@ export default async function run() {
     t.ok('the Progress tile keeps the phrase, because it means the calendar week', w.tileSaysThisWeek);
     t.ok('and the spoken recap keeps it too', /this week/.test(w.recapSpoken), w.recapSpoken.slice(0, 80));
 
-    t.ok('the conditioning bar names the window it uses', w.bar.last7, JSON.stringify(w.bar));
-    t.ok('and no longer claims the calendar week', !w.bar.thisWeek, JSON.stringify(w.bar));
+    /* v533 moved the bar to the calendar week, so it says "this week" again
+       — and now that is true — and says when it resets. */
+    t.ok('the conditioning bar names the calendar week it now counts', w.bar.thisWeek, JSON.stringify(w.bar));
+    t.ok('and no longer claims a rolling window', !w.bar.last7, JSON.stringify(w.bar));
+    t.ok('and says when it resets', w.bar.resets, JSON.stringify(w.bar));
 
     ['ruck', 'grip', 'box', 'skip'].forEach(k => {
       t.ok(`the ${k} sheet names the window it uses`, w.sheets[k].last7, JSON.stringify(w.sheets[k]));
@@ -7215,8 +7224,10 @@ export default async function run() {
       };
       return {
         readTheApp: noCom.includes('function weekStartD'),
-        rollingSayWeek: ['ridesThisWeek', 'actStats', 'skipStats', 'rideTargetHTML']
+        rollingSayWeek: ['actStats', 'skipStats']
           .filter(n => /this week/i.test(body(n))),
+        barUsesWeekStart: /weekStartD\(/.test(body('ridesWeekDays'))
+          && /ridesWeekDays\(\)/.test(body('ridesThisWeek')),
         calendarUsesWeekStart: /function sessionsThisWeek\(\)\{const s=weekStartD/.test(noCom),
         recapAsksIt: /function weeklyRecap[\s\S]{0,400}sessionsThisWeek\(\)/.test(noCom),
         minThisWeekGone: !/Min this week/.test(noCom)
@@ -7225,6 +7236,8 @@ export default async function run() {
     t.ok('GUARD: the scan read the app itself', src.readTheApp, JSON.stringify(src));
     t.eq('no rolling reader renders the phrase any more', JSON.stringify(src.rollingSayWeek), '[]', JSON.stringify(src));
     t.ok('the calendar week is still anchored on the week start', src.calendarUsesWeekStart, JSON.stringify(src));
+    t.ok('and the conditioning bar asks the same week start rather than its own loop',
+      src.barUsesWeekStart, JSON.stringify(src));
     t.ok('and the recap still asks for it rather than rolling its own',
       src.recapAsksIt, JSON.stringify(src));
     t.ok('no sheet label survives', src.minThisWeekGone, JSON.stringify(src));

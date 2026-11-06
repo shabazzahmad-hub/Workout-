@@ -23902,3 +23902,38 @@ at boot is an unrelated paint landing inside whatever a check is doing.
 **The sandbox browser moved to chromium 1243**, which is `playwright@1.63.0`
 (`npm i playwright@1.63.0 --no-save`). The revision table in this file now
 reads 1187 → 1194 → 1200 → 1208 → 1217 → 1223 → 1228 → 1234 → 1243.
+
+## The weekly cardio target resets on Monday (v533)
+
+v505 found the conditioning bar said "this week" over a rolling seven days and
+moved the WORDS. The words were then true and the target still was not: a
+weekly target that never resets reads "met" for eight days after two Monday
+rides. `ridesThisWeek()` now counts the calendar week through
+`ridesWeekDays()`, which asks `weekStartD()`, and the bar says *this week* and
+*resets Monday*. The ruck/grip/box/skip sheets and the load-spike banner still
+roll and still say "last 7 days" — they are summaries, not weekly targets.
+
+**The tests that seed "1-3 days back" pin the clock to a Thursday.** On a
+Monday those days are last week, so two sessions could not be built at all.
+`window.Date` is replaced by a subclass for one `page.evaluate` and restored in
+a `finally`, so nothing outside the block sees it. The calendar is part of the
+state a block has to build.
+
+## The reachability scanner read regex literals and nested templates as code (v533)
+
+v526 recorded that suite 01's comment stripper did not know regex literals,
+so a quote inside one flipped the string state. Teaching it regexes exposed
+the second half: it toggled on every backtick, so a template nested inside a
+`${…}` had its TEXT read as code — and a `</b>` there then looked like a
+regex. Both the stripper and `bodyEnd()` use a stack of code / string /
+template frames now, and a regex body is replaced by `/r/`.
+
+**The measurement that matters:** `bodyEnd()` had four functions running past
+the next declaration — `openCombat()` "contained" 279 functions — and nothing
+said so. A guard now pins that no body overruns the next declaration.
+
+**And the fixed scanner found a real dead function.** `isConcurrent()` had no
+caller, while `buildConcurrent()` asked truthiness — so
+`buildConcurrent('constructor')` built a four-movement session. Not reachable
+by tapping (every button passes a registry key), and it asks the membership
+test now. Nine mutants, all caught by name.
