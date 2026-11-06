@@ -23967,3 +23967,17 @@ The Sniper Instructor never shouts, and a check pins that. The athlete's phone
 reports **5** voices, so the free route to telling them apart is the per-coach
 voice sheet (v483); a check opens it on a five-voice phone, finds a row for
 every new coach, and drives the select.
+
+## Five voices assigned and one voice heard (v535)
+
+Reported: five voices assigned in the per-coach sheet, no difference heard.
+Every utterance was stamped `lang='en-US'` and then given a voice, and Chrome on
+Android picks the engine voice by the utterance's LANGUAGE — so a coach given
+the UK, Indian or Australian voice still spoke in the US one. `useVoice(u,v)`
+puts the voice AND its own `lang` on the utterance, and all three speak paths
+ask it. The brief stops letting the global pick outrank its own per-coach pick.
+
+**A sandbox cannot hear a phone**, so the check proves the wiring with a stub
+utterance class (Chromium refuses a fake voice on a real one). Whether Android
+honours it is the real-device confirmation. Removing the lang line fails four
+checks by name.
