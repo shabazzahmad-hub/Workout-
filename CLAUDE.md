@@ -23868,3 +23868,37 @@ They get the search now, as **"Watch another demo"**, with a note that the
 app's own clip is the main demo and works offline. A check sweeps the whole
 library and requires a name search on every movement, so a new exercise
 cannot ship without one — nothing has to be written for it.
+
+## The exit latch, and the storage answer nobody read (v532)
+
+**`_exiting` was set and never cleared.** The second Back press on Today sets it
+and calls `history.back()` to leave. When that back does NOT leave — an
+installed app on its own first entry has nowhere to go — every later Back press
+hit `if(_exiting)return;` and did nothing for the session. v411 recorded this as
+an open question. `_armExitReset()` clears it after `EXIT_RESET_MS` if the page
+is still here, and `pageshow` clears it for a page restored from the
+back-forward cache. A page that really unloaded never runs the timer.
+
+**A browser tab always has somewhere to go back to** (v494), so the check makes
+the app's own `history.back()` a no-op and presses with the real one. It builds
+the `root`/`home` stack `initBackButton()` builds, and clears all three Back
+flags first. Its floor is that the latch still swallows a pop while the exit is
+in flight.
+
+**`navigator.storage.persist()` was called and its answer thrown away**, so
+nothing on screen could say when the browser refused — and a refused browser
+may delete the training history and the progress photos under storage
+pressure. `checkStoragePersist()` asks `persisted()` first, asks `persist()`
+only if needed, and records the answer in `_storagePersisted`. It is a fact
+about this DEVICE, so it lives in memory and never in `STATE` — a backup must
+not carry another phone's answer. Settings ▸ Your data says which; at risk, the
+backup reminder comes after 7 days instead of 21 and says why. Unknown (no API,
+or a throw) says nothing.
+
+**It repaints only where the answer changes the screen** — Settings always,
+Today only when it brings the reminder forward. An unconditional Today repaint
+at boot is an unrelated paint landing inside whatever a check is doing.
+
+**The sandbox browser moved to chromium 1243**, which is `playwright@1.63.0`
+(`npm i playwright@1.63.0 --no-save`). The revision table in this file now
+reads 1187 → 1194 → 1200 → 1208 → 1217 → 1223 → 1228 → 1234 → 1243.
