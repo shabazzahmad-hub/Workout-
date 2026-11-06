@@ -437,6 +437,98 @@ export default async function run() {
       r.favAfterBoot, '[{"name":"Bad","items":["pushup"]}]');
   }
 
+  /* v534 — the corrective move's Swap button was a dead control, and a
+     swapped focus bonus lost the bonus's own 2-set cap.
+     The corrective swap was STORED and never READ: the sheet said "Swapped to
+     Warrior III" and Today still showed Superman. Driven through the real
+     button and the real option, and read back off the Today card, because the
+     defect was exactly a stored value nothing rendered. */
+  {
+    await seedAthlete(page, () => {
+      STATE.profile.limitations = ['shoulder']; STATE.swaps = {}; STATE.progressPtr = 0;
+      normalizeState(); save();
+    });
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      closeSheet(); await wait(450);
+      go('today'); TODAY_TAB = 'workout'; renderToday();
+      const c0 = buildSession(0).main.find(m => m.corrective);
+      o.hasCorr = !!c0; if (!c0) return o;
+      o.corrBefore = c0.exId; o.corrJoint = c0.correctiveJoint;
+      const card = [...document.querySelectorAll('.view.active button[data-act="swap"]')]
+        .find(b => { const h = b.closest('[data-ex],[data-exid],.card'); return h && h.innerHTML.includes(EX[c0.exId].name); });
+      o.foundBtn = !!card; if (!card) return o;
+      card.click(); await wait(250);
+      const opt = [...document.querySelectorAll('#sheet button')].find(b => /doSwap\('[a-z0-9]+','corrective'/.test(b.getAttribute('onclick') || ''));
+      o.foundOpt = !!opt; if (!opt) return o;
+      o.target = /'([a-z0-9]+)'\)$/.exec(opt.getAttribute('onclick'))[1];
+      opt.click(); await wait(300);
+      const c1 = buildSession(0).main.find(m => m.corrective);
+      o.corrAfter = c1 && c1.exId; o.corrAfterSets = c1 && c1.sets;
+      o.corrAfterJoint = c1 && c1.correctiveJoint;
+      o.cardShowsTarget = document.querySelector('.view.active').innerHTML.includes(EX[o.target].name);
+      // a swap target that is risky for the flagged joint is refused, like every other slot
+      const risky = Object.keys(EX).find(k => jointRisky(k, ['shoulder']) && !buildSession(0).main.some(m => m.exId === k));
+      STATE.swaps = { 0: { corrective: risky } };
+      o.riskyRefused = buildSession(0).main.find(m => m.corrective).exId === o.corrBefore;
+      // FLOOR: once the joint is no longer flagged there is no corrective, and a stored swap adds none
+      STATE.swaps = { 0: { corrective: o.target } };
+      STATE.profile.limitations = [];
+      o.noFlagNoCorr = !buildSession(0).main.some(m => m.corrective);
+      STATE.profile.limitations = ['shoulder'];
+
+      /* The size cap cannot be seen on real data: measured over all 378
+         sessions for every joint, no corrective swap target is prescribed more
+         than two sets. So the cap's own contract is pinned directly — the
+         target is made to ask for four sets for one build, and must come back
+         at two. */
+      STATE.swaps = { 0: { corrective: o.target } };
+      const realRx = prescribe;
+      try {
+        prescribe = (id, pos) => { const x = realRx(id, pos); return id === o.target ? Object.assign({}, x, { sets: 4 }) : x; };
+        o.capRaw = prescribe(o.target, buildSession(0).pos).sets;
+        const c3 = buildSession(0).main.find(m => m.corrective);
+        o.capSwapped = c3 && c3.exId; o.capSets = c3 && c3.sets;
+      } finally { prescribe = realRx; }
+      STATE.swaps = {};
+      // the focus bonus: find a session that carries one
+      STATE.swaps = {};
+      let p = -1;
+      for (let i = 0; i < 80; i++) { if (buildSession(i, { full: true }).main.some(m => m.focus)) { p = i; break; } }
+      o.p = p; if (p < 0) return o;
+      const b0 = buildSession(p, { full: true }).main.find(m => m.focus);
+      o.bonusSets = b0.sets; o.bonusKey = b0.focusKey;
+      const alt = swapOptions(b0).map(x => x.exId).find(k => prescribe(k, buildSession(p, { full: true }).pos).sets > 2);
+      o.alt = alt || null; if (!alt) return o;
+      o.altRaw = prescribe(alt, buildSession(p, { full: true }).pos).sets;
+      setSwap(p, 'focus', alt);
+      const b1 = buildSession(p, { full: true }).main.find(m => m.focus);
+      o.swapped = b1 && b1.exId; o.swappedSets = b1 && b1.sets; o.swappedKey = b1 && b1.focusKey;
+      STATE.swaps = {};
+      o.validator = (() => { const e = console.error; console.error = () => {}; try { return validateData().length; } finally { console.error = e; } })();
+      save(); render();
+      return o;
+    });
+    t.ok('guard: a shoulder-flagged athlete gets a corrective move', r.hasCorr, r);
+    t.ok('guard: the corrective card has a Swap button and the sheet offers a move', r.foundBtn && r.foundOpt, r);
+    t.eq('the swap the athlete picked replaces the corrective move', r.corrAfter, r.target, r);
+    t.ok('and Today shows the move they picked', r.cardShowsTarget, r);
+    t.eq('the swapped move is still the corrective for the same joint', r.corrAfterJoint, r.corrJoint, r);
+    t.ok('and keeps the corrective size: two sets at most', r.corrAfterSets >= 1 && r.corrAfterSets <= 2, r);
+    t.ok('a swap to a move risky for the flagged joint is refused', r.riskyRefused, r);
+    t.eq('guard: the stubbed target really asks for four sets', r.capRaw, 4, r);
+    t.eq('and the swapped corrective still keeps two sets at most', r.capSwapped === r.target && r.capSets <= 2, true, r);
+    t.ok('FLOOR: with no joint flagged, a stored swap adds no corrective move', r.noFlagNoCorr, r);
+    t.ok('guard: a session with a focus bonus exists', r.p >= 0, r);
+    t.eq('guard: the bonus is two sets', r.bonusSets, 2, r);
+    t.ok('guard: the swap target is prescribed more than two sets on its own', r.altRaw > 2, r);
+    t.eq('the swapped bonus is the move picked', r.swapped, r.alt, r);
+    t.eq('and keeps the bonus size of two sets', r.swappedSets, 2, r);
+    t.eq('and keeps the focus area that chose it', r.swappedKey, r.bonusKey, r);
+    t.eq('FLOOR: the validator is still clean', r.validator, 0, r);
+  }
+
   await browser.close(); srv.close();
   return t.finish(errors);
 }
