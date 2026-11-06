@@ -23937,3 +23937,33 @@ caller, while `buildConcurrent()` asked truthiness — so
 `buildConcurrent('constructor')` built a four-movement session. Not reachable
 by tapping (every button passes a registry key), and it asks the membership
 test now. Nine mutants, all caught by name.
+
+## Two swap slots, and five army coaches (v534)
+
+**The corrective move's Swap button was a dead control.** Every movement card
+carries ⇄ Swap, and `doSwap()` stores the pick under the item's `slot`. The
+builder read `sw[ladder]`, `sw.__fin` and `sw.focus` — and never
+`sw.corrective`. Measured: the sheet said *"Swapped to Warrior III"* and Today
+still showed Superman. The swap now applies while the joint is still flagged,
+through `swapStillValid()` like every other slot, and keeps the corrective's
+size and its joint tag.
+
+**A swapped focus bonus took `prescribe()`'s raw sets.** The bonus is capped at
+two (`itemSets(id,Math.min(rx.sets,2),pos)`) and the swap path skipped that:
+the 8-Count Push-Up bonus was 2 sets and the Burpee it was swapped to was 3. It
+also dropped `focusKey`. A swapped bonus is still THE bonus.
+
+**The corrective cap is invisible on real data** — measured over all 378
+sessions for every joint, no corrective swap target is prescribed more than two
+sets — so its contract is pinned by stubbing `prescribe()` to ask for four for
+one build. The first check read pointer 0, where it is two either way, and the
+mutant that drops the cap walked through.
+
+**Five army coaches**, asked for by the athlete: Canadian Army Instructor (BMQ
+prep), Airborne Jump Master, Combat Engineer, Military Police Coach and Sniper
+Instructor. Each is a different character rather than a louder drill sergeant,
+and each has a `COACH_NEURAL` voice (the Canadian one is `en-CA-LiamNeural`).
+The Sniper Instructor never shouts, and a check pins that. The athlete's phone
+reports **5** voices, so the free route to telling them apart is the per-coach
+voice sheet (v483); a check opens it on a five-voice phone, finds a row for
+every new coach, and drives the select.

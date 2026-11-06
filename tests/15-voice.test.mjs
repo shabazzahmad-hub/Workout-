@@ -2614,6 +2614,63 @@ export default async function run() {
     t.eq('FLOOR: the validator is still clean', r.validator, 0, r);
   }
 
+  /* v534 — five army coaches, asked for by the athlete. Each must be a whole
+     persona (all five line pools, a neural voice, a calm-enough pitch), must be
+     dealt by Auto, and must show up in the per-coach voice sheet — the free
+     route the athlete chose for giving each coach its own voice on a phone
+     with five voices. The sheet is opened and its control driven, not the
+     setter called. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {}, NEW = ['canarmy', 'airborne', 'engineer', 'mp', 'sniper'];
+      o.missing = NEW.filter(id => !COACHES.some(c => c.id === id));
+      o.incomplete = NEW.filter(id => {
+        const c = COACHES.find(x => x.id === id); if (!c) return true;
+        return !['start', 'during', 'push', 'rest', 'done'].every(k => Array.isArray(c[k]) && c[k].length >= 5)
+          || !(typeof c.pitch === 'number' && c.pitch >= 0.42) || !c.name;
+      });
+      o.noNeural = NEW.filter(id => !COACH_NEURAL[id] || !COACH_NEURAL[id].v);
+      o.namesUnique = new Set(COACHES.map(c => c.name)).size === COACHES.length;
+      o.idsUnique = new Set(COACHES.map(c => c.id)).size === COACHES.length;
+      const sn = COACHES.find(c => c.id === 'sniper');
+      o.sniperShouts = sn ? ['start', 'during', 'push', 'rest', 'done'].reduce((n, k) => n + sn[k].join(' ').split('!').length - 1, 0) : -1;
+      // Auto deals every new coach in one fresh bag
+      delete _bags['coach']; o.bagReset = !_bags['coach'];
+      const dealt = new Set(); for (let i = 0; i < COACHES.length; i++) dealt.add(rollAutoPersona());
+      o.dealtAll = NEW.every(id => dealt.has(id)); o.dealtN = dealt.size;
+      // the per-coach voice sheet, on a phone with five voices
+      const realGet = speechSynthesis.getVoices.bind(speechSynthesis);
+      const fakes = ['Daniel', 'Alex', 'Fred', 'Samantha', 'Karen'].map(n => ({ name: n, lang: 'en-US' }));
+      speechSynthesis.getVoices = () => fakes; loadCoachVoices();
+      delete STATE.settings.coachVoices;
+      openCoachVoices();
+      const sh = document.querySelector('#sheet');
+      o.rows = sh.querySelectorAll('[data-cv]').length; o.coaches = COACHES.length;
+      o.rowsForNew = NEW.filter(id => sh.querySelector('[data-cv="' + id + '"] select')).length;
+      const sel = sh.querySelector('[data-cv="sniper"] select');
+      if (sel) { sel.value = 'Fred'; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+      o.sniperVoice = (coachVoiceFor(COACHES.find(c => c.id === 'sniper')) || {}).name || null;
+      o.otherVoice = (coachVoiceFor(COACHES.find(c => c.id === 'canarmy')) || {}).name || null;
+      delete STATE.settings.coachVoices; closeSheet();
+      speechSynthesis.getVoices = realGet; loadCoachVoices();
+      const e = console.error; console.error = () => {};
+      try { o.validator = validateData().length; } finally { console.error = e; }
+      return o;
+    });
+    t.eq('all five new army coaches are in the cast', r.missing, [], r);
+    t.eq('each is a whole persona: five line pools and a real pitch', r.incomplete, [], r);
+    t.eq('each has a neural voice', r.noNeural, [], r);
+    t.ok('no two coaches share an id or a name', r.idsUnique && r.namesUnique, r);
+    t.eq('the Sniper Instructor never shouts', r.sniperShouts, 0, r);
+    t.ok('guard: the rotation bag started fresh', r.bagReset, r);
+    t.ok('Auto deals every new coach', r.dealtAll, r);
+    t.eq('the per-coach voice sheet has a row for every coach', r.rows, r.coaches, r);
+    t.eq('including all five new ones', r.rowsForNew, 5, r);
+    t.eq('picking a voice for the Sniper Instructor gives him that voice', r.sniperVoice, 'Fred', r);
+    t.ok('FLOOR: and another new coach keeps its own voice', r.otherVoice !== null, r);
+    t.eq('FLOOR: the validator is still clean', r.validator, 0, r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

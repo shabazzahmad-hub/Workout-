@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='533';
+const APP_VERSION='534';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -3730,10 +3730,26 @@ function buildSession(ptr,opts){
      an extra ab exercise on Core Crusher is not the missing stimulus. */
   const coreSlots=main.filter(m=>EX[m.exId]&&CORE_REGIONS[EX[m.exId].region]).length;
   let bonus=(coreSlots>=3)?null:focusBonus(pos,used);
-  if(sw&&sw.focus&&EX[sw.focus]&&swapStillValid(sw.focus))bonus={exId:sw.focus,...prescribe(sw.focus,pos),slot:'focus',focus:true};
+  /* A swapped bonus is still THE BONUS, so it keeps the bonus's own size and
+     tag. It used to take prescribe()'s raw sets: measured, the 8-Count Push-Up
+     bonus was 2 sets and the Burpee it was swapped to was 3 — 50% more work on
+     the one move meant to be small, and the focusKey dropped (v534). */
+  if(sw&&sw.focus&&EX[sw.focus]&&swapStillValid(sw.focus)){
+    const rx=prescribe(sw.focus,pos);
+    bonus={exId:sw.focus,...rx,sets:itemSets(sw.focus,Math.min(rx.sets,2),pos),slot:'focus',focus:true,focusKey:bonus&&bonus.focusKey};
+  }
   if(bonus){main.push(bonus);used.add(bonus.exId);}
   // one light stability movement for a flagged joint, on top of everything above
-  const corrective=correctiveBonus(pos,used);
+  /* The corrective move carries a Swap button like every other move, and the
+     swap was STORED and never READ — measured: the sheet said "Swapped to
+     Warrior III" and Today still showed Superman (v534). It applies only while
+     the joint is still flagged (no corrective, nothing to swap), and the
+     target goes through swapStillValid() like every other slot. */
+  let corrective=correctiveBonus(pos,used);
+  if(corrective&&sw&&sw.corrective&&exKnown(sw.corrective)&&!used.has(sw.corrective)&&swapStillValid(sw.corrective)){
+    const rx=prescribe(sw.corrective,pos);
+    corrective={exId:sw.corrective,...rx,sets:itemSets(sw.corrective,Math.min(rx.sets,2),pos),slot:'corrective',corrective:true,correctiveJoint:corrective.correctiveJoint};
+  }
   if(corrective)main.push(corrective);
   const out={ptr,pos,cycle,week,session:pos.session,main,finisher,dropped};
   /* "I have 20 minutes today." Applied HERE, at the one builder, so the card,
@@ -12067,6 +12083,11 @@ const COACH_NEURAL={
   gunny:{v:'en-US-TonyNeural',style:'shouting',deg:'2',pitch:'-1st'},
   ranger:{v:'en-AU-DarrenNeural',rate:'+10%'},
   greenberet:{v:'en-US-TonyNeural',rate:'-4%',pitch:'-1st'},
+  canarmy:{v:'en-CA-LiamNeural'},
+  airborne:{v:'en-US-GuyNeural',rate:'+6%'},
+  engineer:{v:'en-GB-RyanNeural',rate:'-2%',pitch:'-1st'},
+  mp:{v:'en-US-ChristopherNeural',rate:'+2%'},
+  sniper:{v:'en-GB-ThomasNeural',rate:'-8%',pitch:'-1st'},
   swattrainer:{v:'en-GB-ElliotNeural',rate:'+2%'},
   iron:{v:'en-US-JasonNeural',style:'angry',deg:'1.6',pitch:'-2st'},
   track:{v:'en-AU-KenNeural',rate:'+14%'},
@@ -13553,6 +13574,42 @@ const COACHES=[
    push:["Last stretch. Stay precise.","Finish the way you started. Controlled.","Close it out. Quiet and strong.","Everything left, with good form.","Bring it home. No wasted motion."],
    rest:["Recover deliberately. Breathe low and slow.","Refit. We continue shortly.","Good. Reset your position.","Steady breathing. Stay ready.","Use this minute. It is part of the work."],
    done:["Quiet work, real result. Well done.","That is the standard. No noise needed.","You earned that one. De Oppresso Liber.","Solid session. That compounds.","Well executed. Same again next time."]},
+  /* Five army coaches added at the athlete's request (v534). Each one is a
+     different CHARACTER, not a louder copy of the drill sergeants: a Canadian
+     course instructor (the athlete is preparing for BMQ), an airborne jump
+     master, a combat engineer who talks in plans and steps, a military police
+     coach who talks in standards, and a sniper instructor who never raises
+     his voice. Rate and pitch are set against the existing military cast. */
+  {id:'canarmy',name:'Canadian Army Instructor',emoji:'🍁',pitch:0.5,rate:1.0,hint:['liam','daniel','guy','david','male'],
+   start:["Candidates, on my command — begin.","Right then, let us get to work. Begin.","Course standard starts now. Go.","Eyes front, feet set. Begin.","Good to go? Then go."],
+   during:["Steady pace, candidates. Keep at it.","That is the standard. Hold it.","No shortcuts on my course. Keep going.","Work as a section. Do your part.","Look after your form, and it looks after you.","You chose to be here. Earn it.","Strong and controlled. Keep going.","Pace yourself. This is a long course."],
+   push:["Last push, candidates. Finish it.","Dig in. Close it out.","Everything left — to the end.","Finish like you are being watched. You are.","Bring it home. Strong."],
+   rest:["Stand easy. Breathe.","Good work. Water and reset.","Recover. Next serial shortly.","Shake it out. Stay sharp.","Use the break. It is short."],
+   done:["That meets the standard. Well done.","Good work, candidate. Same again tomorrow.","Solid effort. That is how you pass a course.","Finished properly. Well done.","Stand down. You earned it."]},
+  {id:'airborne',name:'Airborne Jump Master',emoji:'🪂',pitch:0.5,rate:1.08,hint:['guy','mark','david','male'],
+   start:["Stand up, hook up — begin!","Green light — go!","Stand in the door — and go!","Check your equipment. Begin!","Airborne — move!"],
+   during:["Feet and knees together — keep going!","Stay tight in the door — push!","All the way — do not quit!","Trust your training — keep going!","Eyes on the horizon — push!","Steady on the line — keep going!","You only get one exit — make it clean!","Airborne does not slow down — go!"],
+   push:["Last jump of the day — go!","All the way — finish it!","Hit the drop zone — push!","Out the door — everything now!","Land it strong — finish!"],
+   rest:["Good landing. Breathe.","Roll out and reset.","Recover. Next lift is soon.","Check your gear. Breathe.","Shake it out. Stand by."],
+   done:["Clean exit, clean landing. Well done.","All the way — that is airborne.","Wings earned today. Good work.","Solid jump. Recover up.","Mission complete. Airborne!"]},
+  {id:'engineer',name:'Combat Engineer',emoji:'🛠️',pitch:0.47,rate:0.98,hint:['david','daniel','mark','male'],
+   start:["Plan is set. Execute.","Build it right — begin.","Sapper ready. Go.","Measure twice, then start.","First step of the plan. Begin."],
+   during:["One task at a time. Keep building.","Solid foundation. Keep going.","Load is on — hold the structure.","Good engineering is patient. Stay on it.","Every rep is a brick. Keep laying them.","Check your form, then carry on.","Strong and square. Keep going.","Breach the hard part. Push."],
+   push:["Final section of the build — finish it.","Last task — complete it.","Breach and clear — go.","Finish the job properly.","Close out the build. Strong."],
+   rest:["Stand down the work party. Breathe.","Inspect and reset.","Recover. Next phase shortly.","Good work. Check your kit.","Breathe and plan the next set."],
+   done:["Built to standard. Well done.","Job complete. Solid work.","That will hold. Good effort.","Plan executed. Well done.","Sappers lead the way. Good work."]},
+  {id:'mp',name:'Military Police Coach',emoji:'🚨',pitch:0.5,rate:1.02,hint:['mark','guy','david','male'],
+   start:["By the book. Begin.","On duty — start now.","Standards are enforced here. Go.","Report ready. Begin.","Shift starts now. Go."],
+   during:["Hold the standard. Keep going.","No shortcuts on my watch.","Discipline is a habit. Stay on it.","Controlled and correct. Keep going.","Every rep inspected. Make it count.","Stay alert, stay strong. Push.","The rules are the rules. Full range.","Calm under pressure. Keep going."],
+   push:["Final check — finish strong.","End of shift — close it out.","Everything to standard — finish.","Last one by the book. Go.","Secure the finish. Push."],
+   rest:["Stand easy. Breathe.","Off post for a minute. Recover.","Good. Reset and stay alert.","Breathe. Next round soon.","Recover. Stay ready."],
+   done:["Standard enforced. Well done.","Clean record today. Good work.","By the book, start to finish.","Solid shift. Well done.","Case closed. Great work."]},
+  {id:'sniper',name:'Sniper Instructor',emoji:'🎯',pitch:0.44,rate:0.9,hint:['daniel','david','guy','male'],
+   start:["Settle in. Begin when ready.","Slow breath. Start.","Find your position. Begin.","Calm and steady. Go.","One shot, one kill. Begin."],
+   during:["Slow is smooth. Smooth is fast.","Breathe out, then work.","Stay still where you should be still.","Patience. Hold your position.","Small corrections. Stay precise.","Control the breath. Control the body.","Quiet mind. Keep going.","Every rep on target."],
+   push:["Final shot. Make it count.","Squeeze, do not jerk. Finish.","Hold steady to the end.","Last one. Precise.","Breathe, settle, finish."],
+   rest:["Rest the eyes. Breathe slow.","Relax the shoulders. Recover.","Good. Reset your position.","Slow breaths. Stay ready.","Recover quietly."],
+   done:["Every round on target. Well done.","Precise work. That is the standard.","Patient and exact. Good session.","Calm effort, real result.","Mission complete. Well done."]},
   {id:'swattrainer',name:'SWAT Team Trainer',emoji:'🚔',pitch:0.52,rate:1.04,hint:['mark','guy','david','male'],
    start:["Gear up — begin!","Selection starts now. Go!","No weak links today. Start!","Move like it is real — begin!","Full focus — go!"],
    during:["Train hard so it is easy when it counts. Push!","Slow is smooth, smooth is fast. Keep going!","Control your breath, control the fight. Push!","You perform how you train — keep going!","Stay in the stack — push together!","Fatigue makes cowards — not today. Go!","Sharpen under pressure — keep going!","Every rep is reps in the bank. Push!","Mind quiet, body working — keep going!","Own the discomfort — drive through!","Make the standard look easy. Push!","Stay locked on — finish it!"],
