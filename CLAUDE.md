@@ -23868,3 +23868,72 @@ They get the search now, as **"Watch another demo"**, with a note that the
 app's own clip is the main demo and works offline. A check sweeps the whole
 library and requires a name search on every movement, so a new exercise
 cannot ship without one — nothing has to be written for it.
+
+## The exit latch, and the storage answer nobody read (v532)
+
+**`_exiting` was set and never cleared.** The second Back press on Today sets it
+and calls `history.back()` to leave. When that back does NOT leave — an
+installed app on its own first entry has nowhere to go — every later Back press
+hit `if(_exiting)return;` and did nothing for the session. v411 recorded this as
+an open question. `_armExitReset()` clears it after `EXIT_RESET_MS` if the page
+is still here, and `pageshow` clears it for a page restored from the
+back-forward cache. A page that really unloaded never runs the timer.
+
+**A browser tab always has somewhere to go back to** (v494), so the check makes
+the app's own `history.back()` a no-op and presses with the real one. It builds
+the `root`/`home` stack `initBackButton()` builds, and clears all three Back
+flags first. Its floor is that the latch still swallows a pop while the exit is
+in flight.
+
+**`navigator.storage.persist()` was called and its answer thrown away**, so
+nothing on screen could say when the browser refused — and a refused browser
+may delete the training history and the progress photos under storage
+pressure. `checkStoragePersist()` asks `persisted()` first, asks `persist()`
+only if needed, and records the answer in `_storagePersisted`. It is a fact
+about this DEVICE, so it lives in memory and never in `STATE` — a backup must
+not carry another phone's answer. Settings ▸ Your data says which; at risk, the
+backup reminder comes after 7 days instead of 21 and says why. Unknown (no API,
+or a throw) says nothing.
+
+**It repaints only where the answer changes the screen** — Settings always,
+Today only when it brings the reminder forward. An unconditional Today repaint
+at boot is an unrelated paint landing inside whatever a check is doing.
+
+**The sandbox browser moved to chromium 1243**, which is `playwright@1.63.0`
+(`npm i playwright@1.63.0 --no-save`). The revision table in this file now
+reads 1187 → 1194 → 1200 → 1208 → 1217 → 1223 → 1228 → 1234 → 1243.
+
+## The weekly cardio target resets on Monday (v533)
+
+v505 found the conditioning bar said "this week" over a rolling seven days and
+moved the WORDS. The words were then true and the target still was not: a
+weekly target that never resets reads "met" for eight days after two Monday
+rides. `ridesThisWeek()` now counts the calendar week through
+`ridesWeekDays()`, which asks `weekStartD()`, and the bar says *this week* and
+*resets Monday*. The ruck/grip/box/skip sheets and the load-spike banner still
+roll and still say "last 7 days" — they are summaries, not weekly targets.
+
+**The tests that seed "1-3 days back" pin the clock to a Thursday.** On a
+Monday those days are last week, so two sessions could not be built at all.
+`window.Date` is replaced by a subclass for one `page.evaluate` and restored in
+a `finally`, so nothing outside the block sees it. The calendar is part of the
+state a block has to build.
+
+## The reachability scanner read regex literals and nested templates as code (v533)
+
+v526 recorded that suite 01's comment stripper did not know regex literals,
+so a quote inside one flipped the string state. Teaching it regexes exposed
+the second half: it toggled on every backtick, so a template nested inside a
+`${…}` had its TEXT read as code — and a `</b>` there then looked like a
+regex. Both the stripper and `bodyEnd()` use a stack of code / string /
+template frames now, and a regex body is replaced by `/r/`.
+
+**The measurement that matters:** `bodyEnd()` had four functions running past
+the next declaration — `openCombat()` "contained" 279 functions — and nothing
+said so. A guard now pins that no body overruns the next declaration.
+
+**And the fixed scanner found a real dead function.** `isConcurrent()` had no
+caller, while `buildConcurrent()` asked truthiness — so
+`buildConcurrent('constructor')` built a four-movement session. Not reachable
+by tapping (every button passes a registry key), and it asks the membership
+test now. Nine mutants, all caught by name.

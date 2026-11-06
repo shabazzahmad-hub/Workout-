@@ -4742,6 +4742,106 @@ export default async function run() {
     await ibr.close();
   }
 
+  /* ---- v532: the exit latch clears itself, and the storage answer is used -- */
+  {
+    /* An installed app on its own first entry: the app's exit call,
+       history.back(), has nowhere to go and the page stays. A browser tab
+       always has somewhere to go (it really leaves — v494), so the app's own
+       call is made a no-op here, and the PRESS uses the real back. */
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    await page.evaluate(() => {
+      go('today'); if (document.querySelector('#scrim.open')) closeSheet();
+      _backGuard = false; _exiting = false; _homeBackAt = 0;
+      // the stack initBackButton() builds: root, with Today above it
+      history.replaceState({ cf: 'root' }, ''); history.pushState({ cf: 'home', tab: 'today' }, '');
+      window.__realBack = History.prototype.back; window.__appBacks = 0;
+      history.back = function () { window.__appBacks++; };
+    });
+    await page.waitForTimeout(300);
+    const press = async () => { await page.evaluate(() => window.__realBack.call(history)); await page.waitForTimeout(200); };
+    await press();
+    const first = await page.evaluate(() => ({ toast: (document.querySelector('#toast')||{}).textContent||'', exiting: _exiting }));
+    t.ok('guard: the first Back on Today warns about leaving', /Press Back again to exit/.test(first.toast), JSON.stringify(first));
+    await press();
+    const latched = await page.evaluate(() => ({ exiting: _exiting, alive: typeof STATE === 'object', appBacks: window.__appBacks }));
+    t.ok('guard: the second Back sets the exit latch and the page is still here', latched.exiting && latched.alive, JSON.stringify(latched));
+    t.eq('guard: the app really tried to leave', latched.appBacks, 1);
+    await page.waitForTimeout(1500);
+    const after = await page.evaluate(() => ({ exiting: _exiting, homeBackAt: _homeBackAt }));
+    t.ok('a failed exit clears the latch on its own', after.exiting === false, JSON.stringify(after));
+    t.eq('and forgets the earlier press, so the next Back warns again', after.homeBackAt, 0);
+    // Drive it: the Back button works again after the failed exit.
+    await page.evaluate(() => { document.querySelector('#toast').textContent = ''; go('fuel'); });
+    await page.waitForTimeout(250);
+    await press();
+    const works = await page.evaluate(() => ({ tab: TAB, toast: (document.querySelector('#toast')||{}).textContent||'' }));
+    t.eq('Back works again after a failed exit — it steps back to Today', works.tab, 'today');
+    // pageshow clears it too (a page restored from the back-forward cache).
+    const ps = await page.evaluate(() => { _exiting = true; _homeBackAt = 5; window.dispatchEvent(new Event('pageshow')); return { exiting: _exiting, homeBackAt: _homeBackAt }; });
+    t.ok('pageshow clears the latch', ps.exiting === false && ps.homeBackAt === 0, JSON.stringify(ps));
+    // FLOOR: the latch still swallows the pop while the exit is in flight.
+    const floor = await page.evaluate(() => { _exiting = true; const before = TAB; go('fuel'); const tb = TAB; onPop({ state: { cf: 'tab', tab: 'today' } }); const r = { stayed: TAB === tb }; _exiting = false; return r; });
+    t.ok('FLOOR: while the latch is set, a pop is still ignored', floor.stayed, JSON.stringify(floor));
+
+    // ---- storage persistence ----
+    const st = await page.evaluate(async () => {
+      const o = {};
+      const real = navigator.storage;
+      const fake = (persisted, persist, thr) => Object.defineProperty(navigator, 'storage', { configurable: true, value: {
+        persisted: async () => { if (thr) throw new Error('x'); return persisted; },
+        persist: async () => { o.asked = (o.asked||0) + 1; return persist; } } });
+      const old = d => { const x = new Date(); x.setDate(x.getDate() - d); return localISO(x); };
+      const settingsNote = () => { go('guide'); renderGuide(); const el = document.querySelector('#v-guide [data-storage]'); return el ? el.getAttribute('data-storage') : null; };
+
+      o.asked = 0; fake(false, false); o.riskVal = await checkStoragePersist();
+      o.riskAsked = o.asked; o.riskNote = settingsNote();
+      o.gapRisk = backupNudgeGapDays();
+      STATE.profile.createdAt = old(10); delete STATE._lastExport; delete STATE._backupNudgeDismissed;
+      o.nudgeRisk10 = backupNudgeHTML(); 
+      o.asked = 0; fake(false, true); o.grantVal = await checkStoragePersist(); o.grantAsked = o.asked;
+      o.asked = 0; fake(true, false); o.keptVal = await checkStoragePersist(); o.keptAsked = o.asked; o.keptNote = settingsNote();
+      o.gapKept = backupNudgeGapDays(); o.nudgeKept10 = backupNudgeHTML();
+      STATE.profile.createdAt = old(40); o.nudgeKept40 = backupNudgeHTML();
+      fake(false, false, true); o.throwVal = await checkStoragePersist(); o.throwNote = settingsNote();
+      Object.defineProperty(navigator, 'storage', { configurable: true, value: undefined });
+      o.noApiVal = await checkStoragePersist(); o.noApiNote = settingsNote();
+      fake(false, false); await checkStoragePersist();
+      o.inState = /_storagePersisted|persisted/.test(JSON.stringify(STATE));
+      Object.defineProperty(navigator, 'storage', { configurable: true, value: real });
+      return o;
+    });
+    t.eq('a browser that refuses is recorded as at risk', st.riskVal, false);
+    t.eq('and the app asked for durable storage once', st.riskAsked, 1);
+    t.eq('Settings says the browser may delete the data', st.riskNote, 'risk');
+    t.eq('the backup reminder comes after a week, not three', st.gapRisk, 7);
+    t.ok('a ten-day-old athlete at risk is reminded, and told why', /No backup in a while/.test(st.nudgeRisk10) && /has not agreed to keep/.test(st.nudgeRisk10), st.nudgeRisk10);
+    t.ok('a request that is granted is recorded as kept', st.grantVal === true && st.grantAsked === 1, JSON.stringify(st));
+    t.ok('already-durable storage is not asked again', st.keptVal === true && st.keptAsked === 0, JSON.stringify(st));
+    t.eq('FLOOR: kept storage says so in Settings', st.keptNote, 'kept');
+    t.eq('FLOOR: kept storage keeps the 21-day reminder', st.gapKept, 21);
+    t.eq('FLOOR: so a ten-day-old athlete with kept storage is not reminded', st.nudgeKept10, '');
+    t.ok('FLOOR: and the ordinary reminder never claims the browser may delete it', /No backup in a while/.test(st.nudgeKept40) && !/has not agreed/.test(st.nudgeKept40), st.nudgeKept40);
+    t.ok('a check that throws is unknown, and says nothing', st.throwVal === null && st.throwNote === null, JSON.stringify(st));
+    t.ok('no storage API is unknown, and says nothing', st.noApiVal === null && st.noApiNote === null, JSON.stringify(st));
+    t.ok('the answer is a fact about this device, never written into STATE', !st.inState);
+    errors.forEach(e => t.fail('page error in the v532 block', e));
+    await browser.close();
+  }
+
+  /* ---- v532: the boot path itself uses the answer ------------------------- */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    await page.addInitScript(() => Object.defineProperty(navigator, 'storage', { configurable: true, value: {
+      persisted: async () => false, persist: async () => false } }));
+    await page.reload(); await waitForBoot(page); await page.waitForTimeout(400);
+    const b = await page.evaluate(() => { go('guide'); const el = document.querySelector('#v-guide [data-storage]'); return { val: _storagePersisted, note: el && el.getAttribute('data-storage') }; });
+    t.ok('at boot, a refusing browser is recorded and shown in Settings', b.val === false && b.note === 'risk', JSON.stringify(b));
+    errors.forEach(e => t.fail('page error on the storage boot', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

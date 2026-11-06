@@ -1974,7 +1974,22 @@ export default async function run() {
      so 24,000 steps over two days read 0/2. */
   {
     const r = await page.evaluate(() => {
+      /* A FIXED THURSDAY (v533). ridesThisWeek() counts the CALENDAR week now,
+         and every seed below sits 1-3 days back from today — which on a
+         Monday is LAST week, so two sessions cannot be built at all. The
+         calendar is part of the state a block has to build (v347, v494):
+         Date is pinned to a Thursday for this one evaluate and restored in
+         the finally, so nothing outside the block sees it. */
+      const __RD = Date;
+      const __FIX = new __RD(2026, 10, 5, 12, 0, 0).getTime();
+      class __FD extends __RD {
+        constructor(...a) { if (a.length) super(...a); else super(__FIX); }
+        static now() { return __FIX; }
+      }
+      window.Date = __FD;
+      try {
       const o = {};
+      o.clockPinned = new Date().getDay() === 4 && Date.now() === __FIX;
       const strip = h => h.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
       const n = nut();
       const key = off => { const d = new Date(); d.setDate(d.getDate() - off); return localISO(d); };
@@ -2112,8 +2127,10 @@ export default async function run() {
       o.stillCleanAfter = (validateData() || []).length;
       console.error = ce;
       return o;
+      } finally { window.Date = __RD; }
     });
 
+    t.ok('guard: the clock really is pinned to a Thursday', r.clockPinned, r);
     t.ok('guard: every name this block calls exists', r.namesExist, r);
     t.ok('guard: every mode has a stored-day reader and a verb', r.rowsRead, r);
     t.ok('guard: an empty week counts nothing', r.emptyRides === 0, r);
@@ -2927,6 +2944,98 @@ export default async function run() {
        would satisfy every assertion above and rewrite real training. */
     t.eq('FLOOR: an ordinary 30-minute day is unchanged on both readers',
       twin.normalLive + '/' + twin.normalDay, '30/30', JSON.stringify(twin));
+  }
+
+
+  /* ---- v533: the weekly conditioning target resets every Monday --------
+     v505 found the bar said "this week" over a rolling seven days and moved
+     the WORDS. The words were then true and the target still was not: a
+     weekly target that never resets reads "met" for eight days after two
+     Monday rides, so the athlete is not asked for next week's sessions until
+     the old ones roll off one at a time.
+
+     Every case pins Date to a known weekday, because the whole point is which
+     side of a Monday a session falls on. */
+  {
+    const wk = await page.evaluate(() => {
+      const RD = Date;
+      const at = (y, m, d) => new RD(y, m, d, 12, 0, 0).getTime();
+      const pin = ms => {
+        class FD extends RD {
+          constructor(...a) { if (a.length) super(...a); else super(ms); }
+          static now() { return ms; }
+        }
+        window.Date = FD;
+      };
+      const iso = (y, m, d) => { const x = new RD(y, m, d); return localISO(x); };
+      const ride = { jackUnit: 'min', jackVal: 45, jackLvl: 'steady' };
+      const o = {};
+      const n = nut();
+      const keep = n.days;
+      try {
+        /* 2026-11-02 is a Monday, 11-08 the Sunday after it. */
+        pin(at(2026, 10, 2));
+        o.mondayIsMonday = new Date().getDay() === 1;
+        o.weekFromMonday = ridesWeekDays();
+        n.days = {};
+        n.days[iso(2026, 10, 1)] = Object.assign({}, ride);   // Sunday before
+        n.days[iso(2026, 9, 31)] = Object.assign({}, ride);   // Saturday before
+        o.mondayAfterWeekend = ridesThisWeek().rides;
+        n.days[iso(2026, 10, 2)] = Object.assign({}, ride);   // today, Monday
+        o.mondayWithToday = ridesThisWeek().rides;
+
+        pin(at(2026, 10, 8));
+        o.sundayIsSunday = new Date().getDay() === 0;
+        o.weekFromSunday = ridesWeekDays();
+        n.days = {};
+        n.days[iso(2026, 10, 2)] = Object.assign({}, ride);   // this Monday
+        n.days[iso(2026, 10, 5)] = Object.assign({}, ride);   // this Thursday
+        n.days[iso(2026, 10, 1)] = Object.assign({}, ride);   // the Sunday before
+        o.sundayWeek = ridesThisWeek().rides;
+        o.sundayCard = rideTargetHTML().replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+
+        /* FLOOR: a future-dated row (an import, a phone clock that was wrong)
+           is not this week's work either. */
+        n.days[iso(2026, 10, 9)] = Object.assign({}, ride);
+        o.futureIgnored = ridesThisWeek().rides;
+      } finally { window.Date = RD; n.days = keep; }
+      return o;
+    });
+    t.ok('GUARD: the clock is pinned to a Monday', wk.mondayIsMonday, wk);
+    t.ok('GUARD: and to a Sunday for the second half', wk.sundayIsSunday, wk);
+    t.eq('on a Monday the week is that one day', wk.weekFromMonday.length, 1, wk.weekFromMonday);
+    t.eq('on a Sunday the week is all seven days', wk.weekFromSunday.length, 7, wk.weekFromSunday);
+    t.eq('the week runs Monday to Sunday', wk.weekFromSunday[0] + '..' + wk.weekFromSunday[6],
+      '2026-11-02..2026-11-08', wk.weekFromSunday);
+    t.eq('last weekend\'s two rides do not carry into Monday', wk.mondayAfterWeekend, 0, wk);
+    t.eq('FLOOR: a ride today, Monday, counts', wk.mondayWithToday, 1, wk);
+    t.eq('Monday and Thursday rides both count by Sunday, the Sunday before does not',
+      wk.sundayWeek, 2, wk);
+    t.ok('and the bar says this week and when it resets',
+      /2\/2 this week/.test(wk.sundayCard) && /resets Monday/.test(wk.sundayCard),
+      wk.sundayCard.slice(0, 200));
+    t.eq('FLOOR: a future-dated row is not counted', wk.futureIgnored, 2, wk);
+  }
+
+
+  /* ---- v533: a concurrent format is a MEMBER of the registry -----------
+     isConcurrent() had no caller, and buildConcurrent() asked truthiness, so
+     an inherited key built a real session. Both the refusal and the floor. */
+  {
+    const cc = await page.evaluate(() => {
+      const o = {};
+      o.inheritedIsTruthy = !!CONCURRENT_FORMATS['constructor'];
+      o.inherited = buildConcurrent('constructor');
+      o.junk = buildConcurrent('notAFormat');
+      o.real = Object.keys(CONCURRENT_FORMATS).map(k => {
+        const p = buildConcurrent(k); return !!(p && p.items && p.items.length);
+      });
+      return o;
+    });
+    t.ok('GUARD: an inherited key really is truthy on the registry', cc.inheritedIsTruthy, cc);
+    t.eq('an inherited key builds no concurrent session', cc.inherited, null, cc);
+    t.eq('and neither does an unknown one', cc.junk, null, cc);
+    t.ok('FLOOR: every real format still builds a session', cc.real.length >= 3 && cc.real.every(Boolean), cc);
   }
 
   await browser.close(); srv.close();

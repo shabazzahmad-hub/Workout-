@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='531';
+const APP_VERSION='533';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -4228,6 +4228,20 @@ function overloadHeadline(sess){
    Back: (1) close an open sheet, else (2) step back a tab, else
    (3) on the Today home tab, require a confirming second press to exit. */
 let _backGuard=false,_exiting=false,_homeBackAt=0;
+/* _exiting swallows the pop that history.back() causes on the way out. It
+   used to be set and never cleared — so when that back did NOT leave the app
+   (an installed app sitting on its own first entry, where there is nothing
+   to go back to), every later Back press was ignored for the session.
+   If the page is still here after EXIT_RESET_MS, the exit did not happen and
+   Back works again. A page restored from the back-forward cache clears it
+   too, through pageshow. A page that really unloaded never runs the timer. */
+const EXIT_RESET_MS=1200;
+let _exitResetT=null;
+function _armExitReset(){
+  try{clearTimeout(_exitResetT);}catch(e){}
+  _exitResetT=setTimeout(()=>{_exiting=false;_homeBackAt=0;_exitResetT=null;},EXIT_RESET_MS);
+}
+window.addEventListener('pageshow',()=>{_exiting=false;_homeBackAt=0;});
 function onPop(e){
   if(_exiting)return;
   if(_backGuard){_backGuard=false;return;}
@@ -4269,7 +4283,7 @@ function onPop(e){
   }
   // Reached the root: user is trying to leave from the home tab.
   const now=(typeof Date!=='undefined')?Date.now():0;
-  if(now-_homeBackAt<2000){_exiting=true;try{history.back();}catch(e2){}return;}
+  if(now-_homeBackAt<2000){_exiting=true;_armExitReset();try{history.back();}catch(e2){}return;}
   _homeBackAt=now;
   try{history.pushState({cf:'home',tab:'today'},'');}catch(e3){}
   if(TAB!=='today')go('today');
@@ -10029,8 +10043,13 @@ function concStrengthBlock(){
    plAfterSet() already rests for m.rest between items, so the gap between the
    two blocks is a property of the block that just finished. */
 function buildConcurrent(format){
+  /* MEMBERSHIP, not truthiness (v533). CONCURRENT_FORMATS['constructor'] is
+     truthy, so `if(!f)` let an inherited key build a four-movement session
+     titled after Object. isConcurrent() was written for exactly this and had
+     no caller — the reachability scan only found it once v533 taught it to
+     read regex literals and nested templates. */
+  if(!isConcurrent(format))return null;
   const f=CONCURRENT_FORMATS[format];
-  if(!f)return null;
   const str=concStrengthBlock();
   const end=concEndurance();
   if(!str.length||!end)return null;
@@ -16410,14 +16429,50 @@ function daysSince(iso){
   const days=Math.round((new Date(todayISO())-new Date(iso))/86400000);
   return isFinite(days)?days:null;
 }
+/* Durable storage. Without it the browser may delete this app's data when
+   the phone runs low on space — the training history AND the progress
+   photos, which nothing can re-create. The app used to ASK for it and throw
+   the answer away, so nothing on screen could say when the answer was no.
+   The answer is a fact about this DEVICE, so it lives in memory, never in
+   STATE: a backup must not carry another phone's answer.
+     null  = not known (no API, or not asked yet)
+     true  = the browser will keep the data
+     false = the browser may delete it under storage pressure */
+let _storagePersisted=null;
+function storageAtRisk(){return _storagePersisted===false;}
+async function checkStoragePersist(){
+  try{
+    const st=navigator.storage;
+    if(!st||typeof st.persisted!=='function'){_storagePersisted=null;return null;}
+    let ok=await st.persisted();
+    if(!ok&&typeof st.persist==='function')ok=await st.persist();
+    _storagePersisted=!!ok;
+  }catch(e){_storagePersisted=null;}
+  /* Repaint only where the answer changes something on screen: Settings
+     shows it either way, and Today only when it brings the reminder forward.
+     An unconditional Today repaint at boot is an unrelated paint landing
+     inside whatever the athlete (or a check) is doing at that moment. */
+  try{if(TAB==='guide')renderGuide();else if(TAB==='today'&&storageAtRisk()&&backupNudgeHTML())renderToday();}catch(e){}
+  return _storagePersisted;
+}
+function storageNoteHTML(){
+  if(_storagePersisted===true)return `<p class="sm muted" data-storage="kept" style="margin:0 0 10px">🔒 This browser has agreed to keep the app's data. It will not delete it to free space.</p>`;
+  if(_storagePersisted===false)return `<div class="note warn" data-storage="risk" style="margin:0 0 10px"><b>This browser may delete your data to free space.</b> It has not agreed to keep it, so a phone low on storage can clear your training history and your progress photos. Save a backup often. Installing the app to the home screen usually fixes this.</div>`;
+  return '';
+}
+/* A reminder every 21 days is right when the data is safe. When the browser
+   may delete it, the gap is a week, and the reminder says why. */
+function backupNudgeGapDays(){return storageAtRisk()?7:21;}
 function backupNudgeHTML(){
   try{
+    const gap=backupNudgeGapDays();
     const age=daysSince(STATE.profile&&STATE.profile.createdAt);
-    if(age===null||age<21)return '';   // give a new athlete time to ramp up before nagging
+    if(age===null||age<gap)return '';   // give a new athlete time to ramp up before nagging
     const sinceExport=daysSince(STATE._lastExport);
-    if(sinceExport!==null&&sinceExport<21)return '';
-    if(STATE._backupNudgeDismissed&&(Date.now()-STATE._backupNudgeDismissed)<21*86400000)return '';
-    return `<div class="note info" style="margin-top:12px"><b>No backup in a while.</b> Your progress lives only on this phone — a lost or reset device would take it with it. Takes ten seconds.
+    if(sinceExport!==null&&sinceExport<gap)return '';
+    if(STATE._backupNudgeDismissed&&(Date.now()-STATE._backupNudgeDismissed)<gap*86400000)return '';
+    const why=storageAtRisk()?` This browser has not agreed to keep the app's data, so a phone low on space can delete it.`:'';
+    return `<div class="note info" data-backupnudge style="margin-top:12px"><b>No backup in a while.</b> Your progress lives only on this phone — a lost or reset device would take it with it.${why} Takes ten seconds.
       <div class="btnrow" style="margin-top:10px"><button class="btn sm primary" onclick="shareBackup()">☁ Save to Drive</button><button class="btn sm ghost" onclick="exportData()">⬇ Download</button><button class="btn sm ghost" onclick="dismissBackupNudge()">Not now</button></div></div>`;
   }catch(e){return '';}
 }
@@ -19855,7 +19910,12 @@ function isDateISO(v){if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))ret
      rolls seven days      -> says "last 7 days", never "this week"
 
    A PROGRAM week is a third thing and is not in this class: "volume drops on
-   purpose this week" is a position in the plan, not a date range. */
+   purpose this week" is a position in the plan, not a date range.
+
+   v533 moved the conditioning bar to the OTHER side of the rule. It was a
+   rolling window honestly labelled, and its target is weekly — so it now
+   counts the calendar week and says "this week" again. The sheets and the
+   load-spike banner still roll and still say "last 7 days". */
 function weekStartD(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x;}
 /* Quick sessions were taught to the streak, the heatmap and the 28-day count
    but not to this one, so a travel week of five Quick sessions showed "5 day
@@ -21516,15 +21576,24 @@ const RIDE_TARGET={n:2,min:35};
    only, so an athlete doing the same work with jumping jacks — the portable
    option, and now the default — saw a permanently empty progress bar for
    conditioning he had actually done. */
-/* A ROLLING SEVEN DAYS, and the bar says so — see weekStartD(). A weekly
-   target that never resets would be the other defect, but this one is read as
-   "2 easy sessions in any 7 days" and its heading now states that. */
+/* THE CALENDAR WEEK, Monday to Sunday (v533) — see weekStartD().
+   v505 called this a rolling seven days and relabelled the bar to say so. The
+   label was then true and the target was still wrong: a weekly target that
+   never resets reads "met" for eight days after two Monday rides, so the
+   athlete is never asked for the next week's sessions until the old ones
+   roll off one by one. It now counts from the week start to today, which is
+   what a WEEKLY target means, and the bar says "this week" and when it resets. */
+function ridesWeekDays(){
+  const s=weekStartD(new Date()),out=[];
+  const today=new Date();today.setHours(0,0,0,0);
+  for(const d=new Date(s);d<=today&&out.length<7;d.setDate(d.getDate()+1))out.push(localISO(d));
+  return out;
+}
 function ridesThisWeek(){
   const n=nut();let rides=0,mins=0,kcal=0;
   const perMode={};CARDIO_MODES.forEach(k=>perMode[k]=0);
-  for(let i=0;i<7;i++){
-    const d=new Date();d.setDate(d.getDate()-i);
-    const day=n.days&&n.days[localISO(d)];if(!day)continue;
+  for(const iso of ridesWeekDays()){
+    const day=n.days&&n.days[iso];if(!day)continue;
     let dayMin=0;
     /* Every mode, read through the one table. This counted the bike only, was
        fixed once for jacks (see the comment above), and then the ruck and the
@@ -21556,11 +21625,11 @@ function rideTargetHTML(){
      names could only ever describe two of the four. */
   const breakdown=CARDIO_MODES.filter(k=>r.perMode[k]>0)
     .map(k=>`${r.perMode[k]} ${CARDIO_INFO[k].verb}`).join(' · ');
-  return `<div class="section-label">Easy conditioning · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} in the last 7 days</span></div>
+  return `<div class="section-label">Easy conditioning · <span style="color:${done>=RIDE_TARGET.n?'var(--green)':'var(--gold)'}">${done}/${RIDE_TARGET.n} this week</span></div>
   <div class="card pad">
     <div class="pbar" style="margin:2px 0 10px"><i style="width:${pct}%;background:linear-gradient(90deg,#7ee08a,#2fa84f)"></i></div>
     <div class="row" style="justify-content:space-between;align-items:baseline">
-      <div><b>${r.mins} min</b>${breakdown?` <span class="tiny muted">· ${_ve(breakdown)}</span>`:''}<div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy</div></div>
+      <div><b>${r.mins} min</b>${breakdown?` <span class="tiny muted">· ${_ve(breakdown)}</span>`:''}<div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy · resets Monday</div></div>
       <span class="tiny muted">${r.kcal} kcal</span></div>
     <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, nothing burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part. Jumping jacks, the bike, a ruck and a run all count — pick whichever you will actually do today. Plain walking pays your <b>step target</b> above instead, not this one: the app can see a step count but cannot tell a deliberate walk from a busy day.</div>
   </div>`;
@@ -25002,6 +25071,7 @@ h+=`<div class="section-label">What changes, and when</div>
   // backup
   h+=`<div class="section-label">Your data</div><div class="card pad">
     <p class="sm muted" style="margin-top:0">Your progress auto-saves on this phone and works offline. For extra safety, export a backup file you can re-import anytime.</p>
+    ${storageNoteHTML()}
     ${dataHealthNoteHTML()}
     <button class="btn primary sm" style="width:100%;margin-bottom:8px" onclick="shareBackup()">☁ Save backup to Google Drive or another app</button>
     <div class="btnrow"><button class="btn ghost sm" style="width:100%" onclick="exportData()">⬇ Download backup</button><button class="btn ghost sm" style="width:100%" onclick="$('#importFile').click()">⬆ Import backup</button></div>
@@ -27645,7 +27715,7 @@ async function boot(){
      and still says so. */
   if(flagRepairs(_beforeNorm,_wasOnboarded).changed)save();
   // request durable storage so an installed PWA keeps data
-  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
+  checkStoragePersist();
   /* Android focuses an already-running PWA and navigates it, which is a
      same-document hash change — boot() never runs, so the Progress and Fuel
      home-screen shortcuts did nothing whenever the app was already open. */
