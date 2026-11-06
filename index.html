@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='534';
+const APP_VERSION='535';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -12331,6 +12331,22 @@ function coachSpeak(text,force){
   }catch(e){return false;}
 }
 /* Built-in device (Web Speech) coaching — the offline / no-key path. */
+/* PUT THE VOICE ON THE UTTERANCE, AND ITS LANGUAGE WITH IT (v535).
+   Every utterance was stamped lang='en-US' and then handed a voice. Chrome on
+   Android picks the engine voice by the utterance's LANGUAGE and does not
+   reliably honour u.voice when the two disagree, so a coach given the UK, the
+   Indian or the Australian voice still spoke in the one US voice. Reported:
+   five voices assigned, no difference heard. The voice's own lang goes on the
+   utterance now, so the two can no longer disagree. One helper for the three
+   speak paths, so a fourth cannot set the voice without its language. */
+function useVoice(u,v){
+  if(!u)return;
+  if(v){
+    try{u.voice=v;}catch(e){}
+    const l=(v&&typeof v.lang==='string')?v.lang.trim():'';
+    u.lang=l||'en-US';
+  }else u.lang='en-US';
+}
 function _deviceSpeak(text,p){
   try{
     if(!('speechSynthesis'in window))return false;
@@ -12350,8 +12366,7 @@ function _deviceSpeak(text,p){
        first branch — byte-identical while the global pick was the only
        override, and it would have swallowed a per-coach pick outright.
        coachVoiceFor(null) returns COACH_V, so the no-persona case is unchanged. */
-    const v=coachVoiceFor(p);
-    if(v)u.voice=v;
+    useVoice(u,coachVoiceFor(p));
     duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
 }
@@ -12664,8 +12679,7 @@ function _briefDeviceSpeak(text,resolve,gen){
     u.lang='en-US';u.volume=1;
     u.rate=voiceRatePref(ADVISOR.rate);
     u.pitch=localPitchFor(ADVISOR);
-    const v=STATE.settings.voiceName?COACH_VOICES.find(x=>x.name===STATE.settings.voiceName):coachVoiceFor(ADVISOR);
-    if(v)u.voice=v;
+    useVoice(u,coachVoiceFor(ADVISOR));
     let done=false;const fin=()=>{if(done)return;done=true;try{beatDuck(false);}catch(e){}resolve();};
     try{beatDuck(true);}catch(e){}
     u.onend=fin;u.onerror=fin;
@@ -13774,7 +13788,7 @@ function _hypeDeviceSpeak(text,persona){
     const u=new SpeechSynthesisUtterance(String(text||''));
     u.lang='en-US';u.volume=1;
     u.rate=persona.rate||1;u.pitch=localPitchFor(persona);
-    const v=coachVoiceFor(persona);if(v)u.voice=v;
+    useVoice(u,coachVoiceFor(persona));
     duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
 }

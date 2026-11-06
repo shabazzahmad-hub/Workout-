@@ -2671,6 +2671,54 @@ export default async function run() {
     t.eq('FLOOR: the validator is still clean', r.validator, 0, r);
   }
 
+  /* v535 — the chosen voice's LANGUAGE goes on the utterance with it. Every
+     utterance was stamped lang='en-US' and then given a voice, and Chrome on
+     Android picks the engine voice by the language: five voices assigned, no
+     difference heard. A sandbox cannot hear a phone, so this proves the WIRING
+     on all three speak paths: the utterance carries the picked voice and that
+     voice's own lang. The utterance is a stub class, because Chromium refuses
+     a fake voice object on a real one. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const RealU = window.SpeechSynthesisUtterance;
+      const realGet = speechSynthesis.getVoices.bind(speechSynthesis);
+      const realSpeak = speechSynthesis.speak.bind(speechSynthesis);
+      const said = [];
+      class FakeU { constructor(t) { this.text = t; this.lang = ''; this.voice = null; } }
+      const fakes = [{ name: 'US One', lang: 'en-US' }, { name: 'UK One', lang: 'en-GB' }, { name: 'India One', lang: 'en-IN' }];
+      try {
+        window.SpeechSynthesisUtterance = FakeU;
+        speechSynthesis.speak = u => { said.push({ lang: u.lang, voice: u.voice && u.voice.name }); };
+        speechSynthesis.getVoices = () => fakes; loadCoachVoices();
+        const a = COACHES.find(c => c.id === 'canarmy'), b = COACHES.find(c => c.id === 'sniper');
+        STATE.settings.coachVoices = { canarmy: 'UK One', sniper: 'India One' };
+        o.guardDiffer = coachVoiceFor(a).lang !== coachVoiceFor(b).lang;
+        _deviceSpeak('one', a); o.dev = said.pop();
+        _hypeDeviceSpeak('two', b); o.hype = said.pop();
+        const adv = (typeof ADVISOR !== 'undefined') ? ADVISOR : null;
+        if (adv && adv.id) STATE.settings.coachVoices[adv.id] = 'UK One';
+        _briefDeviceSpeak('three', () => {}, null); o.brief = said.pop();
+        o.advHasId = !!(adv && adv.id);
+        // FLOOR: no voice at all still speaks English
+        const fu = new FakeU('x'); useVoice(fu, null); o.noVoiceLang = fu.lang;
+        const fu2 = new FakeU('x'); useVoice(fu2, { name: 'n' }); o.noLangLang = fu2.lang;
+      } finally {
+        window.SpeechSynthesisUtterance = RealU;
+        speechSynthesis.speak = realSpeak; speechSynthesis.getVoices = realGet;
+        delete STATE.settings.coachVoices; loadCoachVoices();
+      }
+      return o;
+    });
+    t.ok('guard: the two coaches were given voices in different languages', r.guardDiffer, r);
+    t.eq('the coach line carries the picked voice', r.dev && r.dev.voice, 'UK One', r);
+    t.eq('and that voice\'s own language, not en-US', r.dev && r.dev.lang, 'en-GB', r);
+    t.eq('the hype line carries its coach\'s voice language too', r.hype && r.hype.lang, 'en-IN', r);
+    t.eq('the morning brief carries its voice language too', r.brief && r.brief.lang, 'en-GB', r);
+    t.eq('FLOOR: with no voice the line is still English', r.noVoiceLang, 'en-US', r);
+    t.eq('FLOOR: a voice with no language falls back to English', r.noLangLang, 'en-US', r);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();
