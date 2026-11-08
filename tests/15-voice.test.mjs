@@ -2031,7 +2031,18 @@ export default async function run() {
       out.draws = 39;
       STATE.settings.coach = 'drill';
       const seen = {};
-      for (let i = 0; i < 39; i++) { const l = motivateLine('during', true); seen[l] = (seen[l] || 0) + 1; }
+      /* v536: every OTHER draw comes from the shared pool (all coaches + ELITE), so
+         the coach's own bag is dealt on draws 1,3,5... Reset the alternation counter
+         and bags first so the run is the same every time. */
+      for (const k in _mixN) delete _mixN[k];
+      Object.keys(_bags).forEach(k => { if (k.indexOf('line|') === 0) delete _bags[k]; });
+      const ownHeard = {};
+      for (let i = 0; i < 39; i++) {
+        const l = motivateLine('during', true); seen[l] = (seen[l] || 0) + 1;
+        if (i % 2 === 0 && i < 28) ownHeard[l] = 1;   // the first 14 own-pool draws
+      }
+      out.ownFullPass = Object.keys(ownHeard).length;
+      out.sharedPool = sharedPool('during').length;
       const c = Object.values(seen);
       out.distinct = c.length; out.mostHeard = Math.max.apply(null, c);
       /* THE KEY CARRIES THE PERSONA. Keyed by kind alone, a bag dealt for one
@@ -2051,8 +2062,9 @@ export default async function run() {
         for (let i = 0; i < 7; i++) motivateLine('during', true);   // part-spend one bag
         STATE.settings.coach = q.id;
         const s2 = {};
-        for (let i = 0; i < q.during.length; i++) s2[motivateLine('during', true)] = 1;
-        if (Object.keys(s2).length === q.during.length) full++;
+        /* Twice the pool: half the draws are the shared pool's, half are this coach's own. */
+        for (let i = 0; i < q.during.length * 2; i++) s2[motivateLine('during', true)] = 1;
+        if (q.during.every(l => s2[l])) full++;
       }
       out.fullPasses = full;
       /* The seam guard, exercised DIRECTLY. Over one boundary a missing guard
@@ -2088,9 +2100,11 @@ export default async function run() {
     });
     t.ok('GUARD: a session really draws more lines than the pool holds',
       r.pool > 1 && r.draws > r.pool, JSON.stringify(r));
-    t.eq('every line in the pool is heard once a session', r.distinct, r.pool);
-    t.ok('and no line is heard more than its fair share',
-      r.mostHeard <= Math.ceil(r.draws / r.pool), JSON.stringify(r));
+    t.eq('the coach\'s own bag still deals its whole pool, once, on its own draws', r.ownFullPass, r.pool);
+    t.ok('v536: one session now hears far more than one coach\'s pool', r.distinct > r.pool * 2, JSON.stringify(r));
+    t.ok('v536: the shared pool is bigger than any one coach\'s', r.sharedPool > r.pool * 5, JSON.stringify(r));
+    /* 20 own draws over 14 lines = at most 2 each, plus one shared draw landing on the same line. */
+    t.ok('and no line is heard more than three times in 39 draws', r.mostHeard <= 3, JSON.stringify(r));
     t.ok('GUARD: the second coach\'s pool is the same size, so a shared bag is reused rather than rebuilt',
       r.otherPool === r.pool, JSON.stringify(r));
     t.eq('a second coach gets a full pass of its OWN pool, every time',
