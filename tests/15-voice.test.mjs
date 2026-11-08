@@ -2733,6 +2733,78 @@ export default async function run() {
     t.eq('FLOOR: a voice with no language falls back to English', r.noLangLang, 'en-US', r);
   }
 
+
+  /* ---- MOVEMENT-AWARE COACHING (v537) ------------------------------------
+     The shared pool cannot tell a push-up from a plank. FAMILY_LINES are about
+     the movement itself and are drawn for 'during' lines only, one draw in
+     three, when the caller knows which movement is on. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const map = { pushup: 'push', dips: 'push', dbpress: 'push', pullup: 'pull', invertedrow: 'pull',
+        squat: 'legs', kbgoblet: 'legs', plank: 'hold', wallsit: 'hold', deadhang: 'hold',
+        crunch: 'core', legraise: 'core', mountainclimber: 'cardio', burpee: 'cardio', steadyrun: 'cardio', kbswing: 'load' };
+      o.map = {};
+      for (const k in map) o.map[k] = exFamily(k);
+      o.mapWrong = Object.keys(map).filter(k => o.map[k] !== map[k]);
+      o.unknown = [exFamily('constructor'), exFamily('nope'), exFamily(null), exFamily({}), exFamily(42)];
+      o.byObject = exFamily(EX.pushup);
+      // draws
+      const reset = () => { for (const k in _mixN) delete _mixN[k]; Object.keys(_bags).forEach(k => { if (k.indexOf('line|') === 0) delete _bags[k]; }); };
+      const all = id => new Set(FAMILY_LINES[id]);
+      STATE.settings.coach = 'drill';
+      reset();
+      const withEx = []; for (let i = 0; i < 30; i++) withEx.push(motivateLine('during', true, 'pushup'));
+      o.pushHits = withEx.filter(l => all('push').has(l)).length;
+      o.otherFamHits = withEx.filter(l => all('hold').has(l) || all('pull').has(l) || all('cardio').has(l)).length;
+      reset();
+      const noEx = []; for (let i = 0; i < 30; i++) noEx.push(motivateLine('during', true));
+      o.noExFam = noEx.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
+      reset();
+      const rest = []; for (let i = 0; i < 30; i++) rest.push(motivateLine('rest', true, 'pushup'));
+      o.restFam = rest.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
+      reset();
+      const unk = []; for (let i = 0; i < 30; i++) unk.push(motivateLine('during', true, 'constructor'));
+      o.unkFam = unk.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
+      reset();
+      const hold = []; for (let i = 0; i < 30; i++) hold.push(motivateLine('during', true, EX.plank));
+      o.holdHits = hold.filter(l => all('hold').has(l)).length;
+      o.perThree = o.pushHits;
+      o.sizes = Object.keys(FAMILY_LINES).map(f => FAMILY_LINES[f].length);
+      o.longest = Math.max.apply(null, Object.keys(FAMILY_LINES).map(f => Math.max.apply(null, FAMILY_LINES[f].map(l => l.length))));
+      o.dupes = (() => { const seen = {}; let d = 0; Object.keys(FAMILY_LINES).forEach(f => FAMILY_LINES[f].forEach(l => { if (seen[l]) d++; seen[l] = 1; })); return d; })();
+      return o;
+    });
+    t.eq('movements fall in the right family', r.mapWrong, [], r);
+    t.eq('GUARD: an inherited key, a missing id, null, {} and 42 are no family', r.unknown.filter(Boolean), [], r);
+    t.eq('an EX object resolves as well as its key', r.byObject, 'push', r);
+    t.ok('one draw in three is about a push-up when a push-up is on', r.pushHits === 10, r);
+    t.eq('and none of them borrow another movement\'s lines', r.otherFamHits, 0, r);
+    t.eq('FLOOR: with no movement named, no movement line is ever spoken', r.noExFam, 0, r);
+    t.eq('FLOOR: only "during" lines are movement-aware, rest never is', r.restFam, 0, r);
+    t.eq('FLOOR: an unknown movement gets none', r.unkFam, 0, r);
+    t.ok('a timed hold given as an object draws hold lines', r.holdHits === 10, r);
+    t.ok('GUARD: every family has real lines and none is long enough to be cut off', r.sizes.every(n => n >= 7) && r.longest <= 80, r);
+    t.eq('no line is written twice across the families', r.dupes, 0, r);
+  }
+
+  /* The five places that speak a 'during' line while a movement is on must say
+     WHICH movement, or the family lines never reach the athlete. A source
+     assertion, because reverting one is byte-identical on every screen. */
+  {
+    const src = await page.evaluate(() => {
+      const scripts = [...document.querySelectorAll('script:not([src])')].sort((a, b) => b.textContent.length - a.textContent.length);
+      return scripts[0].textContent;
+    });
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    t.ok('GUARD: read the app, not a stub', stripped.length > 500000);
+    t.eq('the rep set passes its movement', (stripped.match(/motivateLine\('during',false,m\.exId\)/g) || []).length, 1);
+    t.eq('HIIT work passes its movement', (stripped.match(/motivateLine\('during',false,ex\)\s*;\s*\n\s*plSay\('Work! '/g) || []).length, 1);
+    t.eq('the rep cadence passes its movement', (stripped.match(/n===half\)\?motivateLine\('during',false,ex\)/g) || []).length, 1);
+    t.eq('both holds pass theirs', (stripped.match(/plHype\('during',null,(plCur\(\)\.exId|ex)\)/g) || []).length, 2);
+    t.eq('and no bare during-hype is left in a movement tick', (stripped.match(/plHype\('during'\)/g) || []).length, 0);
+  }
+
   srv.close();
   const failed = t.finish(errors);
   await browser.close();

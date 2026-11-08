@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='536';
+const APP_VERSION='537';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -8936,7 +8936,7 @@ function plTickHold(){
     const pick=Math.floor(el/8)%3;
     if(pick===1){plSay(plNextCue());}
     else if(pick===2){plSay('Inhale slow… and exhale.');plS('#plSub','BREATHE');setTimeout(()=>{if(PLAYER&&PLAYER.phase==='work')plS('#plSub','HOLD');},2200);}
-    else plHype('during');
+    else plHype('during',null,plCur().exId);
   }
 }
 // Tempo rep engine: eccentric ("lower…") then concentric ("up!") — 100ms ticks.
@@ -8963,7 +8963,7 @@ function plTickRep(){
     const swap=(PLAYER.repN===half&&sideSwitch(m.exId)&&m.target>1);
     const extra=swap?switchLine(EX[m.exId])
       :((PLAYER.repN>1&&PLAYER.repN%4===0&&PLAYER.repN<m.target)?plNextCue()
-      :((m.target>=8&&PLAYER.repN===half)?(motivateLine('during')||''):''));
+      :((m.target>=8&&PLAYER.repN===half)?(motivateLine('during',false,m.exId)||''):''));
     plSay(extra?(num+'. '+extra):num);
     if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);plS('#plCoach',switchLine(EX[m.exId]));}
   }
@@ -11080,7 +11080,7 @@ function ivStep(idx){
      and the same fix: the name goes first in ONE utterance so the next line's
      synth.cancel() can only clip the coaching. */
   if(isWork){beepDuck(300);beep(1320,.16,0.95);
-    const h=motivateLine('during');
+    const h=motivateLine('during',false,ex);
     plSay('Work! '+ex.name+(h?'. '+h:''));}
   else plSay('Rest.');
   if(INTV.running)INTV.tid=setInterval(ivTick,1000);
@@ -14021,6 +14021,120 @@ function sharedPool(kind){
   _sharedCache[k]={n:COACHES.length,lines:out};
   return out;
 }
+/* MOVEMENT-AWARE COACHING (v537). The shared pool is generic: it cannot tell a
+   push-up from a plank or a run, so it never says anything about the thing the
+   athlete is actually doing. FAMILY_LINES are about the movement itself, in the
+   voice of an instructor who watches form: where the elbows go, what the ribs do,
+   when to breathe. They are drawn for 'during' lines only, one draw in three, and
+   only when the caller knows which movement is on. Same safety rule as the rest:
+   effort, form, breath and standard, never a symptom to push through. */
+const FAMILY_LINES={
+  push:[
+    "Elbows in, ribs down. Press the floor away.",
+    "Chest low, then own the lockout.",
+    "One straight line, head to heels. No sagging.",
+    "Squeeze the glutes. Make it a plank that moves.",
+    "Shoulders packed, away from your ears.",
+    "Breathe out as you press. In on the way down.",
+    "Full range every rep. Low at the bottom, locked at the top.",
+    "Spread the fingers. Press through the whole hand.",
+    "Brace like the floor is going to move. It will not.",
+    "Pressing strength is built by pressing clean. Again.",
+    "Lock it out. Finish the rep before you start the next."
+  ],
+  pull:[
+    "Lead with the elbows, not the hands.",
+    "Shoulder blades down and together. Then pull.",
+    "Chest to the bar. Not chin, chest.",
+    "Control the way down. The lowering builds the back.",
+    "No swinging. Dead stop, then pull.",
+    "Squeeze at the top for one full count.",
+    "Hands are hooks. The back does the work.",
+    "Full hang, full pull, every rep.",
+    "Grip tight, ribs down, legs quiet.",
+    "Own the bottom of the rep as well as the top."
+  ],
+  legs:[
+    "Knees track over the toes. Drive through the whole foot.",
+    "Chest up. Sit between the hips.",
+    "Depth first, then speed.",
+    "Push the floor away.",
+    "Heels down, spine tall.",
+    "Legs are the engine. Fire them.",
+    "Control the way down. The drive up is the easy part.",
+    "Squeeze the glutes at the top of every rep.",
+    "Strong legs carry a heavy pack a long way.",
+    "Knees stay out. Do not let them collapse in."
+  ],
+  core:[
+    "Ribs down. Pull the navel to the spine.",
+    "Breathe out through the hardest part.",
+    "The core braces first. The limbs move second.",
+    "Low back stays glued to the floor.",
+    "No momentum. Slow is hard, and hard is the point.",
+    "Tight torso, calm face.",
+    "A strong midsection protects the spine under load.",
+    "Hold the line. Do not let the hips drift."
+  ],
+  cardio:[
+    "Light on the feet. Quick and quiet.",
+    "Breathe in rhythm. In for two, out for two.",
+    "Arms drive the legs. Pump them.",
+    "Stay tall. Do not fold forward.",
+    "This is the engine you carry into the field.",
+    "Pace it so you can finish it.",
+    "Relaxed shoulders, relaxed hands, fast feet.",
+    "Land soft. Every step should be a whisper."
+  ],
+  hold:[
+    "Breathe. Holding your breath ends the hold early.",
+    "Squeeze everything that is not moving.",
+    "Count your breaths, not the seconds.",
+    "Tension is the exercise. Stay in it.",
+    "Eyes on one spot. Quiet the mind.",
+    "If the position drifts, fix it, then carry on.",
+    "Time under tension builds the toughness you came for.",
+    "Stay long. Reach through the crown of your head."
+  ],
+  load:[
+    "Brace before every rep. Tight trunk, tall chest.",
+    "Hips drive it, arms just steer.",
+    "Control the weight. Never let it control you.",
+    "Heavy is a skill. Stay patient.",
+    "Grip it hard and the whole body follows.",
+    "Reset the grip, reset the breath, go again.",
+    "Own the weight on the way down as well."
+  ]
+};
+const _famKeyCache=new Map();
+/* Which family does this movement belong to? Accepts an EX key or an EX object.
+   The region field is not reliable for this (push-ups and squats are both
+   'strength'), so it reads the pattern, then the name. The order is the rule:
+   cardio first, then static holds, then push / pull / legs / core, then loaded
+   work. An unknown movement returns '' and gets no movement line, which is
+   the same as before this existed. */
+function exFamily(x){
+  try{
+    let k='',e=null;
+    if(typeof x==='string'){k=x;e=exKnown(x)?EX[x]:null;}
+    else if(x&&typeof x==='object'){
+      e=x;
+      if(_famKeyCache.has(x))k=_famKeyCache.get(x);
+      else{k=Object.keys(EX).find(q=>EX[q]===x)||'';_famKeyCache.set(x,k);}
+    }
+    if(!e)return '';
+    const nm=(k+' '+(e.name||'')).toLowerCase();
+    const reg=e.region||'',unit=e.unit||'',pat=e.pattern||'';
+    if(reg==='cardio'||reg==='dynamic'||/\brun(ning)?\b|sprint|\bjacks?\b|burpee|\bskip(ping)?\b|\brope\b|\bbike\b|high ?knee|climber|shadow/.test(nm))return 'cardio';
+    if(unit==='time'&&reg!=='strength')return 'hold';
+    if(pat==='pushh'||pat==='pushv'||/push|dip|press|planche|handstand/.test(nm))return 'push';
+    if(pat==='pull'||/pull|\brow\b|\bchin|scap/.test(nm))return 'pull';
+    if(pat==='squat'||/squat|lunge|bridge|calf|step|thrust|pistol|bulgarian|rdl|deadlift|hip/.test(nm))return 'legs';
+    if(reg==='anterior'||reg==='oblique'||reg==='lower'||reg==='stability')return 'core';
+    if(/^(kb|db|mb|ruck|sbag|rope)/.test(k)||pat==='hinge')return 'load';
+    return '';
+  }catch(err){return '';}
+}
 /* The baseline battery gets ONE steady voice.
    Auto rolls a new coach at every timer start, so a ten-test battery met ten
    different personas during the single session where the athlete is holding
@@ -14489,7 +14603,7 @@ function grindAtOpen(testId){
    the rep number has to survive the next rep's synth.cancel(). Returns '' when
    hype is off or the persona has nothing to say, which reads as falsy at every
    call site exactly as motivate()'s false did. */
-function motivateLine(kind,force){
+function motivateLine(kind,force,exArg){
   if(!force){
     if(STATE.settings.voice===false)return '';
     if(STATE.settings.hype===false)return '';
@@ -14503,6 +14617,11 @@ function motivateLine(kind,force){
      character. Each pool has its OWN bag, so neither starves the other. */
   const shared=sharedPool(kind);
   const n=_mixN[kind]=(_mixN[kind]||0)+1;
+  /* One draw in three is about THE MOVEMENT, when the caller knows which. */
+  if(kind==='during'&&exArg&&n%3===0){
+    const fam=exFamily(exArg),fl=fam?FAMILY_LINES[fam]:null;
+    if(fl&&fl.length){const fi=_bagNext('line|fam|'+fam,fl.length);return String(fl[fi>=0?fi:0]||'');}
+  }
   if(shared.length&&(!lines.length||(n%2===0&&shared.length>lines.length))){
     const j=_bagNext('line|*|'+(ELITE[kind]?kind:'during'),shared.length);
     return String(shared[j>=0?j:0]||'');
@@ -14526,8 +14645,8 @@ function deliveryFor(text){
   if(k==='done')return {rate:0.95,pitch:1.0};
   return {rate:1,pitch:1};
 }
-function motivate(kind,force){
-  const line=motivateLine(kind,force);
+function motivate(kind,force,exArg){
+  const line=motivateLine(kind,force,exArg);
   if(!line)return false;
   try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
   return hypeSpeak(line,currentPersona());
@@ -14744,8 +14863,8 @@ function plSay(text){
    it through coachSpeak() — hypeSpeak() is its own delivery (its own rate and
    emphasis), and flattening a persona's push line into the counting voice
    would quietly change what every coach sounds like at ten seconds. */
-function plHype(kind,fallback){
-  setTimeout(()=>{try{if(!motivate(kind)&&fallback)coachSpeak(fallback);}catch(e){}},0);
+function plHype(kind,fallback,exArg){
+  setTimeout(()=>{try{if(!motivate(kind,false,exArg)&&fallback)coachSpeak(fallback);}catch(e){}},0);
 }
 function countdownCue(remain,total){
   try{
@@ -14986,7 +15105,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
       }
       else if(remain===10&&total>16){plHype('push','Ten seconds. Hold strong.');}
       else if(!_grindSaid&&el===grindAt(total)){_grindSaid=true;const g=grindLine();if(g)plSay(g);}
-      else if(el>0&&el%10===0&&remain>4&&!nearGrind(el,total))plHype('during');   // periodic push through the hold
+      else if(el>0&&el%10===0&&remain>4&&!nearGrind(el,total))plHype('during',null,ex);   // periodic push through the hold
     }else{
       if(remain===10&&total>13)plSay('Ten seconds. Get ready.');
       else if(total>=24&&el===Math.round(total/2))plHype('rest');
@@ -15119,7 +15238,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
     /* The switch call OUTRANKS the hype, as it does in plTickRep(): a missed
        hype line costs nothing, a missed switch costs the whole other side. */
     const swap=(n===half&&ex&&ex.side==='switch'&&total>1);
-    const h=swap?switchLine(ex):((total>=8&&n===half)?motivateLine('during'):'');
+    const h=swap?switchLine(ex):((total>=8&&n===half)?motivateLine('during',false,ex):'');
     plSay(String(n)+(h?'. '+h:''));
     /* And on the GLASS, as the ▶ Hold timer (setPhase) and the player (#plCoach)
        both do: a phone on silent with the voice off hears neither the tones nor
