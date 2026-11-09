@@ -41,15 +41,25 @@ Verification is not exploration.
 
 ## Time
 
-**Report all times in Mountain time, never UTC.** Use the offset actually in
-effect on the date in question — MDT (UTC−6) during daylight saving, MST
-(UTC−7) otherwise — so timestamps match the clock on the wall.
+**Report all times in the athlete's local time (Alberta), never UTC.**
 
-GitHub and CI report UTC. Convert before quoting anything back:
+- **From November 1, 2026, Alberta is UTC−6 all year.** It no longer turns
+  the clock back in November, so there is no UTC−7 winter time any more.
+- Before that date, use the offset that was in effect then: UTC−6 during
+  daylight saving, UTC−7 otherwise.
+- Do not call the time "MST". MST means UTC−7, and that label is now wrong
+  for Alberta. Say "your time" or give the offset.
+
+GitHub and CI report UTC. Convert before quoting anything back. This command
+uses a fixed UTC−6 offset, because the `America/Denver` zone still turns the
+clock back and gives a time one hour early:
 
 ```
-TZ=America/Denver date -d "<utc-timestamp>" '+%Y-%m-%d %I:%M %p %Z'
+TZ='<-06>6' date -d "<utc-timestamp>" '+%Y-%m-%d %I:%M %p'
 ```
+
+Measured: `13:30Z` on November 6, 2026 converts to 07:30 AM, which matches
+the clock on the wall. The old `America/Denver` command gave 06:30 AM.
 
 This matters more than it looks: UTC late-evening timestamps land on the
 *following* date, so an unconverted "deployed 05:39 on Aug 7" is really
