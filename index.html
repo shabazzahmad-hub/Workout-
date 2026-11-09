@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='537';
+const APP_VERSION='538';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -9023,12 +9023,12 @@ function plAfterSet(){
   const noRest=!(m.rest>0);
   if(PLAYER.s<m.sets){
     if(noRest){plEnterReady(false);return;}
-    if(!motivate('rest'))coachSpeak('Rest.');plEnterRest(m.rest,'set');
+    if(!motivate('rest',false,m.exId))coachSpeak('Rest.');plEnterRest(m.rest,'set');
   }else if(PLAYER.i+1<PLAYER.items.length){
     /* plRestDone() is what normally advances the item; with no rest phase to
        run, this does it directly. */
     if(noRest){PLAYER.i++;PLAYER.s=0;plEnterReady(false);return;}
-    if(!motivate('rest'))coachSpeak('Nice. Next up.');PLAYER.pendingNext=true;plEnterRest(m.rest,'ex');
+    if(!motivate('rest',false,m.exId))coachSpeak('Nice. Next up.');PLAYER.pendingNext=true;plEnterRest(m.rest,'ex');
   }
   else plEnterDone();
 }
@@ -14106,6 +14106,28 @@ const FAMILY_LINES={
     "Own the weight on the way down as well."
   ]
 };
+/* The same idea for the two moments either side of a set. REST lines are about
+   recovering from THIS movement (the wrists after a push-up, the grip after a
+   pull, the breath after a plank); START lines are about setting up for it. Both
+   are drawn one in three, only when the caller names the movement. */
+const FAMILY_REST={
+  push:["Shake out the wrists and shoulders.","Hands off the floor. Let the chest open back up.","Breathe deep. Elbows loose, shoulders down.","Walk it off. Keep the blood moving.","Roll the wrists both ways. They carry the load."],
+  pull:["Open the hands. Let the forearms recover.","Let the arms hang and shake them loose.","Roll the shoulders back and breathe low.","Wipe the hands. The next grip starts fresh."],
+  legs:["Walk it off. Hands on hips, tall chest.","Shake the legs out. Keep them moving.","Do not sit. Stay on your feet and breathe.","Let the heart rate settle before the next set."],
+  core:["Breathe into the belly. Let the ribs soften.","Long slow breaths. Bring the heart rate down.","Stretch tall for a moment. Reach up, exhale.","Reset your position before the next set."],
+  cardio:["Walk, do not sit. Let the heart rate come down.","Hands on your head, big breaths in and out.","Slow the breathing before you slow your feet.","Sip water, then stay on your feet."],
+  hold:["Shake it out. Roll the shoulders and wrists.","Breathe normally again. You earned that.","Get back into position with a calm head.","Release fully, then find the shape again."],
+  load:["Put the weight down properly. Reset your grip.","Shake out the hands and forearms.","Breathe, brace, and plan the next set.","Check the grip and the stance before you lift again."]
+};
+const FAMILY_START={
+  push:["Hands under shoulders. Spread the fingers.","Feet together, glutes tight. Make it one plank.","Eyes on a spot on the floor, neck long."],
+  pull:["Set the grip. Shoulders down, away from the ears.","Take the slack out before you pull.","Start from a dead hang. No swing."],
+  legs:["Feet set, weight on the whole foot.","Chest tall, brace, then go.","Pick the depth now and hit it every rep."],
+  core:["Press the low back down. Ribs down.","Brace first, then move.","Find the position, find the breath."],
+  cardio:["Loose hands, tall chest, light feet.","Settle the breathing. Find a rhythm and keep it.","Start easy so you can finish strong."],
+  hold:["Find the position and lock it. Then breathe.","Squeeze everything. Quiet the mind.","Set up properly. A good start makes a long hold."],
+  load:["Set your stance. Grip it hard.","Brace before the first rep.","Tall chest, tight trunk, steady hands."]
+};
 const _famKeyCache=new Map();
 /* Which family does this movement belong to? Accepts an EX key or an EX object.
    The region field is not reliable for this (push-ups and squats are both
@@ -14618,9 +14640,10 @@ function motivateLine(kind,force,exArg){
   const shared=sharedPool(kind);
   const n=_mixN[kind]=(_mixN[kind]||0)+1;
   /* One draw in three is about THE MOVEMENT, when the caller knows which. */
-  if(kind==='during'&&exArg&&n%3===0){
-    const fam=exFamily(exArg),fl=fam?FAMILY_LINES[fam]:null;
-    if(fl&&fl.length){const fi=_bagNext('line|fam|'+fam,fl.length);return String(fl[fi>=0?fi:0]||'');}
+  if(exArg&&n%3===0&&(kind==='during'||kind==='rest'||kind==='start')){
+    const tbl=kind==='during'?FAMILY_LINES:(kind==='rest'?FAMILY_REST:FAMILY_START);
+    const fam=exFamily(exArg),fl=fam?tbl[fam]:null;
+    if(fl&&fl.length){const fi=_bagNext('line|fam|'+(kind==='during'?'':kind+'|')+fam,fl.length);return String(fl[fi>=0?fi:0]||'');}
   }
   if(shared.length&&(!lines.length||(n%2===0&&shared.length>lines.length))){
     const j=_bagNext('line|*|'+(ELITE[kind]?kind:'during'),shared.length);
@@ -15067,7 +15090,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
     beep(1000,.15,0.7);
     /* The side goes FIRST so the next line's cancel() can only clip the
        filler, never the half of the movement the athlete is about to do. */
-    if(!quiet){const sp=sidePrefix(label);if(sp)coachSpeak(sp+'Get ready.');else if(!motivate('start'))coachSpeak('Get ready.');}
+    if(!quiet){const sp=sidePrefix(label);if(sp)coachSpeak(sp+'Get ready.');else if(!motivate('start',false,ex))coachSpeak('Get ready.');}
   }else if(!quiet){coachSpeak('Rest. '+plural(seconds,'second')+'.');}
   function tick(){
     if(timer)timer.lastTick=monoNow();

@@ -2761,8 +2761,39 @@ export default async function run() {
       const noEx = []; for (let i = 0; i < 30; i++) noEx.push(motivateLine('during', true));
       o.noExFam = noEx.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
       reset();
+      const setOf = tbl => f => new Set(tbl[f]);
+      const inAny = (tbl, l) => Object.keys(tbl).some(f => new Set(tbl[f]).has(l));
       const rest = []; for (let i = 0; i < 30; i++) rest.push(motivateLine('rest', true, 'pushup'));
-      o.restFam = rest.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
+      o.restFam = rest.filter(l => new Set(FAMILY_REST.push).has(l)).length;
+      o.restWrong = rest.filter(l => inAny(FAMILY_REST, l) && !new Set(FAMILY_REST.push).has(l)).length;
+      reset();
+      const restNo = []; for (let i = 0; i < 30; i++) restNo.push(motivateLine('rest', true));
+      o.restFamNoEx = restNo.filter(l => inAny(FAMILY_REST, l)).length;
+      reset();
+      const start = []; for (let i = 0; i < 30; i++) start.push(motivateLine('start', true, 'pullup'));
+      o.startFam = start.filter(l => new Set(FAMILY_START.pull).has(l)).length;
+      o.startWrong = start.filter(l => inAny(FAMILY_START, l) && !new Set(FAMILY_START.pull).has(l)).length;
+      reset();
+      const dn = []; for (let i = 0; i < 30; i++) dn.push(motivateLine('done', true, 'pushup'));
+      o.doneFam = dn.filter(l => inAny(FAMILY_REST, l) || inAny(FAMILY_START, l) || inAny(FAMILY_LINES, l)).length;
+      o.betweenSizes = [].concat(Object.keys(FAMILY_REST).map(f => FAMILY_REST[f].length), Object.keys(FAMILY_START).map(f => FAMILY_START[f].length));
+      o.betweenLongest = Math.max.apply(null, [].concat(Object.keys(FAMILY_REST).map(f => Math.max.apply(null, FAMILY_REST[f].map(l => l.length))), Object.keys(FAMILY_START).map(f => Math.max.apply(null, FAMILY_START[f].map(l => l.length)))));
+      o.betweenDupes = (() => { const seen = {}; let d = 0; [FAMILY_REST, FAMILY_START].forEach(tb => Object.keys(tb).forEach(f => tb[f].forEach(l => { if (seen[l]) d++; seen[l] = 1; }))); return d; })();
+      /* Mid-set and rest lines for one movement must keep SEPARATE bags: they are
+         different sizes, and one shared key rebuilds the bag every time the two
+         alternate, so a line repeats before the pool is spent. Interleave them. */
+      o.fullPasses = 0;
+      for (let trial = 0; trial < 6; trial++) {
+        reset();
+        const seenRest = [];
+        for (let i = 0; i < 40 && seenRest.length < FAMILY_REST.push.length; i++) {
+          motivateLine('during', true, 'pushup');
+          const l = motivateLine('rest', true, 'pushup');
+          if (new Set(FAMILY_REST.push).has(l)) seenRest.push(l);
+        }
+        if (seenRest.length === FAMILY_REST.push.length && new Set(seenRest).size === seenRest.length) o.fullPasses++;
+      }
+      o.sameFamilies = JSON.stringify(Object.keys(FAMILY_REST)) === JSON.stringify(Object.keys(FAMILY_LINES)) && JSON.stringify(Object.keys(FAMILY_START)) === JSON.stringify(Object.keys(FAMILY_LINES));
       reset();
       const unk = []; for (let i = 0; i < 30; i++) unk.push(motivateLine('during', true, 'constructor'));
       o.unkFam = unk.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
@@ -2781,11 +2812,17 @@ export default async function run() {
     t.ok('one draw in three is about a push-up when a push-up is on', r.pushHits === 10, r);
     t.eq('and none of them borrow another movement\'s lines', r.otherFamHits, 0, r);
     t.eq('FLOOR: with no movement named, no movement line is ever spoken', r.noExFam, 0, r);
-    t.eq('FLOOR: only "during" lines are movement-aware, rest never is', r.restFam, 0, r);
+    t.eq('FLOOR: a rest line with no movement named is never a movement line', r.restFamNoEx, 0, r);
+    t.eq('FLOOR: a finish line is never movement-aware', r.doneFam, 0, r);
+    t.ok('rest lines about the movement just done: one in three', r.restFam === 10 && r.restWrong === 0, r);
+    t.ok('start lines about the movement coming up: one in three', r.startFam === 10 && r.startWrong === 0, r);
+    t.eq('interleaved with mid-set lines, the rest lines still deal a full pass before any repeat', r.fullPasses, 6, r);
+    t.ok('GUARD: every rest and start family has real lines, none cut off', r.betweenSizes.every(n => n >= 3) && r.betweenLongest <= 70 && r.betweenDupes === 0, r);
     t.eq('FLOOR: an unknown movement gets none', r.unkFam, 0, r);
     t.ok('a timed hold given as an object draws hold lines', r.holdHits === 10, r);
     t.ok('GUARD: every family has real lines and none is long enough to be cut off', r.sizes.every(n => n >= 7) && r.longest <= 80, r);
     t.eq('no line is written twice across the families', r.dupes, 0, r);
+    t.ok('LOCKSTEP: rest and start cover exactly the families the mid-set lines do', r.sameFamilies, r);
   }
 
   /* The five places that speak a 'during' line while a movement is on must say
@@ -2802,6 +2839,8 @@ export default async function run() {
     t.eq('HIIT work passes its movement', (stripped.match(/motivateLine\('during',false,ex\)\s*;\s*\n\s*plSay\('Work! '/g) || []).length, 1);
     t.eq('the rep cadence passes its movement', (stripped.match(/n===half\)\?motivateLine\('during',false,ex\)/g) || []).length, 1);
     t.eq('both holds pass theirs', (stripped.match(/plHype\('during',null,(plCur\(\)\.exId|ex)\)/g) || []).length, 2);
+    t.eq('both rest hand-offs pass the movement just done', (stripped.match(/motivate\('rest',false,m\.exId\)/g) || []).length, 2);
+    t.eq('the get-ready passes the movement coming up', (stripped.match(/motivate\('start',false,ex\)/g) || []).length, 1);
     t.eq('and no bare during-hype is left in a movement tick', (stripped.match(/plHype\('during'\)/g) || []).length, 0);
   }
 
