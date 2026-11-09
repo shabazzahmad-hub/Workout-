@@ -1019,7 +1019,7 @@ export default async function run() {
         STATE.logs = {}; STATE.quickLog = {}; STATE.restDays = {};
         delete STATE._remindedOn;
         STATE.progressPtr = 3;
-        STATE.settings.reminderOn = true; STATE.settings.reminderTime = '00:01';
+        STATE.settings.reminderOn = true; STATE.settings.reminderTime = '00:00';   // always already past: 00:01 made this check fail for the first minute of every UTC day
         STATE.settings.weeklyOn = false;           // isolate the training reminder
         STATE.profile.days = [0, 1, 2, 3, 4, 5, 6];
         setup();
