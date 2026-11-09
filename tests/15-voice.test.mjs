@@ -2031,7 +2031,18 @@ export default async function run() {
       out.draws = 39;
       STATE.settings.coach = 'drill';
       const seen = {};
-      for (let i = 0; i < 39; i++) { const l = motivateLine('during', true); seen[l] = (seen[l] || 0) + 1; }
+      /* v536: every OTHER draw comes from the shared pool (all coaches + ELITE), so
+         the coach's own bag is dealt on draws 1,3,5... Reset the alternation counter
+         and bags first so the run is the same every time. */
+      for (const k in _mixN) delete _mixN[k];
+      Object.keys(_bags).forEach(k => { if (k.indexOf('line|') === 0) delete _bags[k]; });
+      const ownHeard = {};
+      for (let i = 0; i < 39; i++) {
+        const l = motivateLine('during', true); seen[l] = (seen[l] || 0) + 1;
+        if (i % 2 === 0 && i < 28) ownHeard[l] = 1;   // the first 14 own-pool draws
+      }
+      out.ownFullPass = Object.keys(ownHeard).length;
+      out.sharedPool = sharedPool('during').length;
       const c = Object.values(seen);
       out.distinct = c.length; out.mostHeard = Math.max.apply(null, c);
       /* THE KEY CARRIES THE PERSONA. Keyed by kind alone, a bag dealt for one
@@ -2051,8 +2062,9 @@ export default async function run() {
         for (let i = 0; i < 7; i++) motivateLine('during', true);   // part-spend one bag
         STATE.settings.coach = q.id;
         const s2 = {};
-        for (let i = 0; i < q.during.length; i++) s2[motivateLine('during', true)] = 1;
-        if (Object.keys(s2).length === q.during.length) full++;
+        /* Twice the pool: half the draws are the shared pool's, half are this coach's own. */
+        for (let i = 0; i < q.during.length * 2; i++) s2[motivateLine('during', true)] = 1;
+        if (q.during.every(l => s2[l])) full++;
       }
       out.fullPasses = full;
       /* The seam guard, exercised DIRECTLY. Over one boundary a missing guard
@@ -2088,9 +2100,11 @@ export default async function run() {
     });
     t.ok('GUARD: a session really draws more lines than the pool holds',
       r.pool > 1 && r.draws > r.pool, JSON.stringify(r));
-    t.eq('every line in the pool is heard once a session', r.distinct, r.pool);
-    t.ok('and no line is heard more than its fair share',
-      r.mostHeard <= Math.ceil(r.draws / r.pool), JSON.stringify(r));
+    t.eq('the coach\'s own bag still deals its whole pool, once, on its own draws', r.ownFullPass, r.pool);
+    t.ok('v536: one session now hears far more than one coach\'s pool', r.distinct > r.pool * 2, JSON.stringify(r));
+    t.ok('v536: the shared pool is bigger than any one coach\'s', r.sharedPool > r.pool * 5, JSON.stringify(r));
+    /* 20 own draws over 14 lines = at most 2 each, plus one shared draw landing on the same line. */
+    t.ok('and no line is heard more than three times in 39 draws', r.mostHeard <= 3, JSON.stringify(r));
     t.ok('GUARD: the second coach\'s pool is the same size, so a shared bag is reused rather than rebuilt',
       r.otherPool === r.pool, JSON.stringify(r));
     t.eq('a second coach gets a full pass of its OWN pool, every time',
@@ -2717,6 +2731,78 @@ export default async function run() {
     t.eq('the morning brief carries its voice language too', r.brief && r.brief.lang, 'en-GB', r);
     t.eq('FLOOR: with no voice the line is still English', r.noVoiceLang, 'en-US', r);
     t.eq('FLOOR: a voice with no language falls back to English', r.noLangLang, 'en-US', r);
+  }
+
+
+  /* ---- MOVEMENT-AWARE COACHING (v537) ------------------------------------
+     The shared pool cannot tell a push-up from a plank. FAMILY_LINES are about
+     the movement itself and are drawn for 'during' lines only, one draw in
+     three, when the caller knows which movement is on. */
+  {
+    const r = await page.evaluate(() => {
+      const o = {};
+      const map = { pushup: 'push', dips: 'push', dbpress: 'push', pullup: 'pull', invertedrow: 'pull',
+        squat: 'legs', kbgoblet: 'legs', plank: 'hold', wallsit: 'hold', deadhang: 'hold',
+        crunch: 'core', legraise: 'core', mountainclimber: 'cardio', burpee: 'cardio', steadyrun: 'cardio', kbswing: 'load' };
+      o.map = {};
+      for (const k in map) o.map[k] = exFamily(k);
+      o.mapWrong = Object.keys(map).filter(k => o.map[k] !== map[k]);
+      o.unknown = [exFamily('constructor'), exFamily('nope'), exFamily(null), exFamily({}), exFamily(42)];
+      o.byObject = exFamily(EX.pushup);
+      // draws
+      const reset = () => { for (const k in _mixN) delete _mixN[k]; Object.keys(_bags).forEach(k => { if (k.indexOf('line|') === 0) delete _bags[k]; }); };
+      const all = id => new Set(FAMILY_LINES[id]);
+      STATE.settings.coach = 'drill';
+      reset();
+      const withEx = []; for (let i = 0; i < 30; i++) withEx.push(motivateLine('during', true, 'pushup'));
+      o.pushHits = withEx.filter(l => all('push').has(l)).length;
+      o.otherFamHits = withEx.filter(l => all('hold').has(l) || all('pull').has(l) || all('cardio').has(l)).length;
+      reset();
+      const noEx = []; for (let i = 0; i < 30; i++) noEx.push(motivateLine('during', true));
+      o.noExFam = noEx.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
+      reset();
+      const rest = []; for (let i = 0; i < 30; i++) rest.push(motivateLine('rest', true, 'pushup'));
+      o.restFam = rest.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
+      reset();
+      const unk = []; for (let i = 0; i < 30; i++) unk.push(motivateLine('during', true, 'constructor'));
+      o.unkFam = unk.filter(l => Object.keys(FAMILY_LINES).some(f => all(f).has(l))).length;
+      reset();
+      const hold = []; for (let i = 0; i < 30; i++) hold.push(motivateLine('during', true, EX.plank));
+      o.holdHits = hold.filter(l => all('hold').has(l)).length;
+      o.perThree = o.pushHits;
+      o.sizes = Object.keys(FAMILY_LINES).map(f => FAMILY_LINES[f].length);
+      o.longest = Math.max.apply(null, Object.keys(FAMILY_LINES).map(f => Math.max.apply(null, FAMILY_LINES[f].map(l => l.length))));
+      o.dupes = (() => { const seen = {}; let d = 0; Object.keys(FAMILY_LINES).forEach(f => FAMILY_LINES[f].forEach(l => { if (seen[l]) d++; seen[l] = 1; })); return d; })();
+      return o;
+    });
+    t.eq('movements fall in the right family', r.mapWrong, [], r);
+    t.eq('GUARD: an inherited key, a missing id, null, {} and 42 are no family', r.unknown.filter(Boolean), [], r);
+    t.eq('an EX object resolves as well as its key', r.byObject, 'push', r);
+    t.ok('one draw in three is about a push-up when a push-up is on', r.pushHits === 10, r);
+    t.eq('and none of them borrow another movement\'s lines', r.otherFamHits, 0, r);
+    t.eq('FLOOR: with no movement named, no movement line is ever spoken', r.noExFam, 0, r);
+    t.eq('FLOOR: only "during" lines are movement-aware, rest never is', r.restFam, 0, r);
+    t.eq('FLOOR: an unknown movement gets none', r.unkFam, 0, r);
+    t.ok('a timed hold given as an object draws hold lines', r.holdHits === 10, r);
+    t.ok('GUARD: every family has real lines and none is long enough to be cut off', r.sizes.every(n => n >= 7) && r.longest <= 80, r);
+    t.eq('no line is written twice across the families', r.dupes, 0, r);
+  }
+
+  /* The five places that speak a 'during' line while a movement is on must say
+     WHICH movement, or the family lines never reach the athlete. A source
+     assertion, because reverting one is byte-identical on every screen. */
+  {
+    const src = await page.evaluate(() => {
+      const scripts = [...document.querySelectorAll('script:not([src])')].sort((a, b) => b.textContent.length - a.textContent.length);
+      return scripts[0].textContent;
+    });
+    const stripped = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    t.ok('GUARD: read the app, not a stub', stripped.length > 500000);
+    t.eq('the rep set passes its movement', (stripped.match(/motivateLine\('during',false,m\.exId\)/g) || []).length, 1);
+    t.eq('HIIT work passes its movement', (stripped.match(/motivateLine\('during',false,ex\)\s*;\s*\n\s*plSay\('Work! '/g) || []).length, 1);
+    t.eq('the rep cadence passes its movement', (stripped.match(/n===half\)\?motivateLine\('during',false,ex\)/g) || []).length, 1);
+    t.eq('both holds pass theirs', (stripped.match(/plHype\('during',null,(plCur\(\)\.exId|ex)\)/g) || []).length, 2);
+    t.eq('and no bare during-hype is left in a movement tick', (stripped.match(/plHype\('during'\)/g) || []).length, 0);
   }
 
   srv.close();

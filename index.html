@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='535';
+const APP_VERSION='537';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -8936,7 +8936,7 @@ function plTickHold(){
     const pick=Math.floor(el/8)%3;
     if(pick===1){plSay(plNextCue());}
     else if(pick===2){plSay('Inhale slow… and exhale.');plS('#plSub','BREATHE');setTimeout(()=>{if(PLAYER&&PLAYER.phase==='work')plS('#plSub','HOLD');},2200);}
-    else plHype('during');
+    else plHype('during',null,plCur().exId);
   }
 }
 // Tempo rep engine: eccentric ("lower…") then concentric ("up!") — 100ms ticks.
@@ -8963,7 +8963,7 @@ function plTickRep(){
     const swap=(PLAYER.repN===half&&sideSwitch(m.exId)&&m.target>1);
     const extra=swap?switchLine(EX[m.exId])
       :((PLAYER.repN>1&&PLAYER.repN%4===0&&PLAYER.repN<m.target)?plNextCue()
-      :((m.target>=8&&PLAYER.repN===half)?(motivateLine('during')||''):''));
+      :((m.target>=8&&PLAYER.repN===half)?(motivateLine('during',false,m.exId)||''):''));
     plSay(extra?(num+'. '+extra):num);
     if(swap){beep(660,.12,0.8);setTimeout(()=>beep(880,.12,0.8),140);haptic(30);plS('#plCoach',switchLine(EX[m.exId]));}
   }
@@ -11080,7 +11080,7 @@ function ivStep(idx){
      and the same fix: the name goes first in ONE utterance so the next line's
      synth.cancel() can only clip the coaching. */
   if(isWork){beepDuck(300);beep(1320,.16,0.95);
-    const h=motivateLine('during');
+    const h=motivateLine('during',false,ex);
     plSay('Work! '+ex.name+(h?'. '+h:''));}
   else plSay('Rest.');
   if(INTV.running)INTV.tid=setInterval(ivTick,1000);
@@ -13703,6 +13703,438 @@ const COACHES=[
    rest:["Breathe. Restore your center.","Sheathe the blade. Recover.","Well trained. Reset.","Still the mind. Recover.","Honor the rest. Continue soon."],
    done:["Trained with honor. Well done.","Discipline shown. Respect.","The way continues. Great work.","Mind and body as one. Done.","A true student. Well done."]},
 ];
+/* ============================ SHARED COACHING CORPUS (v536) ============================
+   Reported: the phone only has about five usable voices, and they kept saying the
+   same few things. Each of the 38 coaches carried five lines per kind, and a
+   coach's lines were only ever spoken by that coach, so on a five-voice phone the
+   athlete heard the same small pool through five mouths.
+
+   Two changes, both here:
+   1. EVERY coach line now sits in one shared pool per kind, and every voice draws
+      from it. Nothing the 38 coaches already said was removed.
+   2. ELITE below adds lines written the way the best military instructors, special
+      operations cadre and Olympic strength coaches actually coach: short, specific,
+      calm under load, standards first. It is data only. No code reads it by name.
+
+   THE SAFETY RULE STILL HOLDS. These lines coach effort, form, breath and standard.
+   They never use pain or a symptom as the thing to push through, and none argues
+   against stopping: `npm run check` scans every double-quoted string here. */
+const ELITE={
+  start:[
+    "Mission on. The standard is the standard. Begin.",
+    "Eyes up, jaw set. This one is yours. Go.",
+    "No speeches. Execute. Go.",
+    "You showed up alone, so own every second. Begin.",
+    "Nobody is coming to do it for you. Start.",
+    "Three, two, one. Hit it clean. Go.",
+    "The first rep sets the tone for the whole set. Go.",
+    "Brace your core. Lock your posture. Move.",
+    "Today is a deposit. Make it a big one. Go.",
+    "Check your form, then attack it. Begin.",
+    "Operators train when nobody is watching. This is that moment. Go.",
+    "Calm breath, hard effort. Start now.",
+    "Discipline does not wait for motivation. Move.",
+    "This is your hour. Take it. Go.",
+    "Own the first ten seconds and you own the set. Go.",
+    "Quiet mind, loud effort. Begin.",
+    "Clean reps only. Show me the standard. Go.",
+    "Nobody checks this but you. Hold the standard. Go.",
+    "Load the spring. Fire on my mark. Go.",
+    "Hands steady, mind steady. Execute.",
+    "Earn the rest. Begin.",
+    "Fresh and sharp. Attack it. Go.",
+    "Go like the mission depends on it. Go.",
+    "Strong posture, strong start. Move.",
+    "Head in the game. The clock starts now.",
+    "Slow mind, fast body. Go.",
+    "No wasted motion. No wasted second. Go.",
+    "Today you outwork yesterday. Begin.",
+    "The work is waiting. Step up. Go.",
+    "Controlled and hard. Both at once. Begin.",
+    "Every great unit is built one set at a time. This is yours. Go.",
+    "Shoulders down, ribs down, eyes forward. Go.",
+    "You decided this morning. Now deliver. Go.",
+    "Own it from the first count. Begin.",
+    "Be the person who finishes. Start.",
+    "Set your feet. Set your jaw. Set the pace.",
+    "Make your future self proud of this set. Go.",
+    "The easy version of you stays home. The real one starts now.",
+    "Precision first, then power. Begin.",
+    "Time to work. Execute."
+  ],
+  during:[
+    "Form is the first thing you protect. Keep it clean.",
+    "Breathe out on the effort. Stay in control.",
+    "This rep, then the next. Nothing else exists.",
+    "Strong spine. Tight core. Keep moving.",
+    "You are building something nobody can take from you.",
+    "Discipline is doing it when you do not feel like it. Keep going.",
+    "Stay sharp. Every rep has to count.",
+    "Do not rush it. Smooth is strong. Smooth is fast.",
+    "Slow down the bad reps and speed up the good ones.",
+    "Your mind quits first. Your body has more. Keep going.",
+    "That is what a trained body does. Keep it coming.",
+    "Hold your standard. The standard does not get tired.",
+    "Every rep is a vote for who you are becoming.",
+    "Steady rhythm. Steady breathing. Keep your shape.",
+    "Eyes on the rep in front of you.",
+    "Be present. One rep. Now the next.",
+    "Rank is earned in moments like this one.",
+    "You do not rise to the occasion. You fall to your training.",
+    "This is the part most people skip. Not you.",
+    "Chest proud. Core locked. Keep driving.",
+    "Make the last rep look like the first.",
+    "Own the movement. Do not let it own you.",
+    "Strength is built in the middle of the set. Stay here.",
+    "Another clean one. Stack them up.",
+    "Quality over speed. Quality over everything.",
+    "Brace. Breathe. Repeat.",
+    "Nobody gave you this fitness. You are earning it right now.",
+    "Control the way down as hard as you drive the way up.",
+    "Tension everywhere it belongs. Relax everything that does not.",
+    "Keep your head level and your breathing level.",
+    "Good. Now do it again, exactly the same.",
+    "You are tougher than the voice telling you otherwise.",
+    "Stay in the fight. This set is almost a memory.",
+    "Execute. Reset. Execute.",
+    "Short, sharp breaths out. Strong, steady frame.",
+    "Respect the movement and it respects you back.",
+    "You came for work. This is the work.",
+    "Crisp and controlled. That is the mark of a professional.",
+    "Do the ordinary things extraordinarily well.",
+    "Consistency beats intensity. Show up like this every day.",
+    "Think of the person who will thank you for this.",
+    "Hard is where the growth is. Stay here.",
+    "Lock in. Distraction is the enemy.",
+    "Feel the target muscles working. Stay on them.",
+    "Do not count the reps. Make the reps count.",
+    "Posture is not optional. Fix it and keep going.",
+    "Every second under tension is progress.",
+    "Remember why you started. Now earn it.",
+    "You are not tired. You are in training.",
+    "Your discipline is your edge. Use it.",
+    "Calm on the outside. Fierce on the inside.",
+    "Smooth in, smooth out. Own the tempo.",
+    "No rushing and no drifting. Be exact.",
+    "Strong people are made in sets like this one.",
+    "This is the quiet work that wins the loud days.",
+    "You can do hard things. You are doing one now.",
+    "Reset your shoulders. Reset your breath. Go again.",
+    "Every rep you finish, you can never un-finish.",
+    "Your future self is watching this set. Do right by them.",
+    "Be tactical. Breathe low. Move with purpose.",
+    "Stand tall in the effort. Stay tall in the mind.",
+    "You trained for this exact moment. Trust it.",
+    "Feel that? That is the work being done. Keep your form.",
+    "Reps are earned, not given. Earn this one.",
+    "Own your pace. Own your breath. Own the set.",
+    "No drama. Just work.",
+    "Find your rhythm and hold it like a metronome.",
+    "Tight, tidy and relentless. That is the whole job.",
+    "Mindset first. The body follows.",
+    "Win this rep. That is all you have to do.",
+    "Strong where it matters, loose where it does not.",
+    "The only person you answer to is you. Answer well.",
+    "Keep the pressure on. Not frantic. Constant.",
+    "Elite is a habit. You are building the habit.",
+    "Focus. Feet. Core. Breath.",
+    "Hard on yourself now, easy on yourself later.",
+    "Legends are built on the days nobody applauds.",
+    "Stay humble in the form, hungry in the effort.",
+    "Hold the line. Hold your form. Hold your head up.",
+    "That is how a soldier is built. One honest set after another.",
+    "Be where your feet are. Right here. Right now.",
+    "You will never regret finishing strong.",
+    "Make the set pay. Squeeze every rep for all it is worth.",
+    "Pressure makes diamonds. Keep the pressure on.",
+    "Every operator started exactly where you are.",
+    "Set your jaw. Soften your hands. Drive.",
+    "Trust the process. Trust the work.",
+    "Nobody remembers the easy sets. Make this one count.",
+    "Keep your standards higher than your excuses.",
+    "Stay locked in. You are doing better than you think.",
+    "Breathe. Brace. Beast mode, but with perfect form.",
+    "Hold a tall, strong frame. Do not let it fold.",
+    "Be a professional about it. Repeat the clean rep.",
+    "Move with intent. Every rep has a purpose.",
+    "Great form, great effort. That is the whole recipe.",
+    "A warrior is made in repetition. Repeat.",
+    "Your effort today decides your confidence tomorrow.",
+    "Strong is a decision. Decide again, right now.",
+    "Pace yourself like a marathoner and strike like a sniper.",
+    "Stay hungry and stay precise. Both.",
+    "The work does not care how you feel. Do it anyway, with good form.",
+    "Mental toughness is a muscle. You are training it now.",
+    "Just one more clean rep. Then one more.",
+    "Squeeze, hold, release. Control every inch.",
+    "Gritty, not sloppy. Gritty and precise.",
+    "That is the discipline. It looks good on you.",
+    "Be proud of the work. Be hungry for more."
+  ],
+  push:[
+    "Final stretch. Everything you have left, now.",
+    "This is the part that counts. Go.",
+    "Empty the tank with clean form. Go.",
+    "You are closer to done than to starting. Finish it.",
+    "The last reps decide who you are. Choose well.",
+    "Dig in. Hold the shape. Finish strong.",
+    "Drive. Drive. Drive. Finish it.",
+    "Now is the moment. Show up for it.",
+    "This is where champions separate. Stay with it.",
+    "Big breath. Big effort. Close it out.",
+    "Leave nothing on the floor. Finish.",
+    "You have more than you think. Prove it.",
+    "Stay tight, finish tall, finish proud.",
+    "Last push. Make it your best.",
+    "Own the finish. Own the whole set.",
+    "Finish like a professional. Clean and strong.",
+    "You wanted the hard way. Here it is. Take it.",
+    "A few seconds of focus and it is done. Focus.",
+    "Raise the effort. Keep the form. Go.",
+    "Hit the line at full speed. Go.",
+    "This is the part you will remember. Make it a good memory.",
+    "Do not coast. Close.",
+    "Everything you have, right now.",
+    "Strong to the end. Strong to the end.",
+    "Finish what you started. Now.",
+    "You trained for exactly this stretch. Use it.",
+    "Squeeze out the last of it. Be proud of it.",
+    "The finish line does not come to you. Take it.",
+    "Final seconds. Full effort. Go.",
+    "Blast through it. Stay in control. Finish.",
+    "Hold your shape and hit the gas.",
+    "Win the end of the set. Win the day.",
+    "Burn it down. Clean form, full effort.",
+    "Now we find out what you are made of. Go.",
+    "Tight and fast. Finish strong.",
+    "One more surge. Give it everything.",
+    "Be relentless. Be precise. Be done.",
+    "Keep your head high and your form higher. Finish.",
+    "Close it out. No excuses. Go.",
+    "Breathe, drive, finish."
+  ],
+  rest:[
+    "Recover on purpose. Nose in, slow breath out.",
+    "Walk it off. Heart rate down, mind sharp.",
+    "Shake out the arms and legs. Stay loose.",
+    "Good work. Breathe. The next set is coming.",
+    "Tall posture. Slow breathing. Reset.",
+    "Rest is part of the work. Use it well.",
+    "Take a sip of water and stay in the zone.",
+    "Let the breathing settle. Visualise the next set done clean.",
+    "Recovery is where you get stronger. Recover hard.",
+    "Stay warm, stay ready. We go again soon.",
+    "Loosen the grip, lower the shoulders, breathe deep.",
+    "Check your form in your head. Fix one thing for next time.",
+    "You earned this break. Do not waste it scrolling.",
+    "In for four, out for six. Slow it down.",
+    "Stay on your feet if you can. Keep the engine warm.",
+    "Reset your mind. Clear slate. Next set is new.",
+    "Good set. Let it go. Focus on the next one.",
+    "Hydrate. Breathe. Sharpen your focus.",
+    "Calm heart, clear head. That is what recovery looks like.",
+    "Stay switched on. The next set will not wait.",
+    "Roll your shoulders. Let the tension out.",
+    "Relax the face and the hands. Recover everything.",
+    "Breathe like a pro. Long and low.",
+    "Walk tall. Hands on hips if you need to. Breathe.",
+    "Use this time to get ready, not to get comfortable.",
+    "Short break, long game. Stay focused.",
+    "Think about the next move and how clean you will make it.",
+    "Rest hard, then work harder.",
+    "You are building a stronger engine. Let it cool for a moment.",
+    "Take a breath. You are doing this.",
+    "Stay hydrated. Stay humble. Stay ready.",
+    "Mind steady. The next set is yours.",
+    "Eyes on the next target. Breathe until it comes.",
+    "Let the heart rate come down. Let the resolve go up.",
+    "Quick reset, then back to work.",
+    "Rest well. Soon we strike again.",
+    "Slow the breathing. Speed up the thinking.",
+    "Shake it out. Stand tall. Almost time.",
+    "Controlled breathing is a weapon. Practise it now.",
+    "Recover fast. The best recover fastest."
+  ],
+  done:[
+    "Mission complete. That is how it is done.",
+    "Outstanding work. You kept the promise you made to yourself.",
+    "Set done. Standard met. Well done.",
+    "That is another one in the bank.",
+    "Proud of that effort. Stack it with tomorrow.",
+    "Clean work, soldier. Get your breath back.",
+    "You did not just finish that. You owned it.",
+    "That is discipline in action. Respect.",
+    "Good. Very good. Reset and get ready.",
+    "You are stronger than you were five minutes ago.",
+    "That is what showing up looks like.",
+    "Excellent. Hold on to that feeling and chase it again.",
+    "Earned, not given. Take a moment to feel it.",
+    "A strong set from a strong person.",
+    "Smart, strong and finished. Well done.",
+    "You did the work. Nobody can take that away.",
+    "That was a professional set. Take the win.",
+    "Another brick in the wall. Keep building.",
+    "Textbook. Breathe and reset.",
+    "Done, and done right. Good work.",
+    "That is how winners train. Nicely done.",
+    "Rock solid. That one goes in the record.",
+    "You asked yourself for more and you delivered.",
+    "Hooah. That set is yours.",
+    "Respect the effort. You gave it everything.",
+    "Standards met. On to the next objective.",
+    "Strong finish. Strong person.",
+    "You showed up and you did the job.",
+    "Well executed. That is real progress.",
+    "That is a win. Log it and keep moving.",
+    "Excellent form. Excellent effort. Excellent work.",
+    "The work is never wasted. That counts.",
+    "Done. Breathe. Be proud.",
+    "Another day, another standard met.",
+    "Tough, honest work. Good.",
+    "You are building the person you want to be.",
+    "Locked in, delivered. Great job.",
+    "That is the difference between wanting it and doing it. You did it.",
+    "Quiet pride. Big result.",
+    "Sharp work. Now recover like you mean it."
+  ]
+};
+/* ONE POOL PER KIND, ONE BAG PER POOL. sharedPool() is every coach's lines for the
+   kind plus ELITE's, case-insensitively de-duplicated, built once. Because it is the
+   union, removing or renaming a coach cannot silently shrink what the others say.
+   _lineKind remembers which kind a line belongs to, so the delivery can fit the
+   line (a push line is faster, a rest line is slower) without every caller
+   having to pass the kind down to the speaker. */
+const _lineKind=Object.create(null);
+const _sharedCache={};
+function sharedPool(kind){
+  const k=ELITE[kind]?kind:'during';
+  const c=_sharedCache[k];
+  if(c&&c.n===COACHES.length)return c.lines;
+  const seen=Object.create(null),out=[];
+  const add=s=>{
+    const t=String(s||'').trim();if(!t)return;
+    const key=t.toLowerCase();if(seen[key])return;
+    seen[key]=1;out.push(t);_lineKind[t]=k;
+  };
+  (ELITE[k]||[]).forEach(add);
+  COACHES.forEach(p=>{(p&&p[k]||[]).forEach(add);});
+  _sharedCache[k]={n:COACHES.length,lines:out};
+  return out;
+}
+/* MOVEMENT-AWARE COACHING (v537). The shared pool is generic: it cannot tell a
+   push-up from a plank or a run, so it never says anything about the thing the
+   athlete is actually doing. FAMILY_LINES are about the movement itself, in the
+   voice of an instructor who watches form: where the elbows go, what the ribs do,
+   when to breathe. They are drawn for 'during' lines only, one draw in three, and
+   only when the caller knows which movement is on. Same safety rule as the rest:
+   effort, form, breath and standard, never a symptom to push through. */
+const FAMILY_LINES={
+  push:[
+    "Elbows in, ribs down. Press the floor away.",
+    "Chest low, then own the lockout.",
+    "One straight line, head to heels. No sagging.",
+    "Squeeze the glutes. Make it a plank that moves.",
+    "Shoulders packed, away from your ears.",
+    "Breathe out as you press. In on the way down.",
+    "Full range every rep. Low at the bottom, locked at the top.",
+    "Spread the fingers. Press through the whole hand.",
+    "Brace like the floor is going to move. It will not.",
+    "Pressing strength is built by pressing clean. Again.",
+    "Lock it out. Finish the rep before you start the next."
+  ],
+  pull:[
+    "Lead with the elbows, not the hands.",
+    "Shoulder blades down and together. Then pull.",
+    "Chest to the bar. Not chin, chest.",
+    "Control the way down. The lowering builds the back.",
+    "No swinging. Dead stop, then pull.",
+    "Squeeze at the top for one full count.",
+    "Hands are hooks. The back does the work.",
+    "Full hang, full pull, every rep.",
+    "Grip tight, ribs down, legs quiet.",
+    "Own the bottom of the rep as well as the top."
+  ],
+  legs:[
+    "Knees track over the toes. Drive through the whole foot.",
+    "Chest up. Sit between the hips.",
+    "Depth first, then speed.",
+    "Push the floor away.",
+    "Heels down, spine tall.",
+    "Legs are the engine. Fire them.",
+    "Control the way down. The drive up is the easy part.",
+    "Squeeze the glutes at the top of every rep.",
+    "Strong legs carry a heavy pack a long way.",
+    "Knees stay out. Do not let them collapse in."
+  ],
+  core:[
+    "Ribs down. Pull the navel to the spine.",
+    "Breathe out through the hardest part.",
+    "The core braces first. The limbs move second.",
+    "Low back stays glued to the floor.",
+    "No momentum. Slow is hard, and hard is the point.",
+    "Tight torso, calm face.",
+    "A strong midsection protects the spine under load.",
+    "Hold the line. Do not let the hips drift."
+  ],
+  cardio:[
+    "Light on the feet. Quick and quiet.",
+    "Breathe in rhythm. In for two, out for two.",
+    "Arms drive the legs. Pump them.",
+    "Stay tall. Do not fold forward.",
+    "This is the engine you carry into the field.",
+    "Pace it so you can finish it.",
+    "Relaxed shoulders, relaxed hands, fast feet.",
+    "Land soft. Every step should be a whisper."
+  ],
+  hold:[
+    "Breathe. Holding your breath ends the hold early.",
+    "Squeeze everything that is not moving.",
+    "Count your breaths, not the seconds.",
+    "Tension is the exercise. Stay in it.",
+    "Eyes on one spot. Quiet the mind.",
+    "If the position drifts, fix it, then carry on.",
+    "Time under tension builds the toughness you came for.",
+    "Stay long. Reach through the crown of your head."
+  ],
+  load:[
+    "Brace before every rep. Tight trunk, tall chest.",
+    "Hips drive it, arms just steer.",
+    "Control the weight. Never let it control you.",
+    "Heavy is a skill. Stay patient.",
+    "Grip it hard and the whole body follows.",
+    "Reset the grip, reset the breath, go again.",
+    "Own the weight on the way down as well."
+  ]
+};
+const _famKeyCache=new Map();
+/* Which family does this movement belong to? Accepts an EX key or an EX object.
+   The region field is not reliable for this (push-ups and squats are both
+   'strength'), so it reads the pattern, then the name. The order is the rule:
+   cardio first, then static holds, then push / pull / legs / core, then loaded
+   work. An unknown movement returns '' and gets no movement line, which is
+   the same as before this existed. */
+function exFamily(x){
+  try{
+    let k='',e=null;
+    if(typeof x==='string'){k=x;e=exKnown(x)?EX[x]:null;}
+    else if(x&&typeof x==='object'){
+      e=x;
+      if(_famKeyCache.has(x))k=_famKeyCache.get(x);
+      else{k=Object.keys(EX).find(q=>EX[q]===x)||'';_famKeyCache.set(x,k);}
+    }
+    if(!e)return '';
+    const nm=(k+' '+(e.name||'')).toLowerCase();
+    const reg=e.region||'',unit=e.unit||'',pat=e.pattern||'';
+    if(reg==='cardio'||reg==='dynamic'||/\brun(ning)?\b|sprint|\bjacks?\b|burpee|\bskip(ping)?\b|\brope\b|\bbike\b|high ?knee|climber|shadow/.test(nm))return 'cardio';
+    if(unit==='time'&&reg!=='strength')return 'hold';
+    if(pat==='pushh'||pat==='pushv'||/push|dip|press|planche|handstand/.test(nm))return 'push';
+    if(pat==='pull'||/pull|\brow\b|\bchin|scap/.test(nm))return 'pull';
+    if(pat==='squat'||/squat|lunge|bridge|calf|step|thrust|pistol|bulgarian|rdl|deadlift|hip/.test(nm))return 'legs';
+    if(reg==='anterior'||reg==='oblique'||reg==='lower'||reg==='stability')return 'core';
+    if(/^(kb|db|mb|ruck|sbag|rope)/.test(k)||pat==='hinge')return 'load';
+    return '';
+  }catch(err){return '';}
+}
 /* The baseline battery gets ONE steady voice.
    Auto rolls a new coach at every timer start, so a ten-test battery met ten
    different personas during the single session where the athlete is holding
@@ -13787,7 +14219,9 @@ function _hypeDeviceSpeak(text,persona){
     const synth=speechSynthesis;synth.cancel();
     const u=new SpeechSynthesisUtterance(String(text||''));
     u.lang='en-US';u.volume=1;
-    u.rate=persona.rate||1;u.pitch=localPitchFor(persona);
+    const dl=deliveryFor(text);
+    u.rate=clamp((persona.rate||1)*dl.rate,0.7,1.35);
+    u.pitch=clamp(localPitchFor(persona)*dl.pitch,LOCAL_PITCH_FLOOR,LOCAL_PITCH_CEIL);
     useVoice(u,coachVoiceFor(persona));
     duckFor(u);synth.speak(u);return true;
   }catch(e){return false;}
@@ -14169,20 +14603,50 @@ function grindAtOpen(testId){
    the rep number has to survive the next rep's synth.cancel(). Returns '' when
    hype is off or the persona has nothing to say, which reads as falsy at every
    call site exactly as motivate()'s false did. */
-function motivateLine(kind,force){
+function motivateLine(kind,force,exArg){
   if(!force){
     if(STATE.settings.voice===false)return '';
     if(STATE.settings.hype===false)return '';
   }
   const p=currentPersona();const lines=p[kind]||p.during||[];
+  /* EVERY OTHER DRAW COMES FROM THE SHARED POOL (v536). The coach's own lines keep
+     the character; the shared pool (all 38 coaches plus ELITE) is what stops a
+     five-voice phone from hearing the same few phrases. Strict alternation rather
+     than a coin flip, so the mix is the same on every run and a test can pin it.
+     The first draw of a kind is the coach's own, so a coach always opens in
+     character. Each pool has its OWN bag, so neither starves the other. */
+  const shared=sharedPool(kind);
+  const n=_mixN[kind]=(_mixN[kind]||0)+1;
+  /* One draw in three is about THE MOVEMENT, when the caller knows which. */
+  if(kind==='during'&&exArg&&n%3===0){
+    const fam=exFamily(exArg),fl=fam?FAMILY_LINES[fam]:null;
+    if(fl&&fl.length){const fi=_bagNext('line|fam|'+fam,fl.length);return String(fl[fi>=0?fi:0]||'');}
+  }
+  if(shared.length&&(!lines.length||(n%2===0&&shared.length>lines.length))){
+    const j=_bagNext('line|*|'+(ELITE[kind]?kind:'during'),shared.length);
+    return String(shared[j>=0?j:0]||'');
+  }
   if(!lines.length)return '';
   /* Keyed by PERSONA and kind. Keyed by kind alone, a bag built for one coach
      would be dealt out against the next coach's pool the moment Auto rotates. */
   const i=_bagNext('line|'+((p&&p.id)||'?')+'|'+kind,lines.length);
   return String(lines[i>=0?i:0]||'');
 }
-function motivate(kind,force){
-  const line=motivateLine(kind,force);
+const _mixN={};
+/* DELIVERY FITS THE LINE. The same voice at the same speed for a start call, a
+   final-push shout and a rest cue is half of "they all sound the same". Only the
+   RATE moves, and only a little; pitch stays inside the floor localPitchFor()
+   holds, because that floor is what keeps deep coaches out of the buzz. */
+function deliveryFor(text){
+  const k=_lineKind[String(text||'').trim()];
+  if(k==='push')return {rate:1.08,pitch:1.04};
+  if(k==='start')return {rate:1.03,pitch:1.02};
+  if(k==='rest')return {rate:0.93,pitch:0.98};
+  if(k==='done')return {rate:0.95,pitch:1.0};
+  return {rate:1,pitch:1};
+}
+function motivate(kind,force,exArg){
+  const line=motivateLine(kind,force,exArg);
   if(!line)return false;
   try{if(typeof primeVoice==='function')primeVoice();}catch(e){}
   return hypeSpeak(line,currentPersona());
@@ -14399,8 +14863,8 @@ function plSay(text){
    it through coachSpeak() — hypeSpeak() is its own delivery (its own rate and
    emphasis), and flattening a persona's push line into the counting voice
    would quietly change what every coach sounds like at ten seconds. */
-function plHype(kind,fallback){
-  setTimeout(()=>{try{if(!motivate(kind)&&fallback)coachSpeak(fallback);}catch(e){}},0);
+function plHype(kind,fallback,exArg){
+  setTimeout(()=>{try{if(!motivate(kind,false,exArg)&&fallback)coachSpeak(fallback);}catch(e){}},0);
 }
 function countdownCue(remain,total){
   try{
@@ -14641,7 +15105,7 @@ function runTimer(mode,seconds,label,restAfter,onDone,quiet,ex,onAfterRest){
       }
       else if(remain===10&&total>16){plHype('push','Ten seconds. Hold strong.');}
       else if(!_grindSaid&&el===grindAt(total)){_grindSaid=true;const g=grindLine();if(g)plSay(g);}
-      else if(el>0&&el%10===0&&remain>4&&!nearGrind(el,total))plHype('during');   // periodic push through the hold
+      else if(el>0&&el%10===0&&remain>4&&!nearGrind(el,total))plHype('during',null,ex);   // periodic push through the hold
     }else{
       if(remain===10&&total>13)plSay('Ten seconds. Get ready.');
       else if(total>=24&&el===Math.round(total/2))plHype('rest');
@@ -14774,7 +15238,7 @@ function runRepCadence(reps,label,restAfter,onDone,ex,onAfterRest){
     /* The switch call OUTRANKS the hype, as it does in plTickRep(): a missed
        hype line costs nothing, a missed switch costs the whole other side. */
     const swap=(n===half&&ex&&ex.side==='switch'&&total>1);
-    const h=swap?switchLine(ex):((total>=8&&n===half)?motivateLine('during'):'');
+    const h=swap?switchLine(ex):((total>=8&&n===half)?motivateLine('during',false,ex):'');
     plSay(String(n)+(h?'. '+h:''));
     /* And on the GLASS, as the ▶ Hold timer (setPhase) and the player (#plCoach)
        both do: a phone on silent with the voice off hears neither the tones nor
