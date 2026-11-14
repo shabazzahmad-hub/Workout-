@@ -461,7 +461,7 @@
   .legend span{display:inline-flex;align-items:center;gap:5px}
   .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
   .cal{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-  .calday{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center;position:relative}
+  .calday{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center;position:relative;min-width:0;overflow-wrap:anywhere}
   .calday .wd{font-size:9.5px;color:var(--muted);font-weight:800;letter-spacing:.5px}
   .calday .ico{font-size:19px;margin:5px 0 3px}
   .calday .nm{font-size:10px;font-weight:800;line-height:1.15}
@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='538';
+const APP_VERSION='539';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -2737,6 +2737,11 @@ function rungIndex(ladder,cycle,week,level){
    Core Crusher, and Build muscle can't strip Metabolic HIIT of its conditioning. */
 const CORE_LADS=['plankL','hollowL','lowerL','dynL','sideL','rotL'];
 const CARDIO_LADS=['cardioAL','cardioBL','cardioFinL','finisherL','legPowerL','hiitFinL'];
+/* Hoisted in v539 so focusSlotPick() asks the SAME two protections goalSlots()
+   does. They were locals; a second copy in the focus pick is how a goal and a
+   focus area would come to disagree about which slot is the main lift. */
+const SLOT_FIRST_SWAPPABLE=2;
+const STRUCT_LADS=['hingeL','rowL','pullL','chestL','squatL','bicepL'];
 function goalSlots(session,pos){
   const slots=(session.slots||[]).slice();
   let goal='lose';try{goal=(STATE.profile&&STATE.profile.goal)||'lose';}catch(e){}
@@ -2756,7 +2761,7 @@ function goalSlots(session,pos){
      Leg Day, the pull on Pull Day. Replacing it turned the default 'lose' goal
      into a jumping-jack program wearing a strength-split label. A goal may shape
      accessory selection, rep ranges and rest; it may never delete the main lift. */
-  const FIRST_SWAPPABLE=2;
+  const FIRST_SWAPPABLE=SLOT_FIRST_SWAPPABLE;
   /* Protecting slots 0-1 was not enough. SESSIONS.push is
      ['pushL','rowL','hingeL','sideL'] — hingeL sits at index 2, and fullbody's
      rowL sits at index 2 — so the DEFAULT goal ('lose', and likewise 'shred' and
@@ -2764,7 +2769,7 @@ function goalSlots(session,pos){
      the release notes claimed Phase 1 had gained both. Conditioning ladders were
      already protected this way; the structural strength patterns need the same
      protection, or the goal quietly rewrites the split. */
-  const STRUCTURAL=['hingeL','rowL','pullL','chestL','squatL','bicepL'];   // bicepL was droppable, so 'lose' deleted the only pull on Pull Day
+  const STRUCTURAL=STRUCT_LADS;   // bicepL was droppable, so 'lose' deleted the only pull on Pull Day
   const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
   const isStruct=l=>STRUCTURAL.includes(l);
   const count=fn=>slots.filter(fn).length;
@@ -2783,6 +2788,131 @@ function goalSlots(session,pos){
   }
   if(at>=0&&repl&&LADDERS[repl]&&slots[at]!==repl)slots[at]=repl;
   return slots;
+}
+/* ---- THE #1 FOCUS AREA CHANGES ONE HELPER MOVE (v539) ----------------------
+   Reported: "when you change the area that you want to focus on ... the
+   exercises do not reflect any changes." Measured, and it was true in
+   substance: a focus area chose ONE bonus move, in 24 of the first 42
+   sessions, and the first session of the program showed no change at all for
+   any area. The athlete asked for the strong version.
+
+   So the #1 area also re-points ONE helper slot at a ladder of its own family.
+   It is a swap, never an addition, and it asks goalSlots()'s own protections:
+     - never slot 0 or 1 (the main work of the day)
+     - never a structural strength pattern, never a conditioning slot
+     - never the slot the GOAL has just re-pointed
+     - a core slot only while three or more remain; a strength slot only while
+       two or more remain
+   A session that already carries every ladder of the family is a focus day
+   already and is left alone.
+
+   ABS AND FULL BODY HAVE NO ENTRY, ON PURPOSE. The program trains the core in
+   every session and the direct-core volume is capped (see buildSession), so a
+   core focus gets its extra move and no second core slot. 'Full body' is the
+   program as written. */
+const FOCUS_LADDERS={chest:['chestL','pushL'],back:['rowL','pullL'],shoulders:['shoulderL'],arms:['tricepL','bicepL'],legs:['squatL','legL'],glutes:['hingeL']};
+function focusLadders(key){return Object.prototype.hasOwnProperty.call(FOCUS_LADDERS,key)?FOCUS_LADDERS[key]:null;}
+function focusSlotPick(session,slots,pos){
+  try{
+    const key=focusAreaKey(STATE.profile&&STATE.profile.focusPrimary);
+    const fam=key?focusLadders(key):null;
+    if(!fam||!Array.isArray(slots))return null;
+    const free=fam.filter(l=>LADDERS[l]&&!slots.includes(l));
+    if(!free.length)return null;
+    const orig=(session&&session.slots)||[];
+    const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
+    const count=fn=>slots.filter(fn).length;
+    let at=-1;
+    for(let i=slots.length-1;i>=SLOT_FIRST_SWAPPABLE;i--){
+      const l=slots[i];
+      if(l!==orig[i])continue;
+      if(isCardio(l)||STRUCT_LADS.includes(l)||fam.includes(l))continue;
+      if(isCore(l)?count(isCore)>=3:count(x=>!isCardio(x)&&!isCore(x))>=2){at=i;break;}
+    }
+    if(at<0)return null;
+    const day=(pos&&pos.dayInWeek)||0, cyc=(pos&&pos.cycle)||0;
+    return {at,ladder:free[(cyc*7+day)%free.length],key};
+  }catch(e){return null;}
+}
+/* Is this movement really of the focus family? distinct() can fall back to a
+   move of a RELATED region when a ladder is ruled out by a flagged joint or
+   missing kit, and a helper slot swapped for a filler is a slot lost for
+   nothing. Only a rung of the ladder, or a member of the area's own pool,
+   counts; anything else leaves the session exactly as it was. */
+function focusMember(key,ladder,exId){
+  if(!exId||!exKnown(exId))return false;
+  const pool=Object.prototype.hasOwnProperty.call(FOCUS_POOL,key)?FOCUS_POOL[key]:[];
+  return (LADDERS[ladder]||[]).includes(exId)||pool.includes(exId);
+}
+/* ---- THE KIT THE ATHLETE OWNS GOES INTO THE DAILY SESSION (v539) ------------
+   Measured across the whole equipment answer: of fourteen kit items, eleven
+   changed NO daily session when ticked. Not one kettlebell, dumbbell, medicine
+   ball, ab roller, stability ball, balance trainer, ruck, sandbag, battle rope
+   or parallette movement sits on any ladder, so the kit reached the program
+   only through the bonus pool and the separate Weights session. An athlete who
+   ticked a kettlebell got a bodyweight program.
+
+   ONE slot a session becomes a kit movement of the SAME PATTERN: a goblet
+   squat where the squat was, a row where the row was. A swap, never an
+   addition, and the slot keeps its own name, so the athlete's Swap button
+   still answers for it. It asks every question a picking path asks: kit owned
+   (hasGearFor), no flagged joint and no tight-room move (the candidate must
+   pass safeSwap and spaceSwap UNCHANGED, never be substituted), no repeat.
+
+   Only kit NO LADDER USES counts. The pull-up bar, the bench and the dip
+   station already steer the ladders, so they are not a second answer here.
+   Power and conditioning patterns are left out: a snatch or a man-maker is not
+   a like-for-like swap for anything on a strength ladder.
+
+   NOT UNDER SAFE MODE. An uncleared health screen is held short of failure;
+   it is not the moment to add external load. */
+const KIT_SLOT_PATTERNS={legL:['squat','lunge'],squatL:['squat','lunge'],hingeL:['hinge'],pushL:['pushh'],chestL:['pushh'],tricepL:['pushh'],
+  shoulderL:['pushv'],rowL:['pull'],pullL:['pull'],bicepL:['pull'],plankL:['core'],hollowL:['core'],lowerL:['core'],dynL:['core'],sideL:['core'],rotL:['core']};
+function kitPatterns(ladder){return Object.prototype.hasOwnProperty.call(KIT_SLOT_PATTERNS,ladder)?KIT_SLOT_PATTERNS[ladder]:null;}
+// the gear keys some ladder already uses, and every movement a ladder carries
+function ladderGearKeys(){const s=new Set();Object.keys(LADDERS).forEach(l=>LADDERS[l].forEach(k=>{const e=EX[k];if(e&&Array.isArray(e.equip))e.equip.forEach(g=>s.add(g));}));return s;}
+function kitMoves(){
+  const on=new Set();Object.keys(LADDERS).forEach(l=>LADDERS[l].forEach(k=>on.add(k)));
+  const lg=ladderGearKeys();
+  return Object.keys(EX).filter(k=>{const e=EX[k];
+    return Array.isArray(e.equip)&&e.equip.length>0&&!on.has(k)&&!standaloneCardio(k)&&e.equip.some(g=>!lg.has(g));});
+}
+/* The kit moves this athlete can be given in this slot right now, in place of
+   `cur`, the bodyweight move the slot holds.
+
+   A CORE SLOT KEEPS ITS OWN PART OF THE MIDSECTION, strictly. The first build
+   let any core-pattern move stand in for any core move, and measured over the
+   program that put a Balance Trainer Side Plank in 299 of 378 sessions for an
+   athlete who owned only the dome, and a bear-hug ruck carry in 310 for one
+   who owned only a ruck - an obliques hold in place of every plank, and a
+   loaded carry in place of every crunch. Same pattern is not enough for the
+   midsection; the region has to match as well. */
+const KIT_CORE_REGIONS=['anterior','oblique','lower','stability'];
+function kitCandidates(ladder,used,cur,pool){
+  try{
+    const pats=kitPatterns(ladder);if(!pats||!exKnown(cur))return [];
+    const u=used||new Set();
+    const core=pats[0]==='core', reg=EX[cur].region;
+    if(core&&!KIT_CORE_REGIONS.includes(reg))return [];
+    return (pool||kitMoves()).filter(k=>!u.has(k)&&pats.includes(EX[k].pattern)&&(!core||EX[k].region===reg)
+      &&hasGearFor(k)&&safeSwap(k)===k&&spaceSwap(k)===k);
+  }catch(e){return [];}
+}
+/* May this session take a kit move at all, and where does the search start.
+   The start rotates with the session, so over a week the kit lands on the
+   legs, the push, the pull and the core in turn rather than on slot 0 every
+   time. Null when the athlete owns no kit a ladder does not already use, or
+   under safe mode. */
+function kitGate(pos){
+  try{
+    if(safeMode())return null;
+    const gear=(STATE.profile&&Array.isArray(STATE.profile.gear))?STATE.profile.gear:[];
+    const lg=ladderGearKeys();
+    if(!gear.some(g=>!lg.has(g)))return null;
+    const pool=kitMoves().filter(k=>hasGearFor(k));
+    if(!pool.length)return null;
+    return {idx:((pos&&pos.cycle)||0)*SESSIONS_PER_CYCLE+((pos&&pos.inCycle)||0),pool};
+  }catch(e){return null;}
 }
 // auto-regulation: adjust from how last week's sessions felt
 function weekAdjust(cycle,week){
@@ -3116,12 +3246,13 @@ function prescribe(exId,pos){
   return {sets,target,unit:ex.unit,rest,tempo};
 }
 
-/* Focus-area pools for the targeted bonus slot. MOST sessions gain ONE extra
+/* Focus-area pools for the targeted bonus slot. A session gains ONE extra
    accessory drawn from the area the athlete most wants to improve (quiz:
    focusPrimary, falling back to their focus areas). Gear- and injury-filtered.
-   Not every session: buildSession() skips the bonus on a day that already
-   carries three or more direct-core slots, because one more core move is not
-   the missing stimulus there. Measured over the whole programme, 306 of 378. */
+   A day that already carries three or more direct-core slots takes no extra
+   CORE move, because one more core move is not the missing stimulus there;
+   since v539 a bonus for any other chosen area still lands on that day. So an
+   athlete whose only areas are the midsection still misses those days. */
 /* Primary training goals. 'shred' and 'core' sit alongside the original four:
    shred = a harder cut (steeper deficit, more protein, higher-rep metabolic work),
    core  = midsection-first (near-maintenance calories, strength reps, and
@@ -3289,7 +3420,8 @@ function troubleZoneKey(k){return Object.prototype.hasOwnProperty.call(TROUBLE_P
 const CORRECTIVE_POOL={shoulder:['superman'],knee:['glutebridge'],lowback:['birddog','deadbug']};
 // Pick one bonus exercise for the athlete's priority area, avoiding what's already
 // in today's session, respecting equipment, and swapping around flagged joints.
-function focusBonus(pos,used){
+function focusBonus(pos,used,opt){
+  const noCore=!!(opt&&opt.noCore), can=(opt&&typeof opt.can==='function')?opt.can:(()=>true);
   try{
     const p=STATE.profile||{};
     // the core goal LEADS the priority list with the midsection; the wheel
@@ -3324,6 +3456,14 @@ function focusBonus(pos,used){
     const absIdx=((pos&&pos.cycle)||0)*SESSIONS_PER_CYCLE+((pos&&pos.inCycle)||0);
     const rot=((absIdx%keys.length)+keys.length)%keys.length;
     keys=keys.slice(rot).concat(keys.slice(0,rot));
+    /* A day that is already core-heavy takes no extra CORE move (the cap in
+       buildSession). It used to take no extra move at all, which is the wrong
+       half of that sentence for an athlete whose focus is their shoulders:
+       measured, 18 of the first 42 sessions had no focus move whatever the
+       area was. The skip is about the midsection, so it is the midsection
+       keys that step aside (v539). */
+    if(noCore)keys=keys.filter(k=>k!=='abs'&&k!=='obliques');
+    if(!keys.length)return null;
     const gear=p.gear||[];
     const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
     for(const key of keys){
@@ -3345,6 +3485,30 @@ function focusBonus(pos,used){
          beginner the hardest movement in the catalogue — which is the exact
          thing the gate above was written to prevent. An empty pool means skip
          the bonus, not lower the bar. */
+      /* THE SHOULDERS POOL WAS EMPTY FOR MOST ATHLETES (v539). Its bodyweight
+         members run from hardness 0.5 down to 0.18, and the gate above asks for
+         0.7 at Intermediate and 1.0 at Beginner - so with no dumbbell and no
+         kettlebell a Shoulders focus chose NO bonus in any of the 378 sessions
+         (measured), while Push Day's own ladder was already prescribing the
+         Pike Push-Up to that same athlete. A focus area the athlete picks and
+         the program never serves is dead input.
+         This is not the ungated fallback removed above. The bar is the ENGINE'S
+         OWN: the rung of the area's ladder that rungIndex() gives this athlete
+         this week, or an easier one, that they can perform (the builder's own
+         performable test), own the kit for, and that clears every flagged
+         joint. Nothing above what the main program would hand them. */
+      if(!cands.length){
+        const lvl=levelOf(pos&&pos.cycle||0);
+        for(const lad of (focusLadders(key)||[])){
+          const arr=LADDERS[lad]||[];
+          const top=Math.min(rungIndex(lad,(pos&&pos.cycle)||0,(pos&&pos.week)||1,lvl),arr.length-1);
+          for(let j=top;j>=0;j--){
+            const k=spaceSwap(safeSwap(arr[j]));
+            if(EX[k]&&!used.has(k)&&has(k)&&can(k)&&focusMember(key,lad,k)){cands=[k];break;}
+          }
+          if(cands.length)break;
+        }
+      }
       if(!cands.length)continue;
       // deterministic-but-varied pick so it rotates across sessions without Math.random
       const exId=cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
@@ -3694,16 +3858,44 @@ function buildSession(ptr,opts){
     return base;                  // nothing else available — accept the prescribed one
   };
   const dropped=[];
-  const main=goalSlots(pos.session,pos).map(ladder=>{
+  const gSlots=goalSlots(pos.session,pos);
+  const fPick=focusSlotPick(pos.session,gSlots,pos);
+  const swapped=new Set();
+  const main=gSlots.map((ladder,i)=>{
+    let isFocus=false;
+    if(fPick&&fPick.at===i){
+      // accepted only when the ladder really yields a move of the focus family
+      const fid=distinct(fPick.ladder,rungIndex(fPick.ladder,cycle,week,level));
+      if(focusMember(fPick.key,fPick.ladder,fid)){ladder=fPick.ladder;isFocus=true;}
+    }
     let exId=distinct(ladder,rungIndex(ladder,cycle,week,level));
     // An explicit swap wins — but only while it is still safe and still doable.
     // Otherwise a swap saved before an injury or a kit change was declared would
     // keep forcing the exercise the athlete just told us they cannot do.
-    if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder]))exId=sw[ladder];
+    if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder])){exId=sw[ladder];swapped.add(ladder);}
     if(!exId||!EX[exId]){dropped.push(ladder);return null;}
     used.add(exId);
-    return {exId,...prescribe(exId,pos),slot:ladder};
+    const it={exId,...prescribe(exId,pos),slot:ladder};
+    if(isFocus){it.focusPick=true;it.focusKey=fPick.key;}
+    return it;
   }).filter(Boolean);
+  /* THE KIT MOVE. Decided after the body of the session is built, because what
+     can stand in for a slot depends on the move that slot really holds. The
+     first slot from the rotating start that has a candidate takes it. Never the
+     focus area's own pick, and never a slot the athlete swapped by hand: an
+     explicit choice outranks a default. */
+  {const kg=kitGate(pos);
+    if(kg)for(let j=0;j<main.length;j++){
+      const i=(kg.idx+j)%main.length, m=main[i];
+      if(m.focusPick||swapped.has(m.slot))continue;
+      const kc=kitCandidates(m.slot,used,m.exId,kg.pool);
+      if(!kc.length)continue;
+      const kid=kc[(kg.idx+i)%kc.length];
+      used.delete(m.exId);used.add(kid);
+      main[i]={exId:kid,...prescribe(kid,pos),slot:m.slot,kit:true};
+      break;
+    }
+  }
   const finLadName=pos.session.finisher;
   const finId=distinct(finLadName,rungIndex(finLadName,cycle,week,level));
   let finEx=(sw&&sw.__fin&&EX[sw.__fin]&&swapStillValid(sw.__fin))?sw.__fin:finId;
@@ -3726,10 +3918,11 @@ function buildSession(ptr,opts){
      it gets two rounds rather than an unbalanced one. */
   finisher.sets=itemSets(finEx,1,pos);
   // targeted bonus: one extra move for the athlete's priority area (from the quiz)
-  /* If the day already has three or more direct-core slots, skip the bonus —
-     an extra ab exercise on Core Crusher is not the missing stimulus. */
+  /* If the day already has three or more direct-core slots, the bonus is not a
+     CORE move — an extra ab exercise on Core Crusher is not the missing
+     stimulus. A bonus for any other chosen area still lands (v539). */
   const coreSlots=main.filter(m=>EX[m.exId]&&CORE_REGIONS[EX[m.exId].region]).length;
-  let bonus=(coreSlots>=3)?null:focusBonus(pos,used);
+  let bonus=focusBonus(pos,used,{noCore:coreSlots>=3,can:performable});
   /* A swapped bonus is still THE BONUS, so it keeps the bonus's own size and
      tag. It used to take prescribe()'s raw sets: measured, the 8-Count Push-Up
      bonus was 2 sets and the Burpee it was swapped to was 3 — 50% more work on
@@ -4604,7 +4797,7 @@ function onboardHTML(){
       <div class="daypick" id="ob-timeline" style="flex-wrap:wrap">${TIMELINE_OPTS.map(o=>`<button data-w="${o.w}"${on(P.timelineWeeks,o.w)}>${o.label}</button>`).join('')}<button data-w="0"${(!P.timelineWeeks?' class="on"':'')}>No deadline</button></div></div>`)}
 
   ${step(3,'Focus &amp; priority',`
-    <div class="field"><label>#1 area you most want to improve <span class="tiny muted">· drives a targeted bonus move in most sessions</span></label>
+    <div class="field"><label>#1 area you most want to improve <span class="tiny muted">· adds an extra move for it, and changes one helper move to it where the session has room</span></label>
       <div class="daypick" id="ob-focus" style="flex-wrap:wrap">${FOCI.map(([k,l])=>`<button data-f="${k}"${on(P.focusPrimary||'abs',k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Other focus areas <span class="tiny muted">· tap all that apply</span></label>
       <div class="daypick" id="ob-targets" style="flex-wrap:wrap">${FAREAS.map(([k,l])=>`<button data-t="${k}"${mon(P.targets&&P.targets.length?P.targets:['abs','full'],k)}>${l}</button>`).join('')}</div></div>
@@ -4943,6 +5136,15 @@ function obWhyNoChange(k,was,now){
     }
     if(k==='conditioning'&&timelineIsAggressive()&&['moderate','high'].includes(was.p.conditioning)&&['moderate','high'].includes(now.p.conditioning)){
       return 'Your timeframe is a tight one, and it already moves conditioning to the top level. So Average and Very fit build the same sessions.';
+    }
+    if(k==='mobility'&&was.p.mobility!=='low'&&now.p.mobility!=='low'){
+      return 'These two answers use the same warm-up and cool-down. Only the limited answer changes them: it makes each hold longer.';
+    }
+    if(k==='diet'){
+      return 'This answer sets your meal plan and your food list. It does not set your sessions or your calorie target.';
+    }
+    if(k==='goalweight'&&!(timelineDrivesTargets(STATE.profile.goal)&&STATE.profile.timelineWeeks>0)){
+      return 'A goal weight sets your pace only when you have a timeframe and a fat-loss goal. It still sets the goal line on your weight chart.';
     }
     if(k==='gear'){
       return 'No session in that window uses the kit you changed.'+(hasWeights()?' The <b>Weights</b> session uses the kit you own. It is on Today ▸ Workout, below your session.':'');
@@ -7712,7 +7914,7 @@ function exCardHTML(m,log,idx){
       ${ex.img?`<img class="ex-thumb" src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
-        <div class="ex-region">${m.focus?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
+        <div class="ex-region">${(m.focus||m.focusPick)?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}${m.kit?'<span class="tag" style="background:var(--card2);font-weight:800">🏋️ Your kit</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
         ${sideSwitch(m.exId)?`<div class="tiny" style="margin-top:3px;font-weight:800;color:var(--gold)">🔄 One side at a time — switch halfway through EACH set</div>`:''}
       </div>
       <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">rest ${m.rest}s${m.tempo?' · '+_ve(m.tempo):''}</div></div>
@@ -27857,6 +28059,19 @@ function validateData(){
      steers nothing or a steer with no button, and both are silent. */
   TROUBLE_AREAS.forEach(z=>{if(!Object.prototype.hasOwnProperty.call(TROUBLE_POOL,z[0]))errs.push('TROUBLE_AREAS.'+z[0]+' has no TROUBLE_POOL entry — the button steers nothing');});
   Object.keys(TROUBLE_POOL).forEach(k=>{if(!TROUBLE_AREAS.some(z=>z[0]===k))errs.push('TROUBLE_POOL.'+k+' has no picker button — unreachable');});
+  /* FOCUS_LADDERS (v539). A key that is not a focus area is a steer with no
+     button. A ladder that does not exist is SILENT, because focusSlotPick()
+     filters on the ladder map and simply finds nothing. A conditioning ladder
+     would turn a helper slot into cardio, and a core ladder would walk
+     around the direct-core cap the map leaves the midsection out for. */
+  Object.keys(FOCUS_LADDERS).forEach(k=>{
+    if(!focusAreaKey(k))errs.push('FOCUS_LADDERS.'+k+' is not a focus area — unreachable');
+    (Array.isArray(FOCUS_LADDERS[k])?FOCUS_LADDERS[k]:[]).forEach(l=>{
+      if(!Object.prototype.hasOwnProperty.call(LADDERS,l))errs.push('FOCUS_LADDERS.'+k+' names '+l+', which is not a ladder');
+      else if(CARDIO_LADS.includes(l))errs.push('FOCUS_LADDERS.'+k+' names '+l+', a conditioning ladder');
+      else if(CORE_LADS.includes(l))errs.push('FOCUS_LADDERS.'+k+' names '+l+', a core ladder — the direct-core cap');
+    });
+  });
   {const _fk={};FOCUS_AREAS.forEach(a=>{if(_fk[a[0]])errs.push('FOCUS_AREAS: duplicate key "'+a[0]+'"');_fk[a[0]]=1;});}
   /* COMBAT_ORDER is a PERMUTATION of the four FORCE events, and combatOrder()
      does .filter(Boolean) — so an id that no longer exists is dropped in

@@ -24045,3 +24045,162 @@ by POSITION have the right shape and name a real movement, with another
 movement's figures beside it. Each line is now checked against what that
 movement was prescribed at before and is now. *Measure the payload, not the
 container.*
+
+## The focus area chose one bonus move, and for Shoulders it chose none (v539)
+
+The athlete answered v538's question: *"I change from full-body workout to just
+core, or even shoulders and back, and nothing changes."* Measured, and true in
+substance:
+
+| change | what moved, over the first 42 sessions |
+|---|---|
+| any focus area to any other | ONE bonus move, in 24 sessions; the first session not at all |
+| Lose fat to Shred | no exercise; rest seconds and food only |
+| Lose fat to Tone up | one move in 24 sessions |
+| **Shoulders, no dumbbell or kettlebell** | **no bonus in any of the 378 sessions** |
+
+The last row is a dead input. `FOCUS_POOL.shoulders`' bodyweight members run
+from hardness 0.5 down to 0.18 and the bonus gate asks for 0.7 at Intermediate
+and 1.0 at Beginner, so the pool was empty, while Push Day's own ladder was
+already prescribing the Pike Push-Up to the same athlete.
+
+**The athlete chose the strong version** (asked, with the measurements):
+
+- **The bonus reaches every session.** A core-heavy day used to take no bonus
+  at all; it now takes no CORE bonus (`focusBonus(pos,used,{noCore})`). An
+  athlete whose only area is the midsection still misses those days, which is
+  the direct-core cap doing its job.
+- **An empty gated pool falls back to the area's own ladder**, at the rung
+  `rungIndex()` gives this athlete this week or an easier one, through
+  `performable`, kit, `safeSwap` and `spaceSwap`. That is the engine's own bar,
+  not the ungated fallback removed earlier.
+- **The #1 area re-points ONE helper slot** (`focusSlotPick()`,
+  `FOCUS_LADDERS`). A swap, never an addition. It asks `goalSlots()`'s own
+  protections, hoisted to `SLOT_FIRST_SWAPPABLE` and `STRUCT_LADS`: never slot
+  0 or 1, never a structural or conditioning slot, never the slot the goal
+  re-pointed, a core slot only while three remain. The result must be a real
+  move of the family (`focusMember()`), or the session is left as it was.
+- **Abs and Full body have no ladder family, on purpose.** The core is trained
+  in every session and capped; Full body is the program as written.
+  `validateData()` refuses a core or conditioning ladder in the map.
+- **Shred keeps Lose fat's exercises** (the athlete's choice). Harder work on
+  less food raises injury risk; the difference is rest and food.
+
+Measured after, all six body-part areas, three levels: every one of the 378
+sessions carries a move for the focus area; no duplicate, no dropped slot, no
+risky move with a joint flagged, no kit the athlete does not own. The helper
+swap lands in 66 sessions on a fat-loss goal (the goal has already taken the
+free slot) and 168 on Tone up. Average session +0.3 to +1.2 minutes; a
+core-only athlete's program is unchanged.
+
+**The promise was "one helper move in each session" and the measurement is 66
+to 168 of 378.** The protections were kept and the number reported, rather than
+the protections loosened to meet the sentence.
+
+### Every answer in the editor, swept: eleven of fourteen kit items moved nothing
+
+Asked next: *"fix them all, not just the ones that I've mentioned."* So every
+answer in the editor was measured the v538 way (set A, fingerprint the next 42
+sessions, set B, fingerprint again). The answers that move no session by design
+are the food ones (activity, body, timeframe at a year, diet), the schedule, and
+`experience` upward. One was a dead input:
+
+| ticked on its own | sessions changed, of 42 |
+|---|---|
+| kettlebell, dumbbell | 6 (the bonus pool only) |
+| medicine ball, ab roller, stability ball, balance trainer, ruck, sandbag, battle rope, parallettes, dip station, bike | **0** |
+
+**No kit movement sits on any ladder.** The ladders use the bar, the bench, the
+dip station and the bike, and nothing else. An athlete who ticked a kettlebell
+got a bodyweight program.
+
+**One slot a session becomes a kit movement of the same PATTERN**
+(`KIT_SLOT_PATTERNS`, `kitGate()`, `kitCandidates()`): a goblet squat where the
+squat was. A swap, never an addition; the slot keeps its own name, so the
+athlete's Swap button still answers for it and a hand swap outranks it.
+
+- **Only kit NO LADDER USES counts** (`ladderGearKeys()`, derived, not listed).
+- **The candidate must pass `safeSwap` and `spaceSwap` UNCHANGED.** It is never
+  substituted: a kit slot filled with a stand-in is not a kit slot.
+- **Not under safe mode.** An uncleared health screen is not the moment to add
+  external load.
+- **Power and conditioning patterns are out.** A snatch is not a like-for-like
+  swap for anything on a strength ladder.
+- **It is decided AFTER the body of the session is built**, because what can
+  stand in for a slot depends on the move the slot really holds.
+
+**A CORE SLOT KEEPS ITS OWN REGION, strictly, and the first build did not.** It
+let any core-pattern move stand in for any core move. Measured: a Balance
+Trainer Side Plank in 299 of 378 sessions for an athlete who owned only the
+dome, and a bear-hug ruck carry in 310 for one who owned only a ruck. Same
+pattern is not enough for the midsection. After: 156 and 0.
+
+Measured after, on nine kit items at once: one kit move in all 378 sessions,
+across 15 slots and 32 movements, every item used; no duplicate, no dropped
+slot, no risky move with four joints flagged, nothing in a tight room that needs
+the room. Average session length is unchanged (a swap).
+
+**Not changed, and said so:** `experience` still cannot raise a tested level.
+That is a measurement outranking a self-rating, and the report offers the
+re-test. The report now also says what an answer sets when it sets no session
+(mobility OK and Good build the same flows; diet; a goal weight with no pace).
+
+**The full suite found three things in the focus change**, each a real catch:
+a long bonus word overflowed the Program calendar cell at 280px (`min-width:0`
+and `overflow-wrap`), a beginner's first fortnight met two photos outside the
+early offline tier, and two checks pinned the old rule (v502's "the bonus does
+not reach every session", suite 21's "the primary gets the largest share").
+The second is re-aimed, not deleted: a core-first athlete's core-heavy days
+are already the primary's, so the share compared is the other days'.
+
+### The sixth fixed-gap race, and the app's own timer was the racer
+
+The second full run went red on two voice checks nothing in this version
+touches (`guard: only this block's own sync could have re-armed it`). Green
+alone, twice. **A racing check gets fixed, not re-run**, so the cause was
+reproduced first: the block closes the microphone offline, and `onend` then
+schedules one more `voiceCmdSync()` `VOICE_RESTART_MS` (300 ms) later. If the
+page is back online when that fires, the APP re-arms, correctly, and the
+block's own sync finds nothing to open.
+
+| the same old check, plus | result |
+|---|---|
+| 600 ms spent OFFLINE before returning | green |
+| 450 ms spent ONLINE before the sample | red, with the full run's exact payload |
+| the fix, plus the same 450 ms online | green |
+
+The block now waits out the pending restart **while still offline**, by
+counting the app's own call (the function is wrapped for the wait and put
+back), and a guard asserts that it ran. v486 recorded the heartbeat as a racer
+in this block; the restart timer is the second one, and the same rule covers
+both: **only the block's own sync may answer.**
+
+### Twenty-four mutants, and the five escapes were all a neighbour answering
+
+Nineteen caught first time. Every escape was a weak check, and each is a rule
+already in this file:
+
+- **The goal's own slot (M7), twice.** On Lose fat the goal's slot is a
+  conditioning ladder, which a second rule already protects. A sweep on Build
+  muscle and Strong core did not help either: the pick walks from the LAST slot
+  back, and in every shipped session a later slot is free first, so the rule
+  never decides on today's rotations. It is exercised directly, on a session
+  whose only free slot is the goal's, with a guard that the same slot unclaimed
+  IS taken.
+- **A hand swap (M14).** The check swapped the kit move for a push-up. A core
+  slot then has no kit candidate at all, so a kit pass that ignored the swap
+  still left it alone. The athlete now swaps BACK to the slot's own bodyweight
+  move, with a guard that the kit could still take it.
+- **The focus pick (M15).** A kit move that replaces the pick carries no focus
+  mark, so "the kit move is not a focus move" passes on exactly that defect.
+  The COUNT shows it: the same athlete has the same number of helper moves with
+  kit and without.
+- **Ladder gear (M16).** The gate already keeps an athlete with only ladder
+  gear out, so the rule inside `kitMoves()` shows only on MIXED gear (a dip
+  station beside a kettlebell).
+- **The tight room (M17).** No mapped kit move needs the room today, so the
+  rule is exercised by planting one `SPACE_SWAP` entry for one call.
+
+The over-eager twins each fail a floor: no kit rule at all, a kit move that
+adds a slot, a start that never rotates, abs given a ladder family, a core slot
+taken down to one. Suite 10: 693 checks.

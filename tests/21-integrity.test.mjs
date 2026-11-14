@@ -294,13 +294,20 @@ export default async function run() {
     const r = await page.evaluate(() => {
       const keep = JSON.stringify({ f: STATE.profile.focusPrimary, t: STATE.profile.targets,
         z: STATE.profile.troubleZones, g: STATE.profile.goal });
+      /* v539: a core-heavy day takes no CORE bonus, and a second chosen area
+         takes that day's bonus instead. Those days are counted on their own,
+         because for a core-first athlete the day itself is already the
+         primary's - so the share that can be compared is the other days'. */
+      const CORE = { anterior: 1, oblique: 1, lower: 1 };
+      let heavy = {};
       const scan = () => {
-        const k = {};
+        const k = {}; heavy = {};
         for (let p = 0; p < 378; p++) {
           try {
             const s = buildSession(p);
             const f = [...s.main, s.finisher].filter(Boolean).find(m => m && m.focus);
-            if (f && f.focusKey) k[f.focusKey] = (k[f.focusKey] || 0) + 1;
+            const cs = s.main.filter(m => !m.focus && EX[m.exId] && CORE[EX[m.exId].region]).length;
+            if (f && f.focusKey) { k[f.focusKey] = (k[f.focusKey] || 0) + 1; if (cs >= 3) heavy[f.focusKey] = (heavy[f.focusKey] || 0) + 1; }
           } catch (e) {}
         }
         return k;
@@ -308,18 +315,25 @@ export default async function run() {
       STATE.profile.goal = 'lose';
       STATE.profile.focusPrimary = 'abs'; STATE.profile.targets = ['abs', 'full'];
       STATE.profile.troubleZones = [];
-      const twoAreas = scan();
+      const twoAreas = scan(), twoHeavy = heavy;
+      // an athlete whose #1 area is NOT the midsection: nothing steps aside for them
+      STATE.profile.focusPrimary = 'chest'; STATE.profile.targets = ['chest', 'full'];
+      const chestFirst = scan();
+      STATE.profile.focusPrimary = 'abs'; STATE.profile.targets = ['abs', 'full'];
       STATE.profile.troubleZones = ['chest', 'arms', 'thighs'];
       const withTrouble = scan();
       const k = JSON.parse(keep);
       STATE.profile.focusPrimary = k.f; STATE.profile.targets = k.t;
       STATE.profile.troubleZones = k.z; STATE.profile.goal = k.g;
-      return { twoAreas, withTrouble, total: Object.values(withTrouble).reduce((a, b) => a + b, 0) };
+      return { twoAreas, twoHeavy, chestFirst, withTrouble, total: Object.values(withTrouble).reduce((a, b) => a + b, 0) };
     });
     t.ok('a secondary target is trained, not just the primary',
       (r.twoAreas.full || 0) > 0, r.twoAreas);
-    t.ok('the primary focus still gets the largest share',
-      (r.twoAreas.abs || 0) >= (r.twoAreas.full || 0), r.twoAreas);
+    t.ok('GUARD: the second area really takes the core-heavy days', (r.twoHeavy.full || 0) > 0 && !(r.twoHeavy.abs > 0), r.twoHeavy);
+    t.ok('the primary focus still gets the largest share of the other days',
+      (r.twoAreas.abs || 0) >= (r.twoAreas.full || 0) - (r.twoHeavy.full || 0), { all: r.twoAreas, heavy: r.twoHeavy });
+    t.ok('and a primary that is not the midsection gets the largest share outright',
+      (r.chestFirst.chest || 0) >= (r.chestFirst.full || 0) && (r.chestFirst.chest || 0) > 0, r.chestFirst);
     ['chest', 'arms', 'legs'].forEach(z =>
       t.ok(`the "${z}" trouble zone actually reaches the program`, (r.withTrouble[z] || 0) > 0, r.withTrouble));
     t.ok('the primary is still the most-trained area with trouble zones added',

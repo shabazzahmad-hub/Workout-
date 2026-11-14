@@ -10,7 +10,7 @@
    tiers are parsed by pulling every quoted asset name out of this file, comments
    included, so an illustrative path in a comment breaks CI by declaring
    an asset that does not exist. */
-const CACHE = 'coreforge-v538';
+const CACHE = 'coreforge-v539';
 /* Which caches on this origin belong to CoreForge. CacheStorage is shared by
    every app published from the same GitHub Pages origin, so cleanup must match
    on our own name and never enumerate-and-delete everything it finds. */
@@ -100,7 +100,7 @@ const FIRST_RUN = [
   './ex-legraise.jpg','./ex-marchplace.jpg','./ex-mountainclimber.jpg','./ex-plank.jpg',
   './ex-pushup.jpg','./ex-quickpunch.jpg','./ex-revcrunch.jpg','./ex-sealjack.jpg',
   './ex-sideplank.jpg','./ex-situp.jpg','./ex-squat.jpg','./ex-squatthrust.jpg',
-  './ex-swimmer.jpg','./ex-toetouch.jpg','./ex-towelrow.jpg','./ex-tuckhollow.jpg',
+  './ex-swimmer.jpg','./ex-superman.jpg','./ex-pikepushup.jpg','./ex-toetouch.jpg','./ex-towelrow.jpg','./ex-tuckhollow.jpg',
   './ex-wallsit.jpg','./wu-armcircles.jpg','./wu-birddog.jpg','./wu-catcow.jpg',
   './wu-glutebridge.jpg','./wu-hipcircles.jpg','./wu-kneehug.jpg','./wu-march.jpg',
   './wu-torsotwist.jpg'
@@ -135,7 +135,7 @@ const EXTRA = [
   './ex-kbrenegade.jpg','./ex-kbhighpull.jpg','./ex-kneeraise.jpg','./ex-kneetoelbow.jpg',
   './ex-latshuffle.jpg','./ex-legcircle.jpg','./ex-longplank.jpg','./ex-lsit.jpg',
   './ex-march.jpg','./ex-mbsitup.jpg','./ex-mbslam.jpg','./ex-mbtwist.jpg',
-  './ex-mbchop.jpg','./ex-negpullup.jpg','./ex-nordic.jpg','./ex-pikepushup.jpg',
+  './ex-mbchop.jpg','./ex-negpullup.jpg','./ex-nordic.jpg',
   './ex-pistol.jpg','./ex-plegraise.jpg','./ex-ppushup.jpg','./ex-tucklsit.jpg',
   './ex-plankjack.jpg','./ex-plankleg.jpg','./ex-plankrot.jpg','./ex-planktap.jpg',
   './ex-pseudoplanche.jpg','./ex-pullup.jpg','./ex-reverselunge.jpg','./ex-reverseplank.jpg',
@@ -146,7 +146,7 @@ const EXTRA = [
   './ex-sissysquat.jpg','./ex-sitthrust.jpg','./ex-situptwist.jpg','./ex-skater.jpg',
   './ex-skaterground.jpg','./ex-skip.jpg','./ex-slrdl.jpg','./ex-spidermanpushup.jpg',
   './ex-splitjump.jpg','./ex-splitsquat.jpg','./ex-sprawl.jpg','./ex-sprint.jpg','./ex-steadyrun.jpg',
-  './ex-squatjack.jpg','./ex-standingoblique.jpg','./ex-superman.jpg','./ex-superpushup.jpg',
+  './ex-squatjack.jpg','./ex-standingoblique.jpg','./ex-superpushup.jpg',
   './ex-tablerow.jpg','./ex-tempopushup.jpg','./ex-tuckjump.jpg',
   './ex-tuckvup.jpg','./ex-typewriter.jpg','./ex-vertcrunch.jpg','./ex-vsit.jpg',
   './ex-vup.jpg','./ex-walkinglunge.jpg','./ex-wallhandstand.jpg','./ex-wallwalk.jpg',

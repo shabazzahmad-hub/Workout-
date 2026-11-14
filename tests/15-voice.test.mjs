@@ -1082,11 +1082,26 @@ export default async function run() {
     await page.waitForFunction(() => navigator.onLine === false, null, { timeout: 5000 });
     const off = await page.evaluate(async () => {
       const before = window.__vr2.starts;
+      /* count every sync from here, so the wait below can see the app's own */
+      window.__vsN = 0; window.__vsOrig = voiceCmdSync;
+      voiceCmdSync = function () { window.__vsN++; return window.__vsOrig.apply(this, arguments); };
       voiceCmdSync(); await new Promise(z => setTimeout(z, 20));
       return { onLine: navigator.onLine, reason: voiceCmdDownReason(),
                newStarts: window.__vr2.starts - before,
                hint: voiceCmdHintHTML(), note: voiceCmdNote(), stillOn: voiceCmdOn() };
     });
+    /* THE APP'S OWN RESTART TIMER IS THE SECOND THING THAT CAN RE-ARM IT. The
+       offline sync above closes the microphone, and onend then schedules one
+       more voiceCmdSync() VOICE_RESTART_MS later. If the phone is back in
+       signal when that fires, the APP re-arms - correctly - and this block's
+       own sync below finds nothing to open. Measured, not re-run: with 450 ms
+       spent online before the sample, the old check fails with exactly the
+       payload a loaded full run printed (vrecBefore true, newStarts 0); with
+       the time spent offline instead, it passes. So the pending restart is
+       waited out WHILE STILL OFFLINE, by counting the app's own call rather
+       than by a duration. */
+    const drained = await page.waitForFunction(() => window.__vsN >= 2, null, { timeout: 5000 }).then(() => true, () => false);
+    await page.evaluate(() => { voiceCmdSync = window.__vsOrig; });
     await ctx.setOffline(false);
     await page.waitForFunction(() => navigator.onLine === true, null, { timeout: 5000 });
     const back = await page.evaluate(async () => {
@@ -1108,6 +1123,7 @@ export default async function run() {
     t.ok('the rest screen says it needs a connection', /needs a connection/.test(off.hint), off);
     t.ok('and Settings says the same thing', /needs a connection/.test(off.note), off);
     t.ok('FLOOR: the athlete’s switch is left where they put it', off.stillOn, off);
+    t.ok('guard: the app\'s own pending restart ran while still offline', drained);
     t.eq('back in signal it clears itself', back.reason, '');
     t.ok('guard: only this block\'s own sync could have re-armed it',
       back.vrecBefore === false && back.guard === false, JSON.stringify(back));
