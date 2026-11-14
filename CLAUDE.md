@@ -24204,3 +24204,44 @@ already in this file:
 The over-eager twins each fail a floor: no kit rule at all, a kit move that
 adds a slot, a start that never rotates, abs given a ladder family, a core slot
 taken down to one. Suite 10: 693 checks.
+
+## An edit reached the plan, and four states of TODAY did not follow (v540)
+
+Asked after v539: *"ensure this translates to the actual daily exercise
+program."* Driven through the real editor, then read off every surface that
+shows today's session. **On a fresh day all four follow the edit** — the Today
+card, the guided player, the calendar preview and the spoken brief each equal
+`buildSession(todayPtr())`, and every "Added:" line of the report is on the
+card. Four states did not:
+
+| state | measured before | after |
+|---|---|---|
+| one set marked on each of 6 moves, then focus + kit changed | 3 moves swapped out; header 6 sets done → **3**; the sets counted nowhere | all 6 stay; 6 sets |
+| session finished today, then the focus changed | header **5/6 · 13/15 · 87%** on a session done 15 of 15 | 6/6 · 15/15 · 100% |
+| 20-minute limit on | report: *"Added: Elevated Pike Push-Up"*; Today did not have it (the limit cuts the extra first) | report says the session is cut to 20 minutes |
+| a hand swap on a slot | a focus change took the slot every time; a goal change in **42 of 126** | 504 of 504 and 126 of 126 kept |
+
+- **`keepLoggedWork()` runs at the one builder**, last, before the time cut. A
+  logged movement the new answers dropped goes back in place of a movement
+  with NO logged work: its own ladder, then a kit slot of its pattern, then its
+  region, then a slot the engine chose by itself. With nowhere to go it is
+  appended. **Safety outranks it**: a movement a flagged joint or a tight room
+  now rules out is not put back. A done log and a log with no marked set are
+  not touched. No stored field was added.
+- **`recordedSession()`**: Today counts a FINISHED session against `log.items`,
+  the list `commitSession()` stored, not against a rebuild.
+- **The report's own lines read the session AS SHOWN** (`buildSession(from)`,
+  cap applied); the 42-session count stays on the plan as written.
+- **`swapHeld(sw,l)` is the one rule** both `goalSlots()` and
+  `focusSlotPick()` ask. A swap is stored under the slot's ladder name, and a
+  re-pointed slot takes another name, so the athlete's choice was dropped.
+
+Measured after: 988 cases (13 answer changes × 76 pointers, a set marked on
+every movement) — no marked movement lost, no repeat, no shorter session; 268
+ruled-out movements correctly not put back. With no log and no swap, 21
+athlete configurations × 378 sessions are **byte-identical to v539**, and that
+comparison was proven to load two different files first (`typeof
+keepLoggedWork` is `undefined` in one and `function` in the other).
+
+**The 42 goal-change losses predate v539.** The sweep written for the focus
+area asked the same question of the goal and found the older twin.
