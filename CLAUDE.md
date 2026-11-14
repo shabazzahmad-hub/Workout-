@@ -24174,3 +24174,33 @@ counting the app's own call (the function is wrapped for the wait and put
 back), and a guard asserts that it ran. v486 recorded the heartbeat as a racer
 in this block; the restart timer is the second one, and the same rule covers
 both: **only the block's own sync may answer.**
+
+### Twenty-four mutants, and the five escapes were all a neighbour answering
+
+Nineteen caught first time. Every escape was a weak check, and each is a rule
+already in this file:
+
+- **The goal's own slot (M7), twice.** On Lose fat the goal's slot is a
+  conditioning ladder, which a second rule already protects. A sweep on Build
+  muscle and Strong core did not help either: the pick walks from the LAST slot
+  back, and in every shipped session a later slot is free first, so the rule
+  never decides on today's rotations. It is exercised directly, on a session
+  whose only free slot is the goal's, with a guard that the same slot unclaimed
+  IS taken.
+- **A hand swap (M14).** The check swapped the kit move for a push-up. A core
+  slot then has no kit candidate at all, so a kit pass that ignored the swap
+  still left it alone. The athlete now swaps BACK to the slot's own bodyweight
+  move, with a guard that the kit could still take it.
+- **The focus pick (M15).** A kit move that replaces the pick carries no focus
+  mark, so "the kit move is not a focus move" passes on exactly that defect.
+  The COUNT shows it: the same athlete has the same number of helper moves with
+  kit and without.
+- **Ladder gear (M16).** The gate already keeps an athlete with only ladder
+  gear out, so the rule inside `kitMoves()` shows only on MIXED gear (a dip
+  station beside a kettlebell).
+- **The tight room (M17).** No mapped kit move needs the room today, so the
+  rule is exercised by planting one `SPACE_SWAP` entry for one call.
+
+The over-eager twins each fail a floor: no kit rule at all, a kit move that
+adds a slot, a start that never rotates, abs given a ladder family, a core slot
+taken down to one. Suite 10: 693 checks.

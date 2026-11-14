@@ -2111,6 +2111,21 @@ const { browser, page, errors } = await launch(port);
     s.eq('and the focus area never takes it', [shGain.goalSlotHit, shCore.goalSlotHit], [0, 0]);
     s.eq('nor a main, structural or conditioning slot on those goals', [shGain.badIdx, shGain.badSrc, shCore.badIdx, shCore.badSrc], [0, 0, 0, 0]);
     s.eq('and nothing is repeated or lost there', [shGain.dup, shGain.dropped, shCore.dup, shCore.dropped], [0, 0, 0, 0]);
+    /* THAT SWEEP CANNOT SEE THE RULE EITHER, and the mutant that dropped it
+       escaped a second time. The pick walks from the LAST slot back, and in
+       every shipped session a later slot is free before the goal's own is
+       reached - so on today's rotations the rule never decides. It is
+       exercised directly, on a session whose only free slot is the goal's:
+       a structural slot last, and the goal's re-pointed core slot before it. */
+    const gs = await page.evaluate(() => {
+      const f = STATE.profile.focusPrimary; STATE.profile.focusPrimary = 'shoulders';
+      const orig = { slots: ['plankL', 'hollowL', 'legL', 'rowL'] };
+      const o = { goalSlot: focusSlotPick(orig, ['plankL', 'hollowL', 'sideL', 'rowL'], { dayInWeek: 0, cycle: 0 }),
+        sameSlotUntouched: focusSlotPick({ slots: ['plankL', 'hollowL', 'sideL', 'rowL'] }, ['plankL', 'hollowL', 'sideL', 'rowL'], { dayInWeek: 0, cycle: 0 }) };
+      STATE.profile.focusPrimary = f; return o;
+    });
+    s.eq('a session whose only free slot is the goal’s own takes no focus pick', gs.goalSlot, null);
+    s.eq('GUARD: and it is the goal’s claim that refuses it - the same slot unclaimed is taken', gs.sameSlotUntouched && gs.sameSlotUntouched.at, 2, gs);
 
     /* 3. the core cap is kept: a core-heavy day takes no extra CORE move */
     const absOnly = await sweep({ p: { focusPrimary: 'abs', targets: ['abs'] } });
@@ -2283,7 +2298,8 @@ const { browser, page, errors } = await launch(port);
       Object.assign(P, over.p || {}); if (over.level) STATE.baseline.level = over.level;
       STATE.nutrition.goal = P.goal; normalizeState();
       const onLad = new Set(); Object.keys(LADDERS).forEach(l => LADDERS[l].forEach(k => onLad.add(k)));
-      const o = { N, kit: 0, two: 0, dup: 0, dropped: 0, risky: 0, noKit: 0, patBad: 0, regBad: 0, onLadder: 0, onFocus: 0, power: 0, len: {}, by: {}, gear: {}, slots: {}, fp: [], safe: safeMode() };
+      const LG = ladderGearKeys();
+      const o = { N, picks: 0, ladderOnly: 0, kit: 0, two: 0, dup: 0, dropped: 0, risky: 0, noKit: 0, patBad: 0, regBad: 0, onLadder: 0, onFocus: 0, power: 0, len: {}, by: {}, gear: {}, slots: {}, fp: [], safe: safeMode() };
       for (let p = 0; p < N; p++) {
         const s = buildSession(p, { full: true }), it = [...s.main, s.finisher].filter(Boolean);
         const ids = it.map(m => m.exId); if (new Set(ids).size !== ids.length) o.dup++;
@@ -2303,7 +2319,9 @@ const { browser, page, errors } = await launch(port);
           if (onLad.has(m.exId)) o.onLadder++;
           if (m.focusPick || m.focus) o.onFocus++;
           if (e.pattern === 'power' || e.pattern === 'cardio') o.power++;
+          if (e.equip.every(g => LG.has(g))) o.ladderOnly++;
         }
+        if (s.main.some(m => m.focusPick)) o.picks++;
       }
       o.slotN = Object.keys(o.slots).length; delete o.slots;
       return o;
@@ -2382,6 +2400,46 @@ const { browser, page, errors } = await launch(port);
     const beg = await sweep({ p: { gear: mine }, level: 'Beginner' });
     s.eq('a Beginner gets one too, with no power movement', [beg.kit, beg.power], [beg.N, 0]);
 
+    /* THE FOCUS AREA'S HELPER MOVE IS NOT THE KIT'S TO TAKE. A kit move that
+       replaced it would carry no focus mark at all, so "the kit move is not a
+       focus move" passes on exactly that defect. The count is what shows it:
+       the same athlete has the same number of helper moves with kit and
+       without. Tone up, because that goal leaves the most helper slots. */
+    const fNo = await sweep({ p: { focusPrimary: 'shoulders', targets: ['shoulders'], goal: 'recomp' } });
+    const fKit = await sweep({ p: { focusPrimary: 'shoulders', targets: ['shoulders'], goal: 'recomp', gear: mine } });
+    s.ok('GUARD: that athlete has many helper moves and a kit move in every session', fNo.picks > 100 && fKit.kit === fKit.N, { picks: fNo.picks, kit: fKit.kit });
+    s.eq('the kit takes none of the focus area’s helper moves', fKit.picks, fNo.picks);
+
+    /* ONLY KIT NO LADDER USES. The gate already keeps an athlete with nothing
+       but ladder gear out, so the rule inside kitMoves() shows only on MIXED
+       gear: a dip station beside a kettlebell must not make the Dip Bar Knee
+       Raise a kit move. */
+    const mixG = await page.evaluate(() => ({ dipknee: !!EX.dipknee && EX.dipknee.equip.join() === 'dip' && (kitPatterns('lowerL') || []).includes(EX.dipknee.pattern),
+      onLadder: Object.keys(LADDERS).some(l => LADDERS[l].includes('dipknee')) }));
+    s.ok('GUARD: the dip knee raise is a dip-only core move on no ladder', mixG.dipknee && !mixG.onLadder, mixG);
+    const mix = await sweep({ p: { gear: ['bar', 'bench', 'dip', 'kettlebell'] } });
+    s.ok('GUARD: the mixed athlete gets kit moves', mix.kit > 300, { kit: mix.kit });
+    s.eq('none of them needs only gear a ladder already uses', [mix.ladderOnly, mix.by.dipknee || 0], [0, 0], mix.by);
+
+    /* THE TIGHT-ROOM RULE CANNOT FIRE ON TODAY'S LIBRARY: no kit movement of a
+       mapped pattern is a travelling or inverted one. So it is exercised
+       directly, by giving one kit move a tight-room swap for one call. */
+    const tr = await page.evaluate(() => {
+      const keepG = STATE.profile.gear.slice(), keepT = STATE.profile.tightSpace, had = Object.prototype.hasOwnProperty.call(SPACE_SWAP, 'kbgoblet'), was = SPACE_SWAP.kbgoblet;
+      STATE.profile.gear = ['kettlebell']; STATE.profile.tightSpace = true; normalizeState();
+      const natural = kitMoves().filter(k => kitPatterns('squatL') && spaceSwap(k) !== k && Object.keys(KIT_SLOT_PATTERNS).some(l => KIT_SLOT_PATTERNS[l].includes(EX[k].pattern))).length;
+      const before = kitCandidates('squatL', new Set(), 'squat').includes('kbgoblet');
+      SPACE_SWAP.kbgoblet = 'squat';
+      const guard = spaceSwap('kbgoblet') === 'squat';
+      const during = kitCandidates('squatL', new Set(), 'squat').includes('kbgoblet');
+      if (had) SPACE_SWAP.kbgoblet = was; else delete SPACE_SWAP.kbgoblet;
+      STATE.profile.gear = keepG; STATE.profile.tightSpace = keepT; normalizeState();
+      return { natural, before, guard, during };
+    });
+    s.eq('GUARD: no mapped kit move needs the room today', tr.natural, 0);
+    s.ok('GUARD: the goblet squat is offered, and the planted swap is live', tr.before && tr.guard, tr);
+    s.ok('a kit move the tight room rules out is not offered', !tr.during, tr);
+
     /* the athlete's own swap outranks the default, and the focus pick is left alone */
     const own = await page.evaluate((mine) => {
       Object.assign(STATE.profile, { gear: mine, limitations: [], tightSpace: false, parq: [], focusPrimary: 'shoulders', targets: ['shoulders'], goal: 'recomp' });
@@ -2390,17 +2448,26 @@ const { browser, page, errors } = await launch(port);
       for (; p < 42; p++) { s0 = buildSession(p, { full: true }); if (s0.main.some(m => m.kit) && s0.main.some(m => m.focusPick)) break; }
       const k = s0.main.find(m => m.kit), f = s0.main.find(m => m.focusPick);
       const o = { found: p < 42, kitSlot: k && k.slot, kitId: k && k.exId, focusId: f && f.exId, sameSlot: !!(k && f && k.slot === f.slot) };
-      STATE.swaps[p] = {}; STATE.swaps[p][k.slot] = 'pushup';
+      /* The athlete swaps the kit move BACK to the bodyweight move the slot
+         would hold. A swap to a move of another region proves nothing: a core
+         slot then has no kit candidate at all, so a kit pass that ignored the
+         hand swap would still leave it alone. */
+      STATE.profile.gear = ['bar', 'bench']; normalizeState();
+      const bw = buildSession(p, { full: true }).main.find(x => x.slot === k.slot);
+      STATE.profile.gear = mine; normalizeState();
+      o.bwId = bw && bw.exId; o.stillOffered = kitCandidates(k.slot, new Set(), o.bwId).length > 0;
+      STATE.swaps[p] = {}; STATE.swaps[p][k.slot] = o.bwId;
       const s1 = buildSession(p, { full: true }), m = s1.main.find(x => x.slot === k.slot);
-      o.afterId = m && m.exId; o.afterKit = !!(m && m.kit); o.valid = swapStillValid('pushup');
+      o.afterId = m && m.exId; o.afterKit = !!(m && m.kit); o.valid = swapStillValid(o.bwId);
       o.kitElsewhere = s1.main.filter(x => x.kit).map(x => x.slot);
       o.focusKept = s1.main.some(x => x.focusPick && x.exId === o.focusId);
       STATE.swaps = {};
       return o;
     }, mine);
     s.ok('GUARD: a session with both a kit move and a focus pick exists', own.found && !own.sameSlot, own);
-    s.ok('GUARD: the hand swap is a legal one', own.valid, own);
-    s.eq('the athlete’s own swap wins the slot', [own.afterId, own.afterKit], ['pushup', false], own);
+    s.ok('GUARD: the hand swap is a legal one', own.valid && !!own.bwId && own.bwId !== own.kitId, own);
+    s.ok('GUARD: and the kit could still take that slot from it', own.stillOffered, own);
+    s.eq('the athlete’s own swap wins the slot', [own.afterId, own.afterKit], [own.bwId, false], own);
     s.ok('and the kit move does not take that slot back', !own.kitElsewhere.includes(own.kitSlot), own);
     s.ok('the focus pick is left alone', own.focusKept, own);
 
