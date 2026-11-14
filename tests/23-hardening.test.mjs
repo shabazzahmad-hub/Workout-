@@ -4835,7 +4835,14 @@ export default async function () {
       ivStep(0); await wait(200);
       R.phase = INTV.phase;   // workElapsed is only credited in a work phase
       // Five real seconds of the round have gone by with no tick to count them.
-      ivClear(); INTV.deadline = monoNow() + 40000; INTV.remain = 45;
+      /* HALF A SECOND OFF THE BOUNDARY, ON PURPOSE. The deadline sat exactly
+         on a whole second, and (t + 40000) - t is not always 40000 in floating
+         point: for about 1 clock reading in 28 it is 40000.00000000001, which
+         rounds UP to 41. When the tick then read the same clock value, the
+         first rescue left 41 and the second, a millisecond later, 40 -- red on
+         a fast runner, on correct code. Reproduced with the clock pinned to
+         such a reading: 41 then 40 on the boundary, 40 then 40 off it. */
+      ivClear(); INTV.deadline = monoNow() + 39500; INTV.remain = 45;
       R.start = { remain: INTV.remain, work: INTV.workElapsed };
       ivResync(); ivClear();
       R.one = { remain: INTV.remain, work: INTV.workElapsed };

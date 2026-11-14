@@ -1112,7 +1112,7 @@ export default async function run() {
     // a rest timer must not lose time while the phone is asleep
     openPlayer(); plEnterRest(90, 'set');
     o.hasDeadline = !!PLAYER.deadline;
-    PLAYER.deadline = monoNow() + 30000;   // as if 60s passed while frozen
+    PLAYER.deadline = monoNow() + 29500;   // as if 60s passed while frozen; half a second off the boundary, where rounding cannot read 31
     plTickRest();
     o.catchesUp = PLAYER.remain <= 30;
     // +15s still works
@@ -1150,7 +1150,7 @@ export default async function run() {
     if (o.total < 8) { playerQuit(); return { skip: true, tooShort: o.total }; }   // needs headroom below "5s left"
     // as if most of the hold passed while the phone was frozen — 5s left on the
     // clock, same shape as the existing plTickRest check two blocks up
-    PLAYER.deadline = monoNow() + 5000;
+    PLAYER.deadline = monoNow() + 4500;   // off the whole-second boundary, where rounding cannot read 6
     plTickHold();
     o.catchesUp = PLAYER.remain <= 5 && PLAYER.remain < o.total - 1;
     playerQuit();
