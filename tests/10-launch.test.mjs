@@ -1899,13 +1899,17 @@ const { browser, page, errors } = await launch(port);
            wheel is ['abs','full'], without it ['legs','full'] and no
            midsection key exists at all. */
         coreLegs: run('core', 'legs', ['legs', 'full']),
+        /* v539: a second chosen area now takes the bonus on a core-heavy day,
+           so the athlete the skip can still be seen on is the one whose ONLY
+           area is the midsection. */
+        absOnly: run('core', 'abs', ['abs']),
       };
     });
 
     /* GUARDS. Without these the copy assertions below are about a rate that
        was never short of 100%, and the floors have nothing to stand on. */
-    s.ok('GUARD: the bonus genuinely does NOT reach every session', m.core.bonus < m.core.N, m.core);
-    s.eq('GUARD: and every miss is the deliberate core-heavy rule', m.core.skipOther, 0, m.core);
+    s.ok('GUARD: the bonus genuinely does NOT reach every session', m.absOnly.bonus < m.absOnly.N, m.absOnly);
+    s.eq('GUARD: and every miss is the deliberate core-heavy rule', [m.absOnly.skipOther, m.core.skipOther], [0, 0], m.absOnly);
     s.ok('GUARD: a core-goal midsection bonus is a minority of sessions',
       m.core.mid > 0 && m.core.mid < m.core.N / 2, m.core);
 
@@ -1928,7 +1932,7 @@ const { browser, page, errors } = await launch(port);
       document.querySelectorAll('.ob-step').forEach(e => { e.style.display = ''; });
       const w = document.querySelector('#v-today').innerText || '';
       o.wizardEvery = /bonus move every session/i.test(w);
-      o.wizardMost = /bonus move in most sessions/i.test(w);
+      o.wizardMost = /adds an extra move for it, and changes one helper move to it where the session has room/i.test(w);
       STATE.onboarded = true;
       STATE.profile.goal = 'core'; STATE.nutrition.goal = 'core';
       go('fuel'); render();
@@ -1965,7 +1969,7 @@ const { browser, page, errors } = await launch(port);
       const seeBad = /every (?:session|workout)[^\n]{0,60}?bonus|bonus[^\n]{0,60}?every (?:session|workout)/i
         .test("label:'drives a targeted bonus move every session'");
       const seeGood = /every (?:session|workout)[^\n]{0,60}?bonus|bonus[^\n]{0,60}?every (?:session|workout)/i
-        .test("label:'drives a targeted bonus move in most sessions'");
+        .test("label:'adds an extra move for it, and changes one helper move to it where the session has room'");
       return { bad, readApp: sc.length > 200000, seeBad, seeGood };
     });
     s.ok('GUARD: the scan read the app', scan.readApp, scan);
@@ -1974,6 +1978,505 @@ const { browser, page, errors } = await launch(port);
     s.eq('no athlete-facing copy claims a bonus in every session', scan.bad, [], scan);
 
     errors.forEach(e => s.fail('page error', e));
+    await browser.close();
+  }
+
+  /* ---- v539: the focus area must change the session, measured ---------------
+     Reported: "when you change the area that you want to focus on ... the
+     exercises do not reflect any changes." Measured, and true in substance:
+     a focus area chose ONE bonus move, in 24 of the first 42 sessions; the
+     first session showed no change for any area; and a Shoulders focus chose
+     no bonus AT ALL for an athlete with no dumbbell or kettlebell, because
+     every bodyweight member of that pool sits under the difficulty gate.
+
+     The athlete asked for the strong version: the extra move in every session,
+     and one helper move changed to the focus area where the session has room.
+     Each rule below is checked over the WHOLE program, with the engine's own
+     predicates, and each has the floor an over-eager version fails. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const sweep = (over) => page.evaluate((over) => {
+      const P = STATE.profile, N = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+      Object.assign(P, { goal: 'lose', focusPrimary: 'abs', targets: ['abs'], troubleZones: [], limitations: [], tightSpace: false,
+        gear: ['bar', 'bench'], hasBar: true, hasBench: true });
+      STATE.baseline.level = 'Intermediate'; STATE.swaps = {}; STATE.logs = {};
+      Object.assign(P, over.p || {}); if (over.level) STATE.baseline.level = over.level;
+      STATE.nutrition.goal = P.goal; normalizeState();
+      const CORE = { anterior: 1, oblique: 1, lower: 1 };
+      const o = { N, bonus: 0, pick: 0, any: 0, dup: 0, dropped: 0, risky: 0, noKit: 0, twoPicks: 0, badIdx: 0, badSrc: 0, goalSlotHit: 0, offFamPick: 0,
+        offFamBonus: 0, aboveRung: 0, coreHeavy: 0, coreHeavyBonus: 0, coreHeavyCoreBonus: 0, mainLen: {}, coreLeft: 99, strLeft: 99, bonusKeys: {}, pickLads: {},
+        headMoved: 0, sets: 0, fp: [] };
+      for (let p = 0; p < N; p++) {
+        const s = buildSession(p, { full: true }), it = [...s.main, s.finisher].filter(Boolean), pos = s.pos;
+        const ids = it.map(m => m.exId); if (new Set(ids).size !== ids.length) o.dup++;
+        o.dropped += s.dropped.length;
+        it.forEach(m => { if (jointRisky(m.exId, P.limitations)) o.risky++; if (!hasGearFor(m.exId)) o.noKit++; o.sets += m.sets; });
+        o.fp.push(it.map(m => m.exId + ':' + m.sets + 'x' + m.target + 'r' + m.rest).join(','));
+        const g = goalSlots(pos.session, pos), orig = pos.session.slots;
+        const body = s.main.filter(m => !m.focus && !m.corrective);
+        o.mainLen[body.length] = (o.mainLen[body.length] || 0) + 1;
+        const picks = s.main.filter(m => m.focusPick);
+        if (picks.length > 1) o.twoPicks++;
+        const fam = focusLadders(P.focusPrimary) || [];
+        if (picks.length) {
+          const k = picks[0], i = s.main.indexOf(k);
+          o.pick++; o.pickLads[k.slot] = (o.pickLads[k.slot] || 0) + 1;
+          if (i < 2) o.badIdx++;
+          if (STRUCT_LADS.includes(g[i]) || CARDIO_LADS.includes(g[i])) o.badSrc++;
+          if (g[i] !== orig[i]) o.goalSlotHit++;
+          if (!fam.includes(k.slot) || !focusMember(k.focusKey, k.slot, k.exId)) o.offFamPick++;
+          const slotsNow = body.map(m => m.slot);
+          if (CORE_LADS.includes(g[i])) o.coreLeft = Math.min(o.coreLeft, slotsNow.filter(l => CORE_LADS.includes(l)).length);
+          else o.strLeft = Math.min(o.strLeft, slotsNow.filter(l => !CORE_LADS.includes(l) && !CARDIO_LADS.includes(l)).length);
+        }
+        // slots 0 and 1 are the main work of the day: a focus area never touches them
+        if (body[0] && body[1] && (body[0].slot !== g[0] || body[1].slot !== g[1])) o.headMoved++;
+        const b = s.main.find(m => m.focus);
+        const cs = s.main.filter(m => !m.focus && EX[m.exId] && CORE[EX[m.exId].region]).length;
+        if (cs >= 3) o.coreHeavy++;
+        if (b) {
+          o.bonus++; o.bonusKeys[b.focusKey] = (o.bonusKeys[b.focusKey] || 0) + 1;
+          if (cs >= 3) { o.coreHeavyBonus++; if (b.focusKey === 'abs' || b.focusKey === 'obliques') o.coreHeavyCoreBonus++; }
+          const pool = FOCUS_POOL[b.focusKey] || [], lads = focusLadders(b.focusKey) || [];
+          if (!pool.includes(b.exId)) {
+            // a ladder fallback: a real rung of the area, and never above the engine's own
+            const lad = lads.find(l => LADDERS[l].includes(b.exId));
+            if (!lad) o.offFamBonus++;
+            else if (LADDERS[lad].indexOf(b.exId) > rungIndex(lad, pos.cycle, pos.week, levelOf(pos.cycle))) o.aboveRung++;
+          }
+        }
+        if (b || picks.length || it.some(m => fam.includes(m.slot))) o.any++;
+      }
+      return o;
+    }, over || {});
+
+    /* GUARD: the defect was real. Re-derive the OLD gate here: with no dumbbell
+       and no kettlebell, no member of the Shoulders pool clears it below the
+       Advanced tier, so that focus had nothing to choose from. */
+    const old = await page.evaluate(() => {
+      const gear = ['bar', 'bench'];
+      const has = k => { const e = EX[k]; return !!e && (!e.equip || e.equip.every(g => gear.includes(g))); };
+      const pass = tier => FOCUS_POOL.shoulders.filter(k => has(k) && !(EX[k].hardness > 0 && EX[k].hardness < [1.0, 0.7, 0.4][tier]));
+      return { beg: pass(0), mid: pass(1), adv: pass(2) };
+    });
+    s.eq('GUARD: the Shoulders pool really is empty under the gate for a Beginner', old.beg, [], old);
+    s.eq('GUARD: and for an Intermediate', old.mid, [], old);
+    s.ok('GUARD: while an Advanced athlete has members in it', old.adv.length > 0, old);
+
+    /* 1. the extra move reaches every session, for every body-part area */
+    const areas = ['chest', 'back', 'shoulders', 'arms', 'legs', 'glutes'];
+    const byArea = {};
+    for (const a of areas) byArea[a] = await sweep({ p: { focusPrimary: a, targets: [a] } });
+    const sh = byArea.shoulders;
+    s.eq('a Shoulders focus now gets its extra move in every session', sh.bonus, sh.N, { bonus: sh.bonus, keys: sh.bonusKeys });
+    s.eq('and every one of them is a shoulder move', sh.bonusKeys, { shoulders: sh.N }, sh.bonusKeys);
+    s.eq('never a move outside the area', sh.offFamBonus, 0);
+    s.eq('never a rung above the one the main program gives this athlete', sh.aboveRung, 0);
+    for (const a of areas) {
+      const r = byArea[a];
+      s.eq(a + ': every session carries a move for the focus area', r.any, r.N, { any: r.any, bonus: r.bonus, pick: r.pick });
+      s.eq(a + ': no session prescribes one movement twice', r.dup, 0);
+      s.eq(a + ': no slot is lost to the focus area', r.dropped, 0);
+      s.eq(a + ': nothing needs kit the athlete does not own', r.noKit, 0);
+      /* 2. the helper move: a SWAP, in a helper slot, of the right family */
+      s.eq(a + ': the helper move changes in 66 sessions on a fat-loss goal', r.pick, 66, r.pickLads);
+      s.eq(a + ': never two helper moves in one session', r.twoPicks, 0);
+      s.eq(a + ': never slot 0 or 1', r.badIdx, 0);
+      s.eq(a + ': slots 0 and 1 are exactly the goal’s own', r.headMoved, 0);
+      s.eq(a + ': never a structural or conditioning slot', r.badSrc, 0);
+      s.eq(a + ': never the slot the goal re-pointed', r.goalSlotHit, 0);
+      s.eq(a + ': always a ladder and a move of the area', r.offFamPick, 0);
+      s.eq(a + ': a swap, not an addition - four body slots in every session', r.mainLen, { 4: r.N }, r.mainLen);
+      s.ok(a + ': a core slot is taken only while two remain', r.coreLeft >= 2, { coreLeft: r.coreLeft });
+      s.ok(a + ': a strength slot only while one remains', r.strLeft >= 1, { strLeft: r.strLeft });
+    }
+    s.eq('the Shoulders helper move comes from the shoulder ladder', sh.pickLads, { shoulderL: 66 }, sh.pickLads);
+    s.eq('the Back one rotates over both back ladders', byArea.back.pickLads, { rowL: 42, pullL: 24 }, byArea.back.pickLads);
+    /* a goal that re-points no slot leaves more room for the focus area */
+    const shTone = await sweep({ p: { focusPrimary: 'shoulders', targets: ['shoulders'], goal: 'recomp' } });
+    s.eq('on Tone up the helper move changes in 168 sessions', shTone.pick, 168, shTone.pickLads);
+    s.eq('and still never the goal’s slot, a main slot or a structural one', [shTone.goalSlotHit, shTone.badIdx, shTone.badSrc, shTone.headMoved], [0, 0, 0, 0]);
+
+    /* 3. the core cap is kept: a core-heavy day takes no extra CORE move */
+    const absOnly = await sweep({ p: { focusPrimary: 'abs', targets: ['abs'] } });
+    const absFull = await sweep({ p: { focusPrimary: 'abs', targets: ['abs', 'full'] } });
+    const full = await sweep({ p: { focusPrimary: 'full', targets: ['full'] } });
+    s.ok('GUARD: the program really has core-heavy days', absOnly.coreHeavy > 20, { coreHeavy: absOnly.coreHeavy });
+    s.eq('FLOOR: a core-only athlete gets no extra move on a core-heavy day', absOnly.coreHeavyBonus, 0, absOnly);
+    s.eq('FLOOR: so their extra move is every other session and no more', absOnly.bonus, absOnly.N - absOnly.coreHeavy, { bonus: absOnly.bonus, coreHeavy: absOnly.coreHeavy });
+    s.eq('an athlete with a second area gets it on every core-heavy day', absFull.coreHeavyBonus, absFull.coreHeavy, absFull);
+    s.eq('and it is never a core move there', absFull.coreHeavyCoreBonus, 0, absFull.bonusKeys);
+    s.eq('so their extra move reaches every session', absFull.bonus, absFull.N);
+    /* FLOORS: the two areas with no helper swap, and why */
+    s.eq('FLOOR: a core focus changes no helper slot (the core is capped)', absOnly.pick, 0);
+    s.eq('FLOOR: Full body changes no helper slot (it is the program as written)', full.pick, 0);
+    s.eq('FLOOR: neither has a ladder family', await page.evaluate(() => [focusLadders('abs'), focusLadders('full')]), [null, null]);
+
+    /* 4. the change is the athlete's own answer: A, fingerprint, B, fingerprint */
+    const dFull = full.fp.filter((x, i) => x !== sh.fp[i]).length;
+    s.eq('Full body to Shoulders changes every session of the program', dFull, full.N);
+    s.ok('and the very first session', full.fp[0] !== sh.fp[0], { a: full.fp[0], b: sh.fp[0] });
+    const dAbs = full.fp.filter((x, i) => x !== absOnly.fp[i]).length;
+    s.ok('Full body to core changes most sessions', dAbs > full.N * 0.6, { dAbs });
+
+    /* 5. safety: a flagged joint outranks the focus area */
+    const guardRisk = await page.evaluate(() => jointRisky('pikepushup', ['shoulder', 'wrist']) && jointRisky('elevatedpike', ['shoulder', 'wrist']));
+    s.ok('GUARD: the shoulder ladder really loads a flagged shoulder and wrist', guardRisk);
+    const shHurt = await sweep({ p: { focusPrimary: 'shoulders', targets: ['shoulders'], limitations: ['shoulder', 'wrist'] } });
+    s.eq('a Shoulders focus with a flagged shoulder puts no risky move in any session', shHurt.risky, 0);
+    s.eq('it changes no helper slot rather than fill one with something else', shHurt.pick, 0);
+    s.eq('and it loses no slot', [shHurt.dropped, shHurt.mainLen[4]], [0, shHurt.N], shHurt.mainLen);
+    const legHurt = await sweep({ p: { focusPrimary: 'legs', targets: ['legs'], limitations: ['knee'] } });
+    s.eq('a Legs focus with a flagged knee puts no risky move in any session', legHurt.risky, 0);
+    s.eq('and every helper move it does place is a leg move', legHurt.offFamPick, 0, legHurt.pickLads);
+    const noKit = await sweep({ p: { focusPrimary: 'back', targets: ['back'], gear: [], hasBar: false, hasBench: false } });
+    s.eq('a Back focus with no kit at all asks for none', noKit.noKit, 0);
+    s.eq('and still serves the area in every session', noKit.any, noKit.N);
+    const beg = await sweep({ p: { focusPrimary: 'shoulders', targets: ['shoulders'] }, level: 'Beginner' });
+    s.eq('a Beginner never gets a shoulder rung above the engine’s own', beg.aboveRung, 0);
+    s.eq('nor a move outside the area', [beg.offFamBonus, beg.offFamPick], [0, 0]);
+
+    /* 6. the helpers' own contracts (a guard consulted in one branch must mean what it is named) */
+    const c = await page.evaluate(() => ({
+      inherited: focusLadders('constructor'), junk: focusLadders('zzz'), real: focusLadders('shoulders'),
+      memRung: focusMember('shoulders', 'shoulderL', 'pikepushup'), memPool: focusMember('back', 'rowL', 'superman'),
+      memOther: focusMember('shoulders', 'shoulderL', 'glutebridge'), memJunk: focusMember('shoulders', 'shoulderL', 'constructor'),
+      memNull: focusMember('shoulders', 'shoulderL', null),
+      pickNoFocus: (() => { const f = STATE.profile.focusPrimary; STATE.profile.focusPrimary = 'zzz'; const r = focusSlotPick(SESSIONS[0], SESSIONS[0].slots.slice(), { dayInWeek: 0, cycle: 0 }); STATE.profile.focusPrimary = f; return r; })(),
+      pickBadSlots: (() => { const f = STATE.profile.focusPrimary; STATE.profile.focusPrimary = 'shoulders'; const r = focusSlotPick(SESSIONS[0], null, {}); STATE.profile.focusPrimary = f; return r; })(),
+      structOnce: (() => { const sc = [...document.querySelectorAll('script:not([src])')].sort((a, b) => b.textContent.length - a.textContent.length)[0].textContent;
+        return { n: sc.split("['hingeL','rowL','pullL','chestL','squatL','bicepL']").length - 1, read: sc.length > 200000,
+          goalAsks: /const STRUCTURAL=STRUCT_LADS;/.test(sc) && /const FIRST_SWAPPABLE=SLOT_FIRST_SWAPPABLE;/.test(sc) }; })(),
+    }));
+    s.eq('an inherited key is not a focus area', c.inherited, null);
+    s.eq('nor is a junk one', c.junk, null);
+    s.eq('a real one answers with its ladders', c.real, ['shoulderL']);
+    s.ok('a rung of the ladder is a member', c.memRung);
+    s.ok('so is a move of the area’s own pool', c.memPool);
+    s.ok('a move of another area is not', !c.memOther);
+    s.ok('an inherited key is not', !c.memJunk);
+    s.ok('nothing is not', !c.memNull);
+    s.eq('a junk focus area picks no slot', c.pickNoFocus, null);
+    s.eq('a missing slot list picks no slot rather than throwing', c.pickBadSlots, null);
+    s.ok('GUARD: the source scan read the app', c.structOnce.read);
+    s.eq('the structural list is written once', c.structOnce.n, 1);
+    s.ok('and goalSlots() asks the hoisted protections', c.structOnce.goalAsks);
+
+    /* 7. the validator's lockstep, broken in front of it */
+    const v = await page.evaluate(() => {
+      const ce = console.error; console.error = () => {};
+      const run = () => validateData().filter(x => /FOCUS_LADDERS/.test(x));
+      const out = { clean: run() };
+      try {
+        FOCUS_LADDERS.zzz = ['shoulderL']; out.badKey = run(); delete FOCUS_LADDERS.zzz;
+        FOCUS_LADDERS.shoulders = ['nopeL']; out.badLad = run(); FOCUS_LADDERS.shoulders = ['shoulderL'];
+        FOCUS_LADDERS.shoulders = ['cardioAL']; out.cardio = run(); FOCUS_LADDERS.shoulders = ['shoulderL'];
+        FOCUS_LADDERS.abs = ['plankL']; out.core = run(); delete FOCUS_LADDERS.abs;
+        out.restored = run();
+      } finally { console.error = ce; }
+      return out;
+    });
+    s.eq('the validator is clean on the shipped map', v.clean, []);
+    s.ok('it refuses a key that is not a focus area', v.badKey.some(x => /zzz/.test(x)), v.badKey);
+    s.ok('it refuses a ladder that does not exist', v.badLad.some(x => /nopeL/.test(x)), v.badLad);
+    s.ok('it refuses a conditioning ladder', v.cardio.some(x => /cardioAL/.test(x)), v.cardio);
+    s.ok('it refuses a core ladder (the core cap)', v.core.some(x => /plankL/.test(x)), v.core);
+    s.eq('FLOOR: and it is clean again once restored', v.restored, []);
+
+    /* 8. on the glass, through the real editor */
+    const ui = await page.evaluate(async () => {
+      Object.assign(STATE.profile, { goal: 'lose', focusPrimary: 'full', targets: ['full'], troubleZones: [], limitations: [], gear: ['bar', 'bench'], hasBar: true, hasBench: true });
+      STATE.nutrition.goal = 'lose'; STATE.baseline.level = 'Intermediate'; STATE.progressPtr = 0; STATE.logs = {}; STATE.swaps = {};
+      delete STATE._shortToday; normalizeState(); try { _celebQ = []; } catch (e) {} save();
+      const names = () => { const b = buildSession(STATE.progressPtr, { full: true }); return [...b.main, b.finisher].map(m => EX[m.exId].name); };
+      const tags = () => { TODAY_TAB = 'workout'; go('today'); render();
+        return [...document.querySelectorAll('#v-today .ex')].filter(e => /Your focus/.test(e.querySelector('.ex-region').textContent)).map(e => e.dataset.ex); };
+      const o = { before: names(), tagsBefore: tags() };
+      go('guide');
+      const b = [...document.querySelectorAll('#v-guide button')].find(x => /Edit my profile/.test(x.textContent)); if (b) b.click();
+      o.opened = !!document.querySelector('#ob-name');
+      const f = document.querySelector('#ob-focus button[data-f="shoulders"]'); o.chip = !!f; if (f) f.click();
+      for (let i = 0; i < 7; i++) { const n = document.querySelector('#ob-next'); if (n) n.click(); }
+      o.focus = STATE.profile.focusPrimary;
+      o.after = names();
+      const sh = document.querySelector('#sheet');
+      o.repOpen = document.querySelector('#scrim').classList.contains('open') && !!sh.querySelector('[data-obrep]');
+      o.head = o.repOpen ? sh.querySelector('[data-obhead]').textContent.replace(/\s+/g, ' ').trim() : null;
+      o.row = o.repOpen && sh.querySelector('[data-obans="focus"]') ? sh.querySelector('[data-obans="focus"]').textContent.replace(/\s+/g, ' ').trim() : null;
+      o.lines = o.repOpen ? [...sh.querySelectorAll('[data-obtoday] li')].map(e => e.textContent.replace(/\s+/g, ' ').trim()) : [];
+      try { closeSheet(); } catch (e) {}
+      const bs = buildSession(STATE.progressPtr, { full: true });
+      o.marked = bs.main.filter(m => m.focus || m.focusPick).map(m => m.exId);
+      o.pickId = (bs.main.find(m => m.focusPick) || {}).exId || null;
+      o.tagsAfter = tags();
+      o.total = SESSIONS_PER_CYCLE;
+      return o;
+    });
+    s.ok('GUARD: the editor opened and the Shoulders chip is there', ui.opened && ui.chip, ui);
+    s.eq('GUARD: the tap reached the profile', ui.focus, 'shoulders');
+    s.ok('tapping Shoulders changes today’s session', ui.before.join('|') !== ui.after.join('|'), { before: ui.before, after: ui.after });
+    s.ok('the report opens and says today’s session changed', ui.repOpen && /Today’s session changed/.test(ui.head || ''), ui.head);
+    /* The row is the #1 area ALONE, with the other focus areas put back, so it
+       is the helper-move sessions and not the whole block. Measured: 30 of 42. */
+    const uiN = +((ui.row || '').match(/Changed (\d+) of the next (\d+) sessions/) || [])[1] || 0;
+    s.eq('the focus row states the measured count for the #1 area alone', uiN, 30, ui.row);
+    s.ok('and the lines name what was added', ui.lines.some(l => /^Added: /.test(l)), ui.lines);
+    s.ok('GUARD: today carries a helper move and an extra move', ui.marked.length === 2 && !!ui.pickId, ui.marked);
+    s.eq('both carry the Your focus tag on the session card', ui.tagsAfter.slice().sort(), ui.marked.slice().sort(), { tags: ui.tagsAfter, marked: ui.marked });
+    s.ok('FLOOR: and no other card carries it', ui.tagsAfter.length === 2, ui.tagsAfter);
+
+    /* 9. short on time: the helper move is part of the session, the extra move goes first */
+    const cut = await page.evaluate(() => {
+      const fullS = buildSession(STATE.progressPtr, { full: true });
+      const fit = fitSessionToTime(buildSession(STATE.progressPtr, { full: true }), 12);
+      return { hadBonus: fullS.main.some(m => m.focus), bonusLeft: fit.main.some(m => m.focus), pickLeft: fit.main.some(m => m.focusPick), n: fit.main.length };
+    });
+    s.ok('GUARD: the full session has the extra move', cut.hadBonus, cut);
+    s.ok('a short session drops the extra move first', !cut.bonusLeft, cut);
+
+    /* 10. the wizard says what the answer does */
+    const copy = await page.evaluate(() => {
+      STATE.onboarded = false; OB_EDIT = false; render();
+      document.querySelectorAll('.ob-step').forEach(e => { e.style.display = ''; });
+      const w = document.querySelector('#v-today').textContent || '';
+      STATE.onboarded = true;
+      return { says: /adds an extra move for it, and changes one helper move to it where the session has room/.test(w), old: /drives a targeted bonus move/.test(w) };
+    });
+    s.ok('the focus label says what the answer does now', copy.says, copy);
+    s.ok('and no longer the old sentence', !copy.old, copy);
+
+    s.eq('no page errors while checking the focus area', errors, []);
+    await browser.close();
+  }
+
+  /* ---- v539: the kit the athlete owns goes into the daily session -----------
+     The equipment answer, measured: eleven of fourteen kit items changed NO
+     daily session when ticked, because no kettlebell, dumbbell, medicine ball,
+     ab roller, stability ball, balance trainer, ruck, sandbag, battle rope or
+     parallette movement sits on any ladder. One slot a session now becomes a
+     kit movement of the same pattern. Checked over the whole program with the
+     engine's own predicates; every rule has the floor an over-eager version
+     fails. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const sweep = (over) => page.evaluate((over) => {
+      const P = STATE.profile, N = SESSIONS_PER_CYCLE * TOTAL_CYCLES;
+      Object.assign(P, { goal: 'lose', focusPrimary: 'abs', targets: ['abs', 'full'], troubleZones: [], limitations: [], tightSpace: false,
+        gear: ['bar', 'bench'], hasBar: true, hasBench: true, parq: [], parqDone: true, medCleared: false });
+      STATE.baseline.level = 'Intermediate'; STATE.swaps = {}; STATE.logs = {};
+      Object.assign(P, over.p || {}); if (over.level) STATE.baseline.level = over.level;
+      STATE.nutrition.goal = P.goal; normalizeState();
+      const onLad = new Set(); Object.keys(LADDERS).forEach(l => LADDERS[l].forEach(k => onLad.add(k)));
+      const o = { N, kit: 0, two: 0, dup: 0, dropped: 0, risky: 0, noKit: 0, patBad: 0, regBad: 0, onLadder: 0, onFocus: 0, power: 0, len: {}, by: {}, gear: {}, slots: {}, fp: [], safe: safeMode() };
+      for (let p = 0; p < N; p++) {
+        const s = buildSession(p, { full: true }), it = [...s.main, s.finisher].filter(Boolean);
+        const ids = it.map(m => m.exId); if (new Set(ids).size !== ids.length) o.dup++;
+        o.dropped += s.dropped.length;
+        it.forEach(m => { if (jointRisky(m.exId, P.limitations)) o.risky++; if (!hasGearFor(m.exId)) o.noKit++; });
+        o.fp.push(it.map(m => m.exId + ':' + m.sets + 'x' + m.target).join(','));
+        const body = s.main.filter(m => !m.focus && !m.corrective);
+        o.len[body.length] = (o.len[body.length] || 0) + 1;
+        const k = s.main.filter(m => m.kit);
+        if (k.length > 1) o.two++;
+        if (k.length) {
+          const m = k[0], e = EX[m.exId], pats = kitPatterns(m.slot) || [];
+          o.kit++; o.by[m.exId] = (o.by[m.exId] || 0) + 1; o.slots[m.slot] = 1;
+          e.equip.forEach(g => { o.gear[g] = (o.gear[g] || 0) + 1; });
+          if (!pats.includes(e.pattern)) o.patBad++;
+          if (pats[0] === 'core' && !['anterior', 'oblique', 'lower', 'stability'].includes(e.region)) o.regBad++;
+          if (onLad.has(m.exId)) o.onLadder++;
+          if (m.focusPick || m.focus) o.onFocus++;
+          if (e.pattern === 'power' || e.pattern === 'cardio') o.power++;
+        }
+      }
+      o.slotN = Object.keys(o.slots).length; delete o.slots;
+      return o;
+    }, over || {});
+
+    /* GUARD: the defect was real. No kit movement is on any ladder. */
+    const g0 = await page.evaluate(() => {
+      const on = new Set(); Object.keys(LADDERS).forEach(l => LADDERS[l].forEach(k => on.add(k)));
+      const lg = [...ladderGearKeys()].sort();
+      const kitKeys = GEAR_OPTS.map(x => x[0]).filter(g => !lg.includes(g));
+      const onLadderWithKit = Object.keys(EX).filter(k => on.has(k) && (EX[k].equip || []).some(g => kitKeys.includes(g)));
+      return { lg, kitKeys, onLadderWithKit, pool: kitMoves().length };
+    });
+    s.eq('GUARD: no ladder carries a movement for any of the ten kit items', g0.onLadderWithKit, [], g0);
+    s.eq('GUARD: the ladders use only the bar, the bench, the dip station and the bike', g0.lg, ['bar', 'bench', 'bike', 'dip']);
+    s.ok('GUARD: and the library really has kit movements to place', g0.pool > 40, g0);
+
+    const none = await sweep({});
+    s.eq('FLOOR: an athlete with only a bar and a bench gets no kit move', none.kit, 0);
+
+    const mine = ['bar', 'bench', 'kettlebell', 'dumbbell', 'balancetrainer', 'stabilityball', 'parallettes', 'ruck', 'sandbag'];
+    const a = await sweep({ p: { gear: mine } });
+    s.eq('an athlete with kit gets one kit move in every session', a.kit, a.N, { kit: a.kit });
+    s.eq('never two', a.two, 0);
+    s.eq('a swap, not an addition - four body slots in every session', a.len, { 4: a.N }, a.len);
+    s.eq('always a movement of the slot’s own pattern', a.patBad, 0);
+    s.eq('a core slot keeps a core region', a.regBad, 0);
+    s.eq('never a movement a ladder already carries', a.onLadder, 0);
+    s.eq('never the focus area’s own move', a.onFocus, 0);
+    s.eq('never a power or conditioning movement', a.power, 0);
+    s.eq('no session prescribes one movement twice', a.dup, 0);
+    s.eq('no slot is lost', a.dropped, 0);
+    s.eq('nothing needs kit the athlete does not own', a.noKit, 0);
+    s.ok('the kit move lands on many different slots, not one', a.slotN >= 8, { slotN: a.slotN });
+    for (const g of mine.filter(x => x !== 'bar' && x !== 'bench'))
+      s.ok('the ' + g + ' is really used', (a.gear[g] || 0) > 0, a.gear);
+    s.ok('and the athlete meets many different kit movements', Object.keys(a.by).length >= 20, { n: Object.keys(a.by).length });
+    const dKit = none.fp.filter((x, i) => x !== a.fp[i]).length;
+    s.eq('ticking the kit changes every session of the program', dKit, none.N);
+
+    /* every kit item on its own is a live answer */
+    const each = {};
+    for (const g of ['kettlebell', 'dumbbell', 'medball', 'abroller', 'stabilityball', 'balancetrainer', 'ruck', 'sandbag', 'battlerope', 'parallettes']) {
+      const r = await sweep({ p: { gear: ['bar', 'bench', g] } });
+      each[g] = r.kit;
+      s.ok(g + ' alone changes the program', r.kit >= 100, { kit: r.kit });
+      s.eq(g + ' alone: no repeat, no lost slot, no missing kit, right pattern', [r.dup, r.dropped, r.noKit, r.patBad, r.regBad], [0, 0, 0, 0, 0]);
+      s.ok(g + ' alone: every kit move uses that item', Object.keys(r.gear).includes(g), r.gear);
+    }
+    /* FLOORS: the three keys a ladder already uses are not a second answer here */
+    for (const g of ['dip', 'bike']) {
+      const r = await sweep({ p: { gear: ['bar', 'bench', g] } });
+      s.eq('FLOOR: the ' + g + ' adds no kit move (a ladder already uses it)', r.kit, 0);
+    }
+    /* the strict core rule, pinned on the two athletes it was written for */
+    const bt = await sweep({ p: { gear: ['bar', 'bench', 'balancetrainer'] } });
+    s.ok('the dome side plank is not in most sessions', (bt.by.btsideplank || 0) < bt.N / 2, bt.by);
+    const rk = await sweep({ p: { gear: ['bar', 'bench', 'ruck'] } });
+    s.eq('a ruck carry never stands in for a core move', rk.by.ruckcarry || 0, 0, rk.by);
+    const sb = await sweep({ p: { gear: ['bar', 'bench', 'sandbag'] } });
+    s.eq('nor does a sandbag shuttle or drag', [(sb.by.sbagshuttle || 0), (sb.by.sbagdrag || 0)], [0, 0], sb.by);
+
+    /* safety */
+    const hurt = await sweep({ p: { gear: mine, limitations: ['shoulder', 'wrist', 'lowback', 'knee'] } });
+    s.ok('GUARD: a flagged athlete still gets kit moves', hurt.kit > 300, { kit: hurt.kit });
+    s.eq('with four joints flagged, no kit move is risky', hurt.risky, 0);
+    s.eq('and none is lost or repeated', [hurt.dup, hurt.dropped], [0, 0]);
+    const tight = await sweep({ p: { gear: mine, tightSpace: true } });
+    const tightBad = await page.evaluate(() => { let n = 0; for (let p = 0; p < 378; p++) { buildSession(p, { full: true }).main.filter(m => m.kit).forEach(m => { if (spaceSwap(m.exId) !== m.exId) n++; }); } return n; });
+    s.eq('in a tight room, no kit move needs the room', [tightBad, tight.dup], [0, 0]);
+    const sm = await sweep({ p: { gear: mine, parq: ['heart'], parqDone: true, medCleared: false } });
+    s.ok('GUARD: a declared heart condition with no clearance is safe mode', sm.safe);
+    s.eq('under safe mode no kit move is added', sm.kit, 0);
+    const cleared = await sweep({ p: { gear: mine, parq: ['heart'], parqDone: true, medCleared: true } });
+    s.eq('FLOOR: a cleared athlete gets them back', cleared.kit, cleared.N);
+    const beg = await sweep({ p: { gear: mine }, level: 'Beginner' });
+    s.eq('a Beginner gets one too, with no power movement', [beg.kit, beg.power], [beg.N, 0]);
+
+    /* the athlete's own swap outranks the default, and the focus pick is left alone */
+    const own = await page.evaluate((mine) => {
+      Object.assign(STATE.profile, { gear: mine, limitations: [], tightSpace: false, parq: [], focusPrimary: 'shoulders', targets: ['shoulders'], goal: 'recomp' });
+      STATE.nutrition.goal = 'recomp'; STATE.swaps = {}; normalizeState();
+      let p = 0, s0 = null;
+      for (; p < 42; p++) { s0 = buildSession(p, { full: true }); if (s0.main.some(m => m.kit) && s0.main.some(m => m.focusPick)) break; }
+      const k = s0.main.find(m => m.kit), f = s0.main.find(m => m.focusPick);
+      const o = { found: p < 42, kitSlot: k && k.slot, kitId: k && k.exId, focusId: f && f.exId, sameSlot: !!(k && f && k.slot === f.slot) };
+      STATE.swaps[p] = {}; STATE.swaps[p][k.slot] = 'pushup';
+      const s1 = buildSession(p, { full: true }), m = s1.main.find(x => x.slot === k.slot);
+      o.afterId = m && m.exId; o.afterKit = !!(m && m.kit); o.valid = swapStillValid('pushup');
+      o.kitElsewhere = s1.main.filter(x => x.kit).map(x => x.slot);
+      o.focusKept = s1.main.some(x => x.focusPick && x.exId === o.focusId);
+      STATE.swaps = {};
+      return o;
+    }, mine);
+    s.ok('GUARD: a session with both a kit move and a focus pick exists', own.found && !own.sameSlot, own);
+    s.ok('GUARD: the hand swap is a legal one', own.valid, own);
+    s.eq('the athlete’s own swap wins the slot', [own.afterId, own.afterKit], ['pushup', false], own);
+    s.ok('and the kit move does not take that slot back', !own.kitElsewhere.includes(own.kitSlot), own);
+    s.ok('the focus pick is left alone', own.focusKept, own);
+
+    /* the helpers' own contracts */
+    const c = await page.evaluate(() => {
+      const keep = STATE.profile.gear.slice();
+      STATE.profile.gear = ['kettlebell']; normalizeState();
+      const o = { inherited: kitPatterns('constructor'), cardio: kitPatterns('cardioAL'), calf: kitPatterns('calfL'), sq: kitPatterns('squatL'),
+        noCur: kitCandidates('squatL', new Set(), null), junkCur: kitCandidates('squatL', new Set(), 'constructor'),
+        junkLad: kitCandidates('zzz', new Set(), 'squat'), real: kitCandidates('squatL', new Set(), 'squat').slice().sort(),
+        usedOut: kitCandidates('squatL', new Set(['kbgoblet']), 'squat').includes('kbgoblet'),
+        gate: !!kitGate({ cycle: 0, inCycle: 3 }), gateIdx: (kitGate({ cycle: 1, inCycle: 3 }) || {}).idx };
+      STATE.profile.gear = ['bar', 'bench', 'dip']; normalizeState(); o.gateNoKit = kitGate({ cycle: 0, inCycle: 0 });
+      STATE.profile.gear = keep; normalizeState();
+      // every kit pattern list names only patterns the library has, and every ladder named exists
+      const pats = new Set(Object.keys(EX).map(k => EX[k].pattern).filter(Boolean));
+      o.badMap = Object.keys(KIT_SLOT_PATTERNS).filter(l => !LADDERS[l] || KIT_SLOT_PATTERNS[l].some(x => !pats.has(x)));
+      return o;
+    });
+    s.eq('an inherited key is not a kit slot', c.inherited, null);
+    s.eq('a conditioning ladder takes no kit move', c.cardio, null);
+    s.eq('nor the calf ladder', c.calf, null);
+    s.eq('the squat ladder takes a squat or a lunge', c.sq, ['squat', 'lunge']);
+    s.eq('no current move, no candidate', [c.noCur, c.junkCur, c.junkLad], [[], [], []]);
+    s.eq('a kettlebell owner’s squat slot can take the goblet squat or the lunge', c.real, ['kbgoblet', 'kblunge']);
+    s.ok('a move already in the session is not offered again', !c.usedOut);
+    s.ok('the gate opens for an athlete with kit', c.gate);
+    s.eq('its start rotates with the session', c.gateIdx, 45);
+    s.eq('and stays shut with only ladder gear', c.gateNoKit, null);
+    s.eq('the pattern map names only real ladders and real patterns', c.badMap, []);
+
+    /* on the glass, through the real editor: tick a kettlebell, read the report and the card */
+    const ui = await page.evaluate(async () => {
+      Object.assign(STATE.profile, { goal: 'lose', focusPrimary: 'abs', targets: ['abs', 'full'], troubleZones: [], limitations: [], tightSpace: false, parq: [], parqDone: true,
+        gear: ['bar', 'bench'], hasBar: true, hasBench: true });
+      STATE.nutrition.goal = 'lose'; STATE.baseline.level = 'Intermediate'; STATE.progressPtr = 0; STATE.logs = {}; STATE.swaps = {};
+      delete STATE._shortToday; normalizeState(); try { _celebQ = []; } catch (e) {} save();
+      const o = {};
+      go('guide');
+      const b = [...document.querySelectorAll('#v-guide button')].find(x => /Edit my profile/.test(x.textContent)); if (b) b.click();
+      o.opened = !!document.querySelector('#ob-name');
+      const chip = [...document.querySelectorAll('.ob-step button')].find(x => /^\s*Kettlebells\s*$/.test(x.textContent)); o.chip = !!chip; if (chip) chip.click();
+      for (let i = 0; i < 7; i++) { const n = document.querySelector('#ob-next'); if (n) n.click(); }
+      o.gear = STATE.profile.gear.slice();
+      const sh = document.querySelector('#sheet');
+      o.repOpen = document.querySelector('#scrim').classList.contains('open') && !!sh.querySelector('[data-obrep]');
+      o.row = o.repOpen && sh.querySelector('[data-obans="gear"]') ? sh.querySelector('[data-obans="gear"]').textContent.replace(/\s+/g, ' ').trim() : null;
+      try { closeSheet(); } catch (e) {}
+      const bs = buildSession(STATE.progressPtr, { full: true });
+      o.kitIds = bs.main.filter(m => m.kit).map(m => m.exId);
+      TODAY_TAB = 'workout'; go('today'); render();
+      o.tags = [...document.querySelectorAll('#v-today .ex')].filter(e => /Your kit/.test(e.querySelector('.ex-region').textContent)).map(e => e.dataset.ex);
+      o.total = SESSIONS_PER_CYCLE;
+      return o;
+    });
+    s.ok('GUARD: the editor opened and the Kettlebells chip is there', ui.opened && ui.chip, ui);
+    s.ok('GUARD: the tap reached the profile', ui.gear.includes('kettlebell'), ui.gear);
+    s.ok('the report says the equipment answer changed every session of the block', !!ui.row && ui.row.includes(ui.total + ' of the next ' + ui.total + ' sessions'), ui.row);
+    s.eq('today’s session carries one kit move', ui.kitIds.length, 1, ui.kitIds);
+    s.eq('and its card carries the Your kit tag, alone', ui.tags, ui.kitIds, ui);
+
+    /* an answer that sets something other than the sessions says what it sets */
+    const why = await page.evaluate(() => {
+      const v = (p, n) => ({ p: Object.assign({}, STATE.profile, p || {}), n: Object.assign({}, STATE.nutrition, n || {}) });
+      const keep = { g: STATE.profile.goal, t: STATE.profile.timelineWeeks };
+      const o = {
+        mobOkGood: obWhyNoChange('mobility', v({ mobility: 'ok' }), v({ mobility: 'good' })),
+        mobLow: obWhyNoChange('mobility', v({ mobility: 'ok' }), v({ mobility: 'low' })),
+        diet: obWhyNoChange('diet', v(), v()),
+        other: obWhyNoChange('days', v(), v()),
+      };
+      STATE.profile.goal = 'lose'; STATE.profile.timelineWeeks = null; o.gwNoTime = obWhyNoChange('goalweight', v(), v());
+      STATE.profile.timelineWeeks = 24; o.gwPaced = obWhyNoChange('goalweight', v(), v());
+      STATE.profile.goal = 'recomp'; o.gwStable = obWhyNoChange('goalweight', v(), v());
+      STATE.profile.goal = keep.g; STATE.profile.timelineWeeks = keep.t;
+      // the claim in the mobility sentence, measured: ok and good build the same flows, low does not
+      const flow = m => { const k = STATE.profile.mobility; STATE.profile.mobility = m; const f = JSON.stringify([warmupFlow(), cooldownFlow()]); STATE.profile.mobility = k; return f; };
+      o.sameFlow = flow('ok') === flow('good'); o.lowDiffers = flow('ok') !== flow('low');
+      return o;
+    });
+    s.ok('GUARD: the two mobility answers really build the same warm-up', why.sameFlow && why.lowDiffers, why);
+    s.ok('so the report says so', /same warm-up and cool-down/.test(why.mobOkGood), why.mobOkGood);
+    s.eq('FLOOR: and not when the limited answer is one of the two', why.mobLow, '');
+    s.ok('the diet answer says it sets the meal plan', /meal plan/.test(why.diet), why.diet);
+    s.ok('a goal weight with no timeframe says why it set no pace', /timeframe/.test(why.gwNoTime), why.gwNoTime);
+    s.ok('and on a goal whose scale holds', /timeframe/.test(why.gwStable), why.gwStable);
+    s.eq('FLOOR: but not on a paced cut', why.gwPaced, '');
+    s.eq('FLOOR: an answer with no tested reason gets none', why.other, '');
+
+    s.eq('no page errors while checking the kit rule', errors, []);
     await browser.close();
   }
 
@@ -2117,14 +2620,26 @@ const { browser, page, errors } = await launch(port);
 
     /* D. kit that no session in the window uses */
     await seedBase('Intermediate'); const d0 = await fp();
-    await openEdit(); await tap('#ob-gear button[data-e="ruck"]'); await saveAll();
+    /* v539 put owned kit into the daily session, so the ruck is no longer a
+       kit that moves nothing. The bike is: a ladder already uses that key, and
+       it is programmed only when the athlete picks the bike as their cardio. */
+    await openEdit(); await tap('#ob-gear button[data-e="bike"]'); await saveAll();
     const dR = await rep();
-    s.eq('GUARD: dropping the ruck moves no session in the window', diff(await fp(), d0), 0);
+    s.eq('GUARD: adding the bike moves no session in the window', diff(await fp(), d0), 0);
     s.ok('the equipment row says so and points at the Weights session', /no session/i.test(dR.rows.gear || '') && /Weights/.test(dR.rows.gear || ''), dR.rows.gear);
     await shut();
     // Today has four panes, so the pointer has to name the one the tile is on
     s.ok('the pointer names the pane as well as the tab', /Today ▸ Workout/.test(dR.rows.gear || ''), dR.rows.gear);
     s.ok('and the Weights session is where the row says it is', await page.evaluate(() => { go('today'); try { setTodayTab('workout'); } catch (e) {} return !!document.querySelector('#v-today button[onclick="startWeights()"]'); }));
+
+    /* D2. v539: kit the daily session DOES use says how many sessions it moved */
+    await seedBase('Intermediate'); const d20 = await fp();
+    await openEdit(); await tap('#ob-gear button[data-e="ruck"]'); await saveAll();
+    const d2R = await rep(), d2N = diff(await fp(), d20);
+    s.ok('GUARD: dropping the ruck now moves sessions', d2N > 0, { d2N });
+    s.ok('and the equipment row states the measured count', (d2R.rows.gear || '').includes(d2N + ' of the next '), d2R.rows.gear);
+    s.ok('with no "no session" reason beside it', !/No session in that window/i.test(d2R.rows.gear || ''), d2R.rows.gear);
+    await shut();
 
     /* E. answers that drive food or the warm-up, not the sessions */
     await seedBase('Intermediate'); const e0 = await fp();

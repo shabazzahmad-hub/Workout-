@@ -461,7 +461,7 @@
   .legend span{display:inline-flex;align-items:center;gap:5px}
   .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
   .cal{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-  .calday{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center;position:relative}
+  .calday{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center;position:relative;min-width:0;overflow-wrap:anywhere}
   .calday .wd{font-size:9.5px;color:var(--muted);font-weight:800;letter-spacing:.5px}
   .calday .ico{font-size:19px;margin:5px 0 3px}
   .calday .nm{font-size:10px;font-weight:800;line-height:1.15}
@@ -2844,6 +2844,76 @@ function focusMember(key,ladder,exId){
   const pool=Object.prototype.hasOwnProperty.call(FOCUS_POOL,key)?FOCUS_POOL[key]:[];
   return (LADDERS[ladder]||[]).includes(exId)||pool.includes(exId);
 }
+/* ---- THE KIT THE ATHLETE OWNS GOES INTO THE DAILY SESSION (v539) ------------
+   Measured across the whole equipment answer: of fourteen kit items, eleven
+   changed NO daily session when ticked. Not one kettlebell, dumbbell, medicine
+   ball, ab roller, stability ball, balance trainer, ruck, sandbag, battle rope
+   or parallette movement sits on any ladder, so the kit reached the program
+   only through the bonus pool and the separate Weights session. An athlete who
+   ticked a kettlebell got a bodyweight program.
+
+   ONE slot a session becomes a kit movement of the SAME PATTERN: a goblet
+   squat where the squat was, a row where the row was. A swap, never an
+   addition, and the slot keeps its own name, so the athlete's Swap button
+   still answers for it. It asks every question a picking path asks: kit owned
+   (hasGearFor), no flagged joint and no tight-room move (the candidate must
+   pass safeSwap and spaceSwap UNCHANGED, never be substituted), no repeat.
+
+   Only kit NO LADDER USES counts. The pull-up bar, the bench and the dip
+   station already steer the ladders, so they are not a second answer here.
+   Power and conditioning patterns are left out: a snatch or a man-maker is not
+   a like-for-like swap for anything on a strength ladder.
+
+   NOT UNDER SAFE MODE. An uncleared health screen is held short of failure;
+   it is not the moment to add external load. */
+const KIT_SLOT_PATTERNS={legL:['squat','lunge'],squatL:['squat','lunge'],hingeL:['hinge'],pushL:['pushh'],chestL:['pushh'],tricepL:['pushh'],
+  shoulderL:['pushv'],rowL:['pull'],pullL:['pull'],bicepL:['pull'],plankL:['core'],hollowL:['core'],lowerL:['core'],dynL:['core'],sideL:['core'],rotL:['core']};
+function kitPatterns(ladder){return Object.prototype.hasOwnProperty.call(KIT_SLOT_PATTERNS,ladder)?KIT_SLOT_PATTERNS[ladder]:null;}
+// the gear keys some ladder already uses, and every movement a ladder carries
+function ladderGearKeys(){const s=new Set();Object.keys(LADDERS).forEach(l=>LADDERS[l].forEach(k=>{const e=EX[k];if(e&&Array.isArray(e.equip))e.equip.forEach(g=>s.add(g));}));return s;}
+function kitMoves(){
+  const on=new Set();Object.keys(LADDERS).forEach(l=>LADDERS[l].forEach(k=>on.add(k)));
+  const lg=ladderGearKeys();
+  return Object.keys(EX).filter(k=>{const e=EX[k];
+    return Array.isArray(e.equip)&&e.equip.length>0&&!on.has(k)&&!standaloneCardio(k)&&e.equip.some(g=>!lg.has(g));});
+}
+/* The kit moves this athlete can be given in this slot right now, in place of
+   `cur`, the bodyweight move the slot holds.
+
+   A CORE SLOT KEEPS ITS OWN PART OF THE MIDSECTION, strictly. The first build
+   let any core-pattern move stand in for any core move, and measured over the
+   program that put a Balance Trainer Side Plank in 299 of 378 sessions for an
+   athlete who owned only the dome, and a bear-hug ruck carry in 310 for one
+   who owned only a ruck - an obliques hold in place of every plank, and a
+   loaded carry in place of every crunch. Same pattern is not enough for the
+   midsection; the region has to match as well. */
+const KIT_CORE_REGIONS=['anterior','oblique','lower','stability'];
+function kitCandidates(ladder,used,cur,pool){
+  try{
+    const pats=kitPatterns(ladder);if(!pats||!exKnown(cur))return [];
+    const u=used||new Set();
+    const core=pats[0]==='core', reg=EX[cur].region;
+    if(core&&!KIT_CORE_REGIONS.includes(reg))return [];
+    return (pool||kitMoves()).filter(k=>!u.has(k)&&pats.includes(EX[k].pattern)&&(!core||EX[k].region===reg)
+      &&hasGearFor(k)&&safeSwap(k)===k&&spaceSwap(k)===k);
+  }catch(e){return [];}
+}
+/* May this session take a kit move at all, and where does the search start.
+   The start rotates with the session, so over a week the kit lands on the
+   legs, the push, the pull and the core in turn rather than on slot 0 every
+   time. Null when the athlete owns no kit a ladder does not already use, or
+   under safe mode. */
+function kitGate(pos){
+  try{
+    if(safeMode())return null;
+    const gear=(STATE.profile&&Array.isArray(STATE.profile.gear))?STATE.profile.gear:[];
+    const lg=ladderGearKeys();
+    if(!gear.some(g=>!lg.has(g)))return null;
+    const pool=kitMoves().filter(k=>hasGearFor(k));
+    if(!pool.length)return null;
+    return {idx:((pos&&pos.cycle)||0)*SESSIONS_PER_CYCLE+((pos&&pos.inCycle)||0),pool};
+  }catch(e){return null;}
+}
 // auto-regulation: adjust from how last week's sessions felt
 function weekAdjust(cycle,week){
   if(week<=1) return 0;
@@ -3790,6 +3860,7 @@ function buildSession(ptr,opts){
   const dropped=[];
   const gSlots=goalSlots(pos.session,pos);
   const fPick=focusSlotPick(pos.session,gSlots,pos);
+  const swapped=new Set();
   const main=gSlots.map((ladder,i)=>{
     let isFocus=false;
     if(fPick&&fPick.at===i){
@@ -3801,13 +3872,30 @@ function buildSession(ptr,opts){
     // An explicit swap wins — but only while it is still safe and still doable.
     // Otherwise a swap saved before an injury or a kit change was declared would
     // keep forcing the exercise the athlete just told us they cannot do.
-    if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder]))exId=sw[ladder];
+    if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder])){exId=sw[ladder];swapped.add(ladder);}
     if(!exId||!EX[exId]){dropped.push(ladder);return null;}
     used.add(exId);
     const it={exId,...prescribe(exId,pos),slot:ladder};
     if(isFocus){it.focusPick=true;it.focusKey=fPick.key;}
     return it;
   }).filter(Boolean);
+  /* THE KIT MOVE. Decided after the body of the session is built, because what
+     can stand in for a slot depends on the move that slot really holds. The
+     first slot from the rotating start that has a candidate takes it. Never the
+     focus area's own pick, and never a slot the athlete swapped by hand: an
+     explicit choice outranks a default. */
+  {const kg=kitGate(pos);
+    if(kg)for(let j=0;j<main.length;j++){
+      const i=(kg.idx+j)%main.length, m=main[i];
+      if(m.focusPick||swapped.has(m.slot))continue;
+      const kc=kitCandidates(m.slot,used,m.exId,kg.pool);
+      if(!kc.length)continue;
+      const kid=kc[(kg.idx+i)%kc.length];
+      used.delete(m.exId);used.add(kid);
+      main[i]={exId:kid,...prescribe(kid,pos),slot:m.slot,kit:true};
+      break;
+    }
+  }
   const finLadName=pos.session.finisher;
   const finId=distinct(finLadName,rungIndex(finLadName,cycle,week,level));
   let finEx=(sw&&sw.__fin&&EX[sw.__fin]&&swapStillValid(sw.__fin))?sw.__fin:finId;
@@ -5048,6 +5136,15 @@ function obWhyNoChange(k,was,now){
     }
     if(k==='conditioning'&&timelineIsAggressive()&&['moderate','high'].includes(was.p.conditioning)&&['moderate','high'].includes(now.p.conditioning)){
       return 'Your timeframe is a tight one, and it already moves conditioning to the top level. So Average and Very fit build the same sessions.';
+    }
+    if(k==='mobility'&&was.p.mobility!=='low'&&now.p.mobility!=='low'){
+      return 'These two answers use the same warm-up and cool-down. Only the limited answer changes them: it makes each hold longer.';
+    }
+    if(k==='diet'){
+      return 'This answer sets your meal plan and your food list. It does not set your sessions or your calorie target.';
+    }
+    if(k==='goalweight'&&!(timelineDrivesTargets(STATE.profile.goal)&&STATE.profile.timelineWeeks>0)){
+      return 'A goal weight sets your pace only when you have a timeframe and a fat-loss goal. It still sets the goal line on your weight chart.';
     }
     if(k==='gear'){
       return 'No session in that window uses the kit you changed.'+(hasWeights()?' The <b>Weights</b> session uses the kit you own. It is on Today ▸ Workout, below your session.':'');
@@ -7817,7 +7914,7 @@ function exCardHTML(m,log,idx){
       ${ex.img?`<img class="ex-thumb" src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
-        <div class="ex-region">${(m.focus||m.focusPick)?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
+        <div class="ex-region">${(m.focus||m.focusPick)?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}${m.kit?'<span class="tag" style="background:var(--card2);font-weight:800">🏋️ Your kit</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
         ${sideSwitch(m.exId)?`<div class="tiny" style="margin-top:3px;font-weight:800;color:var(--gold)">🔄 One side at a time — switch halfway through EACH set</div>`:''}
       </div>
       <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">rest ${m.rest}s${m.tempo?' · '+_ve(m.tempo):''}</div></div>
@@ -27962,6 +28059,19 @@ function validateData(){
      steers nothing or a steer with no button, and both are silent. */
   TROUBLE_AREAS.forEach(z=>{if(!Object.prototype.hasOwnProperty.call(TROUBLE_POOL,z[0]))errs.push('TROUBLE_AREAS.'+z[0]+' has no TROUBLE_POOL entry — the button steers nothing');});
   Object.keys(TROUBLE_POOL).forEach(k=>{if(!TROUBLE_AREAS.some(z=>z[0]===k))errs.push('TROUBLE_POOL.'+k+' has no picker button — unreachable');});
+  /* FOCUS_LADDERS (v539). A key that is not a focus area is a steer with no
+     button. A ladder that does not exist is SILENT, because focusSlotPick()
+     filters on the ladder map and simply finds nothing. A conditioning ladder
+     would turn a helper slot into cardio, and a core ladder would walk
+     around the direct-core cap the map leaves the midsection out for. */
+  Object.keys(FOCUS_LADDERS).forEach(k=>{
+    if(!focusAreaKey(k))errs.push('FOCUS_LADDERS.'+k+' is not a focus area — unreachable');
+    (Array.isArray(FOCUS_LADDERS[k])?FOCUS_LADDERS[k]:[]).forEach(l=>{
+      if(!Object.prototype.hasOwnProperty.call(LADDERS,l))errs.push('FOCUS_LADDERS.'+k+' names '+l+', which is not a ladder');
+      else if(CARDIO_LADS.includes(l))errs.push('FOCUS_LADDERS.'+k+' names '+l+', a conditioning ladder');
+      else if(CORE_LADS.includes(l))errs.push('FOCUS_LADDERS.'+k+' names '+l+', a core ladder — the direct-core cap');
+    });
+  });
   {const _fk={};FOCUS_AREAS.forEach(a=>{if(_fk[a[0]])errs.push('FOCUS_AREAS: duplicate key "'+a[0]+'"');_fk[a[0]]=1;});}
   /* COMBAT_ORDER is a PERMUTATION of the four FORCE events, and combatOrder()
      does .filter(Boolean) — so an id that no longer exists is dropped in
