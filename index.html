@@ -5260,7 +5260,7 @@ function obReportHTML(r){
   let head,cls='info';
   if(!r.n)head='<b>The program is complete</b>, so there is no session left to change. Your answers are saved.';
   else if(!r.total)head='<b>No session changed.</b> The reason for each answer is below.';
-  else if(r.firstAt===0&&r.shownChanged===false&&r.cap){cls='ok';head='<b>Today’s session is the same, because it is cut to '+r.cap+' minutes.</b> The cut drops the move that changed. Take the time limit off to see it today. In all, '+r.total+' of the next '+sessWord+' changed.';}
+  else if(r.firstAt===0&&r.shownChanged===false&&r.cap){cls='ok';head='<b>Today’s session is the same, because it is cut to '+plural(r.cap,'minute')+'.</b> The cut drops the move that changed. Take the time limit off to see it today. In all, '+r.total+' of the next '+sessWord+' changed.';}
   else if(r.firstAt===0){cls='ok';head='<b>'+(r.closed?'Your next session changed.':'Today’s session changed.')+'</b> In all, '+r.total+' of the next '+sessWord+' changed.';}
   else{cls='ok';head='<b>'+(r.closed?'Your next session is the same.':'Today’s session is the same.')+'</b> '+r.total+' of the next '+sessWord+' changed. The first change is '+plural(r.firstAt,'session')+' from now.';}
   const rows=r.answers.map(a=>{
