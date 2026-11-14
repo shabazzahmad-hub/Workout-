@@ -2106,6 +2106,8 @@ const { browser, page, errors } = await launch(port);
     s.eq('GUARD: dropping the ruck moves no session in the window', diff(await fp(), d0), 0);
     s.ok('the equipment row says so and points at the Weights session', /no session/i.test(dR.rows.gear || '') && /Weights/.test(dR.rows.gear || ''), dR.rows.gear);
     await shut();
+    // Today has four panes, so the pointer has to name the one the tile is on
+    s.ok('the pointer names the pane as well as the tab', /Today ▸ Workout/.test(dR.rows.gear || ''), dR.rows.gear);
     s.ok('and the Weights session is where the row says it is', await page.evaluate(() => { go('today'); try { setTodayTab('workout'); } catch (e) {} return !!document.querySelector('#v-today button[onclick="startWeights()"]'); }));
 
     /* E. answers that drive food or the warm-up, not the sessions */
@@ -2201,6 +2203,19 @@ const { browser, page, errors } = await launch(port);
     s.ok('GUARD: a health flag eases the program', e7N > 0 && await page.evaluate(() => safeMode()), { e7N });
     s.ok('the health-check row carries the count', (e7R.rows.health || '').includes(e7N + ' of the next '), e7R.rows.health);
     await shut();
+
+    /* E8. the two sentences that used to promise a re-tune now promise the
+       report, which is the thing the code does */
+    await seedBase('Intermediate');
+    const e8 = await page.evaluate(() => { go('guide');
+      const card = document.querySelector('#v-guide').textContent;
+      [...document.querySelectorAll('#v-guide button')].find(x => /Edit my profile/.test(x.textContent)).click();
+      const wiz = document.querySelector('#v-guide').textContent;
+      document.querySelector('#ob-back').click();
+      return { card: /re-tune/i.test(card), cardSays: /shows what each change did/.test(card), wiz: /re-tune/i.test(wiz), wizSays: /shows you what each change did/.test(wiz) };
+    });
+    s.eq('neither Settings nor the editor promises a re-tune any more', { card: e8.card, wiz: e8.wiz }, { card: false, wiz: false });
+    s.ok('and both say the app shows what each change did', e8.cardSays && e8.wizSays, e8);
 
     /* F. FLOOR: an edit that changes no answer says nothing about the program */
     await seedBase('Intermediate');
