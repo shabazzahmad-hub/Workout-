@@ -24245,3 +24245,47 @@ keepLoggedWork` is `undefined` in one and `function` in the other).
 
 **The 42 goal-change losses predate v539.** The sweep written for the focus
 area asked the same question of the goal and found the older twin.
+
+### Twenty-one mutants: nineteen caught first time, one weak check, one equivalent
+
+- **M20 escaped** (`recordedSession()` without its `done` test). Only
+  `commitSession()` writes `items`, so no tap builds a not-finished log that
+  carries a list. The helper's own contract is pinned directly now, the v338
+  shape: finished with a real list reads the record; not finished, a junk
+  list, a one-item list and no log all fall back to the build.
+- **M21 was equivalent**, and the code moved rather than the check. The
+  report's today lines were guarded by `if(shownChanged)`, and both lists are
+  the session as shown, so two equal lists produce no line with the guard or
+  without it. The guard is gone.
+
+The over-eager twins each fail a floor: an entry with no marked set kept, the
+started note always shown, every marked move flagged kept, any time limit
+described as a cut.
+
+### CI went red three times on suite 23, for three different reasons
+
+Only the first was this change. Each was fixed, not re-run.
+
+1. **Mine.** `'cut to '+r.cap+' minutes'` is a count joined onto a plural
+   noun, which v507's source scan refuses with no exceptions. It asks
+   `plural()` now.
+2. **A v427 check sat exactly on a whole second.** It set
+   `INTV.deadline=monoNow()+40000`, and `(t+40000)-t` is `40000.00000000001`
+   for about 1 clock reading in 28, which `Math.ceil` rounds up to 41. It
+   shows only when the tick reads the same clock value, so it is rare.
+   Reproduced with the clock pinned to such a reading: 41 then 40, the CI
+   payload exactly. Half a second off the boundary: 40, 40. Two checks in
+   suite 09 had the same shape (`+30000`, `+5000`) and moved with it.
+   **A synthetic deadline never sits on a whole second.**
+3. **A v362 check counted a line another surface spoke.** It counts hard-part
+   lines by their words, and an earlier block leaves the guided player in a
+   timed hold on its real interval. When that hold reached its own last third
+   inside the grinder run, the count was 2 (CI: 180 and 240). Reproduced with
+   a hold left 3 seconds short of its point: 2 lines, at 138 and 240; torn
+   down first, 1 line at 240. The block tears down every other timed surface
+   and guards that none is live. **A check that counts spoken lines by their
+   words must own every surface that can speak them.**
+
+The local run printed what was live before it was torn down
+(`["player:work"]`), which is what turned a likely cause into a measured one.
+Suite 10: 781 checks. Suite 23: 2481. Suite 09: 1220.

@@ -2776,7 +2776,11 @@ export default async function () {
       const G = /hard part|Burning muscles|Shaking here|honest part|Fatigue now|last third|does not get easier/;
       /* WHAT AN EARLIER BLOCK LEFT TICKING IS NOT A CONTRACT. Every timed
          surface speaks its own hard-part line, from its own real interval, and
-         this block counts those lines by their words. */
+         this block counts those lines by their words. Measured: an earlier
+         block leaves the guided player in a timed hold, and when that hold
+         reached its own last third inside this run the count was 2 (CI: lines
+         at 180 and 240). Reproduced with a hold left live 3 seconds short of
+         its point: 2 lines, at 138 and 240. Torn down first: 1 line, at 240. */
       const liveNow = () => { const L = [];
         try { if (_bt) L.push('baseline'); } catch (e) {} try { if (_ht) L.push('hold:' + _ht.mode + ':' + _ht.elapsed); } catch (e) {}
         try { if (_ar) L.push('rest'); } catch (e) {} try { if (timer) L.push('timer'); } catch (e) {}
@@ -2826,7 +2830,6 @@ export default async function () {
     });
 
     t.eq('guard: no other timed surface is live while the grinder is counted', g2.liveAfter, [], JSON.stringify({ before: g2.liveBefore, after: g2.liveAfter }));
-    if (g2.liveBefore.length) console.log('    note: an earlier block left a timer live before the grinder block: ' + JSON.stringify(g2.liveBefore));
     t.eq('a six-minute grinder is acknowledged exactly once', g2.six.n, 1, JSON.stringify({ at: g2.six.at, lines: g2.six.lines, liveBefore: g2.liveBefore }));
     /* Two thirds of the SESSION (240s of 360), not two thirds of a station
        (40s). A station-based point fires six times and lands at 40. */
