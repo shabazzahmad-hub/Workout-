@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='538';
+const APP_VERSION='539';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -2737,6 +2737,11 @@ function rungIndex(ladder,cycle,week,level){
    Core Crusher, and Build muscle can't strip Metabolic HIIT of its conditioning. */
 const CORE_LADS=['plankL','hollowL','lowerL','dynL','sideL','rotL'];
 const CARDIO_LADS=['cardioAL','cardioBL','cardioFinL','finisherL','legPowerL','hiitFinL'];
+/* Hoisted in v539 so focusSlotPick() asks the SAME two protections goalSlots()
+   does. They were locals; a second copy in the focus pick is how a goal and a
+   focus area would come to disagree about which slot is the main lift. */
+const SLOT_FIRST_SWAPPABLE=2;
+const STRUCT_LADS=['hingeL','rowL','pullL','chestL','squatL','bicepL'];
 function goalSlots(session,pos){
   const slots=(session.slots||[]).slice();
   let goal='lose';try{goal=(STATE.profile&&STATE.profile.goal)||'lose';}catch(e){}
@@ -2756,7 +2761,7 @@ function goalSlots(session,pos){
      Leg Day, the pull on Pull Day. Replacing it turned the default 'lose' goal
      into a jumping-jack program wearing a strength-split label. A goal may shape
      accessory selection, rep ranges and rest; it may never delete the main lift. */
-  const FIRST_SWAPPABLE=2;
+  const FIRST_SWAPPABLE=SLOT_FIRST_SWAPPABLE;
   /* Protecting slots 0-1 was not enough. SESSIONS.push is
      ['pushL','rowL','hingeL','sideL'] — hingeL sits at index 2, and fullbody's
      rowL sits at index 2 — so the DEFAULT goal ('lose', and likewise 'shred' and
@@ -2764,7 +2769,7 @@ function goalSlots(session,pos){
      the release notes claimed Phase 1 had gained both. Conditioning ladders were
      already protected this way; the structural strength patterns need the same
      protection, or the goal quietly rewrites the split. */
-  const STRUCTURAL=['hingeL','rowL','pullL','chestL','squatL','bicepL'];   // bicepL was droppable, so 'lose' deleted the only pull on Pull Day
+  const STRUCTURAL=STRUCT_LADS;   // bicepL was droppable, so 'lose' deleted the only pull on Pull Day
   const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
   const isStruct=l=>STRUCTURAL.includes(l);
   const count=fn=>slots.filter(fn).length;
@@ -2783,6 +2788,61 @@ function goalSlots(session,pos){
   }
   if(at>=0&&repl&&LADDERS[repl]&&slots[at]!==repl)slots[at]=repl;
   return slots;
+}
+/* ---- THE #1 FOCUS AREA CHANGES ONE HELPER MOVE (v539) ----------------------
+   Reported: "when you change the area that you want to focus on ... the
+   exercises do not reflect any changes." Measured, and it was true in
+   substance: a focus area chose ONE bonus move, in 24 of the first 42
+   sessions, and the first session of the program showed no change at all for
+   any area. The athlete asked for the strong version.
+
+   So the #1 area also re-points ONE helper slot at a ladder of its own family.
+   It is a swap, never an addition, and it asks goalSlots()'s own protections:
+     - never slot 0 or 1 (the main work of the day)
+     - never a structural strength pattern, never a conditioning slot
+     - never the slot the GOAL has just re-pointed
+     - a core slot only while three or more remain; a strength slot only while
+       two or more remain
+   A session that already carries every ladder of the family is a focus day
+   already and is left alone.
+
+   ABS AND FULL BODY HAVE NO ENTRY, ON PURPOSE. The program trains the core in
+   every session and the direct-core volume is capped (see buildSession), so a
+   core focus gets its extra move and no second core slot. 'Full body' is the
+   program as written. */
+const FOCUS_LADDERS={chest:['chestL','pushL'],back:['rowL','pullL'],shoulders:['shoulderL'],arms:['tricepL','bicepL'],legs:['squatL','legL'],glutes:['hingeL']};
+function focusLadders(key){return Object.prototype.hasOwnProperty.call(FOCUS_LADDERS,key)?FOCUS_LADDERS[key]:null;}
+function focusSlotPick(session,slots,pos){
+  try{
+    const key=focusAreaKey(STATE.profile&&STATE.profile.focusPrimary);
+    const fam=key?focusLadders(key):null;
+    if(!fam||!Array.isArray(slots))return null;
+    const free=fam.filter(l=>LADDERS[l]&&!slots.includes(l));
+    if(!free.length)return null;
+    const orig=(session&&session.slots)||[];
+    const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
+    const count=fn=>slots.filter(fn).length;
+    let at=-1;
+    for(let i=slots.length-1;i>=SLOT_FIRST_SWAPPABLE;i--){
+      const l=slots[i];
+      if(l!==orig[i])continue;
+      if(isCardio(l)||STRUCT_LADS.includes(l)||fam.includes(l))continue;
+      if(isCore(l)?count(isCore)>=3:count(x=>!isCardio(x)&&!isCore(x))>=2){at=i;break;}
+    }
+    if(at<0)return null;
+    const day=(pos&&pos.dayInWeek)||0, cyc=(pos&&pos.cycle)||0;
+    return {at,ladder:free[(cyc*7+day)%free.length],key};
+  }catch(e){return null;}
+}
+/* Is this movement really of the focus family? distinct() can fall back to a
+   move of a RELATED region when a ladder is ruled out by a flagged joint or
+   missing kit, and a helper slot swapped for a filler is a slot lost for
+   nothing. Only a rung of the ladder, or a member of the area's own pool,
+   counts; anything else leaves the session exactly as it was. */
+function focusMember(key,ladder,exId){
+  if(!exId||!exKnown(exId))return false;
+  const pool=Object.prototype.hasOwnProperty.call(FOCUS_POOL,key)?FOCUS_POOL[key]:[];
+  return (LADDERS[ladder]||[]).includes(exId)||pool.includes(exId);
 }
 // auto-regulation: adjust from how last week's sessions felt
 function weekAdjust(cycle,week){
@@ -3116,12 +3176,13 @@ function prescribe(exId,pos){
   return {sets,target,unit:ex.unit,rest,tempo};
 }
 
-/* Focus-area pools for the targeted bonus slot. MOST sessions gain ONE extra
+/* Focus-area pools for the targeted bonus slot. A session gains ONE extra
    accessory drawn from the area the athlete most wants to improve (quiz:
    focusPrimary, falling back to their focus areas). Gear- and injury-filtered.
-   Not every session: buildSession() skips the bonus on a day that already
-   carries three or more direct-core slots, because one more core move is not
-   the missing stimulus there. Measured over the whole programme, 306 of 378. */
+   A day that already carries three or more direct-core slots takes no extra
+   CORE move, because one more core move is not the missing stimulus there;
+   since v539 a bonus for any other chosen area still lands on that day. So an
+   athlete whose only areas are the midsection still misses those days. */
 /* Primary training goals. 'shred' and 'core' sit alongside the original four:
    shred = a harder cut (steeper deficit, more protein, higher-rep metabolic work),
    core  = midsection-first (near-maintenance calories, strength reps, and
@@ -3289,7 +3350,8 @@ function troubleZoneKey(k){return Object.prototype.hasOwnProperty.call(TROUBLE_P
 const CORRECTIVE_POOL={shoulder:['superman'],knee:['glutebridge'],lowback:['birddog','deadbug']};
 // Pick one bonus exercise for the athlete's priority area, avoiding what's already
 // in today's session, respecting equipment, and swapping around flagged joints.
-function focusBonus(pos,used){
+function focusBonus(pos,used,opt){
+  const noCore=!!(opt&&opt.noCore), can=(opt&&typeof opt.can==='function')?opt.can:(()=>true);
   try{
     const p=STATE.profile||{};
     // the core goal LEADS the priority list with the midsection; the wheel
@@ -3324,6 +3386,14 @@ function focusBonus(pos,used){
     const absIdx=((pos&&pos.cycle)||0)*SESSIONS_PER_CYCLE+((pos&&pos.inCycle)||0);
     const rot=((absIdx%keys.length)+keys.length)%keys.length;
     keys=keys.slice(rot).concat(keys.slice(0,rot));
+    /* A day that is already core-heavy takes no extra CORE move (the cap in
+       buildSession). It used to take no extra move at all, which is the wrong
+       half of that sentence for an athlete whose focus is their shoulders:
+       measured, 18 of the first 42 sessions had no focus move whatever the
+       area was. The skip is about the midsection, so it is the midsection
+       keys that step aside (v539). */
+    if(noCore)keys=keys.filter(k=>k!=='abs'&&k!=='obliques');
+    if(!keys.length)return null;
     const gear=p.gear||[];
     const has=k=>{const e=EX[k];if(!e)return false;if(!e.equip)return true;return e.equip.every(g=>gear.includes(g));};
     for(const key of keys){
@@ -3345,6 +3415,30 @@ function focusBonus(pos,used){
          beginner the hardest movement in the catalogue — which is the exact
          thing the gate above was written to prevent. An empty pool means skip
          the bonus, not lower the bar. */
+      /* THE SHOULDERS POOL WAS EMPTY FOR MOST ATHLETES (v539). Its bodyweight
+         members run from hardness 0.5 down to 0.18, and the gate above asks for
+         0.7 at Intermediate and 1.0 at Beginner - so with no dumbbell and no
+         kettlebell a Shoulders focus chose NO bonus in any of the 378 sessions
+         (measured), while Push Day's own ladder was already prescribing the
+         Pike Push-Up to that same athlete. A focus area the athlete picks and
+         the program never serves is dead input.
+         This is not the ungated fallback removed above. The bar is the ENGINE'S
+         OWN: the rung of the area's ladder that rungIndex() gives this athlete
+         this week, or an easier one, that they can perform (the builder's own
+         performable test), own the kit for, and that clears every flagged
+         joint. Nothing above what the main program would hand them. */
+      if(!cands.length){
+        const lvl=levelOf(pos&&pos.cycle||0);
+        for(const lad of (focusLadders(key)||[])){
+          const arr=LADDERS[lad]||[];
+          const top=Math.min(rungIndex(lad,(pos&&pos.cycle)||0,(pos&&pos.week)||1,lvl),arr.length-1);
+          for(let j=top;j>=0;j--){
+            const k=spaceSwap(safeSwap(arr[j]));
+            if(EX[k]&&!used.has(k)&&has(k)&&can(k)&&focusMember(key,lad,k)){cands=[k];break;}
+          }
+          if(cands.length)break;
+        }
+      }
       if(!cands.length)continue;
       // deterministic-but-varied pick so it rotates across sessions without Math.random
       const exId=cands[(pos.cycle*7+(pos.dayInWeek||0))%cands.length];
@@ -3694,7 +3788,15 @@ function buildSession(ptr,opts){
     return base;                  // nothing else available — accept the prescribed one
   };
   const dropped=[];
-  const main=goalSlots(pos.session,pos).map(ladder=>{
+  const gSlots=goalSlots(pos.session,pos);
+  const fPick=focusSlotPick(pos.session,gSlots,pos);
+  const main=gSlots.map((ladder,i)=>{
+    let isFocus=false;
+    if(fPick&&fPick.at===i){
+      // accepted only when the ladder really yields a move of the focus family
+      const fid=distinct(fPick.ladder,rungIndex(fPick.ladder,cycle,week,level));
+      if(focusMember(fPick.key,fPick.ladder,fid)){ladder=fPick.ladder;isFocus=true;}
+    }
     let exId=distinct(ladder,rungIndex(ladder,cycle,week,level));
     // An explicit swap wins — but only while it is still safe and still doable.
     // Otherwise a swap saved before an injury or a kit change was declared would
@@ -3702,7 +3804,9 @@ function buildSession(ptr,opts){
     if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder]))exId=sw[ladder];
     if(!exId||!EX[exId]){dropped.push(ladder);return null;}
     used.add(exId);
-    return {exId,...prescribe(exId,pos),slot:ladder};
+    const it={exId,...prescribe(exId,pos),slot:ladder};
+    if(isFocus){it.focusPick=true;it.focusKey=fPick.key;}
+    return it;
   }).filter(Boolean);
   const finLadName=pos.session.finisher;
   const finId=distinct(finLadName,rungIndex(finLadName,cycle,week,level));
@@ -3726,10 +3830,11 @@ function buildSession(ptr,opts){
      it gets two rounds rather than an unbalanced one. */
   finisher.sets=itemSets(finEx,1,pos);
   // targeted bonus: one extra move for the athlete's priority area (from the quiz)
-  /* If the day already has three or more direct-core slots, skip the bonus —
-     an extra ab exercise on Core Crusher is not the missing stimulus. */
+  /* If the day already has three or more direct-core slots, the bonus is not a
+     CORE move — an extra ab exercise on Core Crusher is not the missing
+     stimulus. A bonus for any other chosen area still lands (v539). */
   const coreSlots=main.filter(m=>EX[m.exId]&&CORE_REGIONS[EX[m.exId].region]).length;
-  let bonus=(coreSlots>=3)?null:focusBonus(pos,used);
+  let bonus=focusBonus(pos,used,{noCore:coreSlots>=3,can:performable});
   /* A swapped bonus is still THE BONUS, so it keeps the bonus's own size and
      tag. It used to take prescribe()'s raw sets: measured, the 8-Count Push-Up
      bonus was 2 sets and the Burpee it was swapped to was 3 — 50% more work on
@@ -4604,7 +4709,7 @@ function onboardHTML(){
       <div class="daypick" id="ob-timeline" style="flex-wrap:wrap">${TIMELINE_OPTS.map(o=>`<button data-w="${o.w}"${on(P.timelineWeeks,o.w)}>${o.label}</button>`).join('')}<button data-w="0"${(!P.timelineWeeks?' class="on"':'')}>No deadline</button></div></div>`)}
 
   ${step(3,'Focus &amp; priority',`
-    <div class="field"><label>#1 area you most want to improve <span class="tiny muted">· drives a targeted bonus move in most sessions</span></label>
+    <div class="field"><label>#1 area you most want to improve <span class="tiny muted">· adds an extra move for it, and changes one helper move to it where the session has room</span></label>
       <div class="daypick" id="ob-focus" style="flex-wrap:wrap">${FOCI.map(([k,l])=>`<button data-f="${k}"${on(P.focusPrimary||'abs',k)}>${l}</button>`).join('')}</div></div>
     <div class="field"><label>Other focus areas <span class="tiny muted">· tap all that apply</span></label>
       <div class="daypick" id="ob-targets" style="flex-wrap:wrap">${FAREAS.map(([k,l])=>`<button data-t="${k}"${mon(P.targets&&P.targets.length?P.targets:['abs','full'],k)}>${l}</button>`).join('')}</div></div>
@@ -7712,7 +7817,7 @@ function exCardHTML(m,log,idx){
       ${ex.img?`<img class="ex-thumb" src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
-        <div class="ex-region">${m.focus?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
+        <div class="ex-region">${(m.focus||m.focusPick)?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
         ${sideSwitch(m.exId)?`<div class="tiny" style="margin-top:3px;font-weight:800;color:var(--gold)">🔄 One side at a time — switch halfway through EACH set</div>`:''}
       </div>
       <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">rest ${m.rest}s${m.tempo?' · '+_ve(m.tempo):''}</div></div>
