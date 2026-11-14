@@ -2774,6 +2774,19 @@ export default async function () {
       const o = {};
       const flush = () => new Promise(r => setTimeout(r, 20));
       const G = /hard part|Burning muscles|Shaking here|honest part|Fatigue now|last third|does not get easier/;
+      /* WHAT AN EARLIER BLOCK LEFT TICKING IS NOT A CONTRACT. Every timed
+         surface speaks its own hard-part line, from its own real interval, and
+         this block counts those lines by their words. */
+      const liveNow = () => { const L = [];
+        try { if (_bt) L.push('baseline'); } catch (e) {} try { if (_ht) L.push('hold:' + _ht.mode + ':' + _ht.elapsed); } catch (e) {}
+        try { if (_ar) L.push('rest'); } catch (e) {} try { if (timer) L.push('timer'); } catch (e) {}
+        try { if (PLAYER) L.push('player:' + PLAYER.phase); } catch (e) {} try { if (INTV) L.push('intv'); } catch (e) {}
+        try { if (OP) L.push('op'); } catch (e) {} return L; };
+      o.liveBefore = liveNow();
+      try { stopTimer(); } catch (e) {} try { if (typeof _ht !== 'undefined' && _ht) { clearInterval(_ht.iv); _ht = null; } } catch (e) {}
+      try { if (PLAYER) playerTeardown(); } catch (e) {} try { if (INTV) hiitTeardown(); } catch (e) {}
+      await new Promise(r => setTimeout(r, 450));
+      o.liveAfter = liveNow();
       const runGrind = async (fmt) => {
         STATE.grindLog = [];
         const said = []; const real = window.coachSpeak;
@@ -2787,7 +2800,7 @@ export default async function () {
         window.coachSpeak = real;
         const hits = said.filter(x => G.test(x[1]));
         hiitQuit(); await flush();
-        return { n: hits.length, at: hits.map(x => x[0]), logBtn: /Log \d+ min to my record/.test(fin) };
+        return { n: hits.length, at: hits.map(x => x[0]), lines: hits.map(x => x[1].slice(0, 40)), logBtn: /Log \d+ min to my record/.test(fin) };
       };
       o.six = await runGrind('grind6');
       o.sixWant = grindAt(360);          // the SESSION's last third, not a station's
@@ -2812,7 +2825,9 @@ export default async function () {
       return o;
     });
 
-    t.eq('a six-minute grinder is acknowledged exactly once', g2.six.n, 1);
+    t.eq('guard: no other timed surface is live while the grinder is counted', g2.liveAfter, [], JSON.stringify({ before: g2.liveBefore, after: g2.liveAfter }));
+    if (g2.liveBefore.length) console.log('    note: an earlier block left a timer live before the grinder block: ' + JSON.stringify(g2.liveBefore));
+    t.eq('a six-minute grinder is acknowledged exactly once', g2.six.n, 1, JSON.stringify({ at: g2.six.at, lines: g2.six.lines, liveBefore: g2.liveBefore }));
     /* Two thirds of the SESSION (240s of 360), not two thirds of a station
        (40s). A station-based point fires six times and lands at 40. */
     t.eq('at two thirds of the whole session', g2.six.at, [g2.sixWant]);

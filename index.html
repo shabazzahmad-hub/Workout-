@@ -5209,7 +5209,10 @@ function obEditReport(before){
      reads as nonsense. */
   const lines=[];
   const shownChanged=before.fx.shown!==after.shown;
-  if(shownChanged){
+  /* No condition of its own: both lists are the session AS SHOWN, and two
+     equal lists produce no line. A test here would be a second copy of
+     shownChanged that no check could tell from the first. */
+  {
     const b=before.fx.first.slice(),c=after.first,num=m=>m.sets+' \u00d7 '+_briefTarget(m);
     c.forEach(y=>{
       const i=b.findIndex(x=>x.exId===y.exId);

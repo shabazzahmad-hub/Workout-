@@ -3087,6 +3087,19 @@ const { browser, page, errors } = await launch(port);
     s.ok('GUARD: rebuilt from the new answers, that session holds a movement that was never done', dTrap.length >= 1, dTrap);
     s.ok('a finished session still reads complete after the edit', eqArr(d2.header, d1.header), { before: d1.header, after: d2.header });
     s.ok('and its done card still counts every move', d2.doneCard.length === 2 && d2.doneCard[0] === d2.doneCard[1] && eqArr(d2.doneCard, d1.doneCard), { before: d1.doneCard, after: d2.doneCard });
+    /* recordedSession() is consulted only on a finished day, and only commitSession() writes `items`, so a
+       log with a list and no `done` cannot be built by tapping. Its contract is pinned directly: a movement
+       list on a log that is NOT finished is not a record, and a junk list is not one either. */
+    const rc = await page.evaluate(() => { const p = 200, b = buildSession(p), its = [...b.main, b.finisher].map(m => ({ exId: 'pushup', sets: 3, target: 9, unit: 'reps', rest: 45 }));
+      const ids = s => [...s.main, s.finisher].map(m => m.exId).join(',');
+      const o = {}; STATE.logs[p] = { date: todayISO(), ex: {}, done: false, items: its }; o.notDone = ids(recordedSession(p, b)) === ids(b);
+      STATE.logs[p].done = true; o.done = recordedSession(p, b).main.every(m => m.exId === 'pushup') && recordedSession(p, b).main.length === its.length - 1;
+      STATE.logs[p].items = [{ exId: 'notAMove', sets: 3, target: 9, unit: 'reps', rest: 45 }, its[0]]; o.junk = ids(recordedSession(p, b)) === ids(b);
+      STATE.logs[p].items = [its[0]]; o.single = ids(recordedSession(p, b)) === ids(b);
+      delete STATE.logs[p]; o.none = ids(recordedSession(p, b)) === ids(b); return o; });
+    s.ok('recordedSession: a finished log with a real list is read from it', rc.done, rc);
+    s.ok('recordedSession: a log that is not finished is never read as a record', rc.notDone, rc);
+    s.ok('recordedSession: a junk list, a one-item list and no log all fall back to the build', rc.junk && rc.single && rc.none, rc);
     s.ok('the report speaks of the NEXT session, not of today’s', /Your next session/.test(dR.head || '') && !/Today’s session changed/.test(dR.head || ''), dR.head);
 
     /* 4. A TIME LIMIT ON: the report describes the session as it is shown */
