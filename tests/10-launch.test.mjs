@@ -2019,6 +2019,8 @@ const { browser, page, errors } = await launch(port);
         const picks = s.main.filter(m => m.focusPick);
         if (picks.length > 1) o.twoPicks++;
         const fam = focusLadders(P.focusPrimary) || [];
+        // a session where the GOAL re-pointed a slot the focus area could otherwise take
+        if (g.some((l, i) => i >= 2 && l !== orig[i] && !CARDIO_LADS.includes(l) && !STRUCT_LADS.includes(l) && !fam.includes(l))) o.goalOpen = (o.goalOpen || 0) + 1;
         if (picks.length) {
           const k = picks[0], i = s.main.indexOf(k);
           o.pick++; o.pickLads[k.slot] = (o.pickLads[k.slot] || 0) + 1;
@@ -2097,6 +2099,18 @@ const { browser, page, errors } = await launch(port);
     const shTone = await sweep({ p: { focusPrimary: 'shoulders', targets: ['shoulders'], goal: 'recomp' } });
     s.eq('on Tone up the helper move changes in 168 sessions', shTone.pick, 168, shTone.pickLads);
     s.eq('and still never the goal’s slot, a main slot or a structural one', [shTone.goalSlotHit, shTone.badIdx, shTone.badSrc, shTone.headMoved], [0, 0, 0, 0]);
+
+    /* THE GOAL'S OWN SLOT can only be seen on a goal that re-points a slot at a
+       strength or core ladder. Lose fat re-points one at a CONDITIONING ladder,
+       which the conditioning rule already keeps the focus area off - so on that
+       goal the rule beside it supplies the answer, and a mutant that dropped
+       this one walked straight through. Build muscle and Strong core do not. */
+    const shGain = await sweep({ p: { focusPrimary: 'shoulders', targets: ['shoulders'], goal: 'gain' } });
+    const shCore = await sweep({ p: { focusPrimary: 'shoulders', targets: ['shoulders'], goal: 'core' } });
+    s.ok('GUARD: Build muscle and Strong core re-point a slot the focus area could take', (shGain.goalOpen || 0) + (shCore.goalOpen || 0) > 20, { gain: shGain.goalOpen, core: shCore.goalOpen });
+    s.eq('and the focus area never takes it', [shGain.goalSlotHit, shCore.goalSlotHit], [0, 0]);
+    s.eq('nor a main, structural or conditioning slot on those goals', [shGain.badIdx, shGain.badSrc, shCore.badIdx, shCore.badSrc], [0, 0, 0, 0]);
+    s.eq('and nothing is repeated or lost there', [shGain.dup, shGain.dropped, shCore.dup, shCore.dropped], [0, 0, 0, 0]);
 
     /* 3. the core cap is kept: a core-heavy day takes no extra CORE move */
     const absOnly = await sweep({ p: { focusPrimary: 'abs', targets: ['abs'] } });
