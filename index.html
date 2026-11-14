@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='537';
+const APP_VERSION='538';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -3971,7 +3971,7 @@ function go(tab){
   // Navigating away from the editor's host view ends the edit rather than
   // letting the wizard follow you and rebuild itself from stored state,
   // which silently discarded whatever was typed.
-  if(OB_EDIT&&OB_HOST&&('v-'+tab)!==OB_HOST){try{obCommitStep();}catch(e){}OB_EDIT=false;OB_HOST=null;obClear();}
+  if(OB_EDIT&&OB_HOST&&('v-'+tab)!==OB_HOST){try{obCommitStep();}catch(e){}obEndEdit();}
   TAB=tab;
   $$('.view').forEach(v=>v.classList.remove('active'));
   $('#v-'+tab).classList.add('active');
@@ -3979,6 +3979,7 @@ function go(tab){
     if(on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   window.scrollTo(0,0);
   render();
+  obFlushReport();   // a profile edit that just ended says what it did, on the tab the athlete landed on
 }
 // Today-screen shortcut: jump to the meal days and scroll to today's plan.
 /* Goes to REFERENCE, not Fuel. v245 removed Fuel's "Today's plan" card at the
@@ -4537,6 +4538,8 @@ let OB_HOST=null;   // which view the editor is pinned to for this session
 function openProfileEdit(){
   const cur=document.querySelector('.view.active');
   OB_HOST=cur?cur.id:'v-today';
+  /* The program as it stands BEFORE the edit, so the save can say what moved. */
+  try{_obBefore={vals:obAnswerVals(),fx:obEffect()};}catch(e){_obBefore=null;}
   OB_EDIT=true;window.scrollTo(0,0);render();
 }
 const OB_STEPS=7;   // +1 for the health check
@@ -4570,7 +4573,7 @@ function onboardHTML(){
       <div class="hp-focus" style="opacity:.9">${edit?'Change anything — your progress is kept':'Core &amp; abs first — then full-body training for the rest of the program'}</div>
     </div>
   </div>
-  <div class="note fire" style="margin-bottom:12px">${edit?'Update any answer and tap <b>Save changes</b>. Your program and nutrition re-tune to match — nothing is reset.':'Answer a few questions and CoreForge tailors your whole plan — training, focus, equipment and meals — to <b>you</b>.'}</div>
+  <div class="note fire" style="margin-bottom:12px">${edit?'Update any answer and tap <b>Save changes</b>. The app then shows you what each change did to your sessions — nothing is reset.':'Answer a few questions and CoreForge tailors your whole plan — training, focus, equipment and meals — to <b>you</b>.'}</div>
   <div style="margin:0 2px 12px"><div class="pbar"><i id="ob-fill" style="width:${100/OB_STEPS}%"></i></div>
     <div class="tiny muted" id="ob-steplbl" style="margin-top:6px">Step 1 of ${OB_STEPS} · v${APP_VERSION} · changes save as you go</div></div>
 
@@ -4747,7 +4750,7 @@ function wireOnboard(){
     if(step===OB_STEPS&&obBlocked(1)){showStep(1);return;}
     if(step<OB_STEPS){obCommitStep();showStep(step+1);haptic(8);} else finishOnboard();
   };
-  $('#ob-back').onclick=()=>{ if(step===1){ if(OB_EDIT){obCommitStep();OB_EDIT=false;OB_HOST=null;obClear();navTo('today');} return; } obCommitStep();showStep(step-1);haptic(8); };
+  $('#ob-back').onclick=()=>{ if(step===1){ if(OB_EDIT){obCommitStep();obEndEdit();navTo('today');obFlushReport();} return; } obCommitStep();showStep(step-1);haptic(8); };
   showStep(1);
 }
 /* Every step's inputs live in the DOM at once (steps are just hidden), so the
@@ -4779,9 +4782,236 @@ function obCommitStep(){
     toast('Could not save that step — '+String(e&&e.message||e).slice(0,50));
   }
 }
+/* ---- WHAT A PROFILE EDIT ACTUALLY DID (v538) ------------------------------
+   Reported: "when you go into settings and edit my profile and goals, it does
+   not change or adjust the daily exercises in the program."
+
+   Driven first, and every way out of the editor saves: Save changes, Done,
+   the tab bar and the Back button. The engine responds to most answers too.
+   What does NOT move a session, measured on the next block for an athlete
+   with a tested level:
+
+     Training experience   a tested level outranks it. It can ease the
+                           program one step and it can never raise it, so
+                           "Advanced" on a tested Beginner changes nothing.
+     Cardio / conditioning a tight timeframe already lifts Average to the
+                           top, so Average and Very fit build the same.
+     Equipment             most kit is not on the daily ladders at all.
+     Activity, timeframe   they set the food targets, not the sessions.
+
+   Each of those is a decision this file already records. The defect is that
+   the save answered every one of them with the same sentence claiming the
+   plan had been tuned again, whatever had happened. A promise in UI text is a
+   specification, and nothing measured this one.
+
+   So the editor measures. It fingerprints the program when it opens and again
+   when it closes, and for EACH answer that changed it rebuilds the program
+   with that one answer put back, which is the only honest way to say "this
+   one did nothing". Set A, fingerprint, set B, fingerprint: the dead-control
+   method, shipped as a screen. A reason is printed only where code can test
+   the condition it names. */
+const OB_ANSWERS=[
+  {k:'goal',label:'Primary goal',p:['goal'],n:['goal']},
+  {k:'experience',label:'Training experience',p:['experience']},
+  {k:'conditioning',label:'Cardio / conditioning',p:['conditioning']},
+  {k:'mobility',label:'Flexibility / mobility',p:['mobility']},
+  {k:'focus',label:'#1 focus area',p:['focusPrimary','targets'],cmp:['focusPrimary']},
+  {k:'targets',label:'Other focus areas',p:['targets']},
+  {k:'trouble',label:'Trouble zones',p:['troubleZones']},
+  {k:'injuries',label:'Injuries',p:['limitations']},
+  {k:'gear',label:'Equipment',p:['gear','hasBar','hasBench'],cmp:['gear']},
+  {k:'space',label:'Room to train in',p:['tightSpace']},
+  {k:'timeline',label:'Timeframe',p:['timelineWeeks']},
+  {k:'goalweight',label:'Goal weight',p:['goalWeightLb']},
+  {k:'days',label:'Training days',p:['days']},
+  {k:'activity',label:'Daily activity',p:['activity'],n:['activity']},
+  {k:'health',label:'Health check',p:['parq','parqDone','medCleared'],cmp:['parq']},
+  {k:'body',label:'Age, height, sex or weight',p:['age','heightCm','sex'],n:['age','heightCm','sex','weightKg']},
+  {k:'diet',label:'Diet and meals',n:['diet','meals','allergens','allergies']}
+];
+let _obBefore=null,_obReport=null;
+const OB_LINES_MAX=7;   // lines of the session shown before "and N more"
+function _obClone(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v));}
+/* Only the fields the answers name. A copy of the whole nutrition object would
+   carry every logged food day with it. */
+function obAnswerVals(){
+  const o={p:{},n:{}},P=STATE.profile||{},N=STATE.nutrition||{};
+  OB_ANSWERS.forEach(a=>{(a.p||[]).forEach(f=>{o.p[f]=_obClone(P[f]);});(a.n||[]).forEach(f=>{o.n[f]=_obClone(N[f]);});});
+  return o;
+}
+/* The program and what sits round it, as plain values that can be compared. */
+function obEffect(){
+  const total=SESSIONS_PER_CYCLE*TOTAL_CYCLES,from=STATE.progressPtr|0,sess=[];
+  let first=[];
+  for(let i=0;i<SESSIONS_PER_CYCLE&&from+i<total;i++){
+    let items=[];
+    try{const b=buildSession(from+i,{full:true});items=[...(b.main||[]),b.finisher].filter(Boolean);}catch(e){}
+    sess.push(items.map(m=>m.exId+':'+m.sets+'x'+m.target+m.unit+'r'+m.rest).join(','));
+    if(i===0)first=items.map(m=>({exId:m.exId,sets:m.sets,target:m.target,unit:m.unit,rest:m.rest}));
+  }
+  let flow='';try{flow=JSON.stringify([warmupFlow(),cooldownFlow()]);}catch(e){}
+  const food={kcal:null,prot:null,steps:null};
+  try{const p=kcalTargetPreview();food.kcal=p?p.target:null;}catch(e){}
+  try{food.prot=proteinTargetG()||null;}catch(e){}
+  try{food.steps=stepTarget();}catch(e){}
+  let weeks=null;try{weeks=programWeeks();}catch(e){}
+  return {sess,first,flow,food:JSON.stringify(food),weeks};
+}
+/* Did the athlete change this answer? Lists compare as SETS: the form writes
+   them in screen order, and the #1 focus is always added to the other focus
+   areas, so it is taken out before those are compared.
+
+   A body figure that only moved by ROUNDING is not a change. An imperial
+   athlete's stored 179 cm shows as 70 in and reads back as 178, and 86.45 kg
+   shows as 191 lb and reads back as 86.6, on every save with nothing typed.
+   The tolerances sit just above the largest such step. */
+const OB_ROUND_TOL={weightKg:0.5,heightCm:2};
+function obAnswerChanged(a,b,c){
+  const norm=(f,v)=>{
+    if(Array.isArray(v)){
+      let l=v.slice();
+      if(a.k==='targets')l=l.filter(x=>x!==b.p.focusPrimary&&x!==c.p.focusPrimary);
+      return JSON.stringify(l.map(String).sort());
+    }
+    /* The form always writes this one, so an athlete who never had the field
+       goes from absent to false on any save. That is not an answer changed. */
+    if(f==='tightSpace')return String(!!v);
+    return JSON.stringify(v===undefined?null:v);
+  };
+  const differs=(f,x,y)=>Object.prototype.hasOwnProperty.call(OB_ROUND_TOL,f)
+    ?Math.abs((+x||0)-(+y||0))>=OB_ROUND_TOL[f]:norm(f,x)!==norm(f,y);
+  const pf=a.cmp||a.p||[],nf=a.cmp?[]:(a.n||[]);
+  return pf.some(f=>differs(f,b.p[f],c.p[f]))||nf.some(f=>differs(f,b.n[f],c.n[f]));
+}
+/* Run fn with ONE answer put back to its earlier value, then restore. Nothing
+   is saved in between, and the restore is in a finally: a throw here must not
+   leave the athlete's profile holding an answer they had just replaced. */
+function obWithAnswer(a,vals,fn){
+  const P=STATE.profile,N=STATE.nutrition,keep=[];
+  const put=(o,f,v)=>{if(v===undefined)delete o[f];else o[f]=v;};
+  try{
+    (a.p||[]).forEach(f=>{keep.push([P,f,Object.prototype.hasOwnProperty.call(P,f)?P[f]:undefined]);put(P,f,_obClone(vals.p[f]));});
+    (a.n||[]).forEach(f=>{keep.push([N,f,Object.prototype.hasOwnProperty.call(N,f)?N[f]:undefined]);put(N,f,_obClone(vals.n[f]));});
+    return fn();
+  }finally{keep.forEach(([o,f,v])=>put(o,f,v));}
+}
+function _obDiff(x,y){let n=0;for(let i=0;i<Math.max(x.length,y.length);i++)if(x[i]!==y[i])n++;return n;}
+function _obItemText(m){return _ve((EX[m.exId]&&EX[m.exId].name)||m.exId)+' '+m.sets+' × '+_briefTarget(m);}
+function obEditReport(before){
+  if(!before||!before.vals||!before.fx)return null;
+  const now=obAnswerVals();
+  const changed=OB_ANSWERS.filter(a=>obAnswerChanged(a,before.vals,now));
+  if(!changed.length)return {answers:[]};
+  const after=obEffect(),n=after.sess.length;
+  const total=_obDiff(before.fx.sess,after.sess);
+  let firstAt=-1;for(let i=0;i<n;i++)if(before.fx.sess[i]!==after.sess[i]){firstAt=i;break;}
+  const answers=changed.map(a=>{
+    const alone=obWithAnswer(a,before.vals,obEffect);
+    return {k:a.k,label:a.label,sessions:_obDiff(alone.sess,after.sess),flow:alone.flow!==after.flow,food:alone.food!==after.food,
+      weeks:alone.weeks!==after.weeks,why:''};
+  });
+  answers.forEach(r=>{if(!r.sessions)r.why=obWhyNoChange(r.k,before.vals,now);});
+  /* Matched by MOVEMENT, not by position. An injury swap or a new bonus
+     shifts every row below it, and a line pairing two unrelated movements
+     reads as nonsense. */
+  const lines=[];
+  if(firstAt===0){
+    const b=before.fx.first.slice(),c=after.first,num=m=>m.sets+' \u00d7 '+_briefTarget(m);
+    c.forEach(y=>{
+      const i=b.findIndex(x=>x.exId===y.exId);
+      if(i<0){lines.push('Added: '+_obItemText(y)+'.');return;}
+      const x=b.splice(i,1)[0];
+      const nm=_ve((EX[y.exId]&&EX[y.exId].name)||y.exId);
+      if(num(x)!==num(y))lines.push(nm+': was '+num(x)+', now '+num(y)+'.');
+      /* Rest is part of the prescription. Two goals can share every set and
+         rep and differ only here, and a headline saying the session changed
+         over an empty list would be a claim with nothing under it. */
+      else if(x.rest!==y.rest)lines.push(nm+': rest was '+plural(x.rest,'second')+', now '+plural(y.rest,'second')+'.');
+    });
+    b.forEach(x=>lines.push('Removed: '+_obItemText(x)+'.'));
+  }
+  return {answers,n,total,firstAt,lines,closed:todayClosed(),weeksNow:after.weeks};
+}
+/* A reason, only where the condition it names can be tested here. Everything
+   else gets the measured sentence and no guess. */
+function obWhyNoChange(k,was,now){
+  try{
+    if(k==='experience'&&STATE.baseline&&STATE.baseline.level){
+      return 'Your sessions are built at <b>'+_ve(levelOf(posOf(STATE.progressPtr).cycle))+'</b>, the level on file from your test or starting estimate. '
+        +'This answer can make the program one step easier. It cannot make it harder. The level goes up when you re-test.'
+        +'<div style="margin-top:8px"><button class="btn sm" onclick="retestNow()">Re-test now</button></div>';
+    }
+    if(k==='conditioning'&&timelineIsAggressive()&&['moderate','high'].includes(was.p.conditioning)&&['moderate','high'].includes(now.p.conditioning)){
+      return 'Your timeframe is a tight one, and it already moves conditioning to the top level. So Average and Very fit build the same sessions.';
+    }
+    if(k==='gear'){
+      return 'No session in that window uses the kit you changed.'+(hasWeights()?' The <b>Weights</b> session uses the kit you own. It is on Today, below your session.':'');
+    }
+  }catch(e){}
+  return '';
+}
+function obReportHTML(r){
+  const sessWord=plural(r.n,'session');
+  let head,cls='info';
+  if(!r.n)head='<b>The program is complete</b>, so there is no session left to change. Your answers are saved.';
+  else if(!r.total)head='<b>No session changed.</b> The reason for each answer is below.';
+  else if(r.firstAt===0){cls='ok';head='<b>'+(r.closed?'Your next session changed.':'Today’s session changed.')+'</b> In all, '+r.total+' of the next '+sessWord+' changed.';}
+  else{cls='ok';head='<b>'+(r.closed?'Your next session is the same.':'Today’s session is the same.')+'</b> '+r.total+' of the next '+sessWord+' changed. The first change is '+plural(r.firstAt,'session')+' from now.';}
+  const rows=r.answers.map(a=>{
+    const also=[];
+    if(a.flow)also.push('your warm-up and cool-down');
+    if(a.food)also.push('your food targets');
+    if(a.weeks)also.push('the time to finish the program (now about '+plural(r.weeksNow,'week')+')');
+    let t;
+    if(a.sessions)t='Changed '+a.sessions+' of the next '+sessWord+(also.length?', and '+also.join(' and '):'')+'.';
+    else if(also.length)t='Changed '+also.join(' and ')+'. No session changed.';
+    else t='Changed no session, and nothing else in the program.';
+    return '<div data-obans="'+a.k+'" style="padding:10px 0;border-top:1px solid var(--line)"><b>'+_ve(a.label)+'</b><div class="sm" style="margin-top:3px">'+t+(a.why?' '+a.why:'')+'</div></div>';
+  }).join('');
+  return '<div data-obrep="1"><h3>What your changes did</h3>'
+    +'<p class="muted sm" style="margin:2px 0 10px">Measured, not assumed: the app built your next '+sessWord+' before and after this edit and compared them.</p>'
+    +'<div class="note '+cls+'" data-obhead="1">'+head+'</div>'
+    +(r.lines&&r.lines.length?'<ul class="cuelist" data-obtoday="1">'+r.lines.slice(0,OB_LINES_MAX).map(l=>'<li>'+l+'</li>').join('')
+      +(r.lines.length>OB_LINES_MAX?'<li>And '+(r.lines.length-OB_LINES_MAX)+' more.</li>':'')+'</ul>':'')
+    +'<div class="section-label">Each answer you changed</div>'+rows
+    +'<button class="btn primary" style="margin-top:14px" onclick="closeSheet()">Done</button></div>';
+}
+/* ONE CLOSER for the three ways out of the editor. Each used to write the same
+   three statements out by hand, which is how one of them would have gone
+   without the report. */
+function obEndEdit(){
+  const before=_obBefore;_obBefore=null;
+  OB_EDIT=false;OB_HOST=null;obClear();
+  let rep=null;
+  try{rep=obEditReport(before);}catch(e){console.error('[profile report]',e);}
+  _obReport=rep;
+}
+function obFlushReport(){
+  const r=_obReport;_obReport=null;
+  if(!r||!r.answers||!r.answers.length)return;
+  try{openSheet(obReportHTML(r));}catch(e){console.error('[profile report]',e);}
+}
+/* AN ANSWER TAPPED AND THE APP PUT AWAY WAS LOST. The step label says changes
+   save as you go, and a save only ran on Next, Back, Done or a tab change.
+   Measured: tap a new goal, switch to another app, and the phone reclaims the
+   page with the old goal still stored. The page going hidden is the last
+   event a phone reliably delivers, so the open form is saved there.
+
+   THE EDITOR ONLY, never the first-run wizard. A page also goes hidden when
+   it UNLOADS, and a first-run page holds the default state: saving it there
+   wrote that empty state over whatever storage held, on every reload. The
+   full suite caught it within one run, as 26 failures in the checks that
+   seed storage and reload. A first run still saves on every Next. */
+function obHiddenCommit(){
+  if(!OB_EDIT||!$('#ob-name'))return;
+  try{obReadForm();save();}catch(e){console.error('[profile save]',e);}
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)obHiddenCommit();});
 function obFinishNav(){
   try{recalcKcalFromStored();}catch(e){}
-  if(OB_EDIT){OB_EDIT=false;OB_HOST=null;obClear();save();toast('Profile updated ✓ — plan re-tuned');navTo('today');}
+  /* The toast is for a save with nothing to report. When the report opens it
+     IS the confirmation, and a toast over its first rows only hides them. */
+  if(OB_EDIT){obEndEdit();save();if(!(_obReport&&_obReport.answers&&_obReport.answers.length))toast('Profile saved ✓');navTo('today');obFlushReport();}
   else{STATE.onboarded=true;obClear();save();render();}
 }
 function obReadForm(){
@@ -19373,6 +19603,7 @@ function clearTabScratch(){
   try{_celebQ=[];}catch(e){}
   try{QUICK_ID=null;quickState={done:{}};}catch(e){}
   try{_lastSessionClock=null;}catch(e){}
+  try{_obBefore=null;_obReport=null;}catch(e){}
 }
 function activityScreenshot(){
   if(!foodAIReady()){toast('Add a free Gemini key in Settings ⚙️ to read a screenshot');return;}
@@ -25447,7 +25678,7 @@ function renderGuide(){
   let h=`<h2 class="vtitle">Settings</h2><div class="vsub">Your profile &amp; goals, preferences and your data. The exercise library moved to <b>Reference ▸ Moves</b>.</div>`;
   // profile / retake the quiz (non-destructive) — FIRST, before anything else on this tab
   h+=`<div class="section-label">Profile &amp; goals</div><div class="card pad">
-    <p class="sm muted" style="margin-top:0">Your answers from the setup quiz — sex, size, goal, focus areas, injuries, equipment and more. Update them any time and your plan re-tunes. <b>Your progress and history are kept.</b></p>
+    <p class="sm muted" style="margin-top:0">Your answers from the setup quiz — sex, size, goal, focus areas, injuries, equipment and more. Update them any time. When you save, the app shows what each change did to your sessions. <b>Your progress and history are kept.</b></p>
     <button class="btn primary" onclick="openProfileEdit()">✎ Edit my profile &amp; goals</button>
   </div>`;
   // results guidance
