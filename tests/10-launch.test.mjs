@@ -2041,6 +2041,10 @@ const { browser, page, errors } = await launch(port);
 
     /* A. a goal change that really moves the program */
     await seedBase('Intermediate'); const a0 = await fp();
+    // what each movement of today's session is prescribed at, as the report words it
+    const rxMap = () => page.evaluate(() => { const b = buildSession(STATE.progressPtr, { full: true }), o = {};
+      [...b.main, b.finisher].filter(Boolean).forEach(m => { o[EX[m.exId].name] = m.sets + ' \u00d7 ' + _briefTarget(m); }); return o; });
+    const aRx0 = await rxMap();
     s.ok('GUARD: the editor opens from the Settings button', await openEdit());
     await tap('#ob-goal button[data-g="gain"]'); await saveAll();
     const a1 = await fp(), aN = diff(a1, a0), aR = await rep();
@@ -2053,6 +2057,18 @@ const { browser, page, errors } = await launch(port);
     /* matched by movement: a line never pairs two different movements */
     s.ok('each line is about one movement', aR.today.every(l => /: (rest )?was .+, now .+\.$/.test(l) || /^(Added|Removed): /.test(l) || /^And \d+ more\.$/.test(l)), aR.today);
     const aNames = await page.evaluate(() => { const b = buildSession(STATE.progressPtr, { full: true }); return [...b.main, b.finisher].filter(Boolean).map(m => EX[m.exId].name); });
+    /* THE NUMBERS BELONG TO THE MOVEMENT NAMED. A line built by pairing rows by
+       position has the right shape and names a real movement, with another
+       movement's figures beside it. So each line is checked against what that
+       movement was really prescribed at before, and is now. */
+    const aRx1 = await rxMap();
+    const aBad = aR.today.filter(l => { let m;
+      if ((m = /^(.+): was (.+), now (.+)\.$/.exec(l))) return !(aRx0[m[1]] === m[2] && aRx1[m[1]] === m[3]);
+      if ((m = /^Added: (.+) (\d+ \u00d7 .+)\.$/.exec(l))) return !(!(m[1] in aRx0) && aRx1[m[1]] === m[2]);
+      if ((m = /^Removed: (.+) (\d+ \u00d7 .+)\.$/.exec(l))) return !(!(m[1] in aRx1) && aRx0[m[1]] === m[2]);
+      return !/^And \d+ more\.$/.test(l); });
+    s.ok('GUARD: the session has a movement that stayed, one that came and one that went', aR.today.some(l => /: was /.test(l)) && aR.today.some(l => /^Added: /.test(l)) && aR.today.some(l => /^Removed: /.test(l)), aR.today);
+    s.eq('every line carries the figures of the movement it names', aBad, [], { today: aR.today, aRx0, aRx1 });
     s.ok('and every changed or added line names a movement in the session as it is now', aR.today.filter(l => !/^(Removed:|And \d)/.test(l)).every(l => aNames.some(n => l.includes(n))), { today: aR.today, aNames });
     s.ok('only the answer that changed gets a row', Object.keys(aR.rows).join(',') === 'goal', Object.keys(aR.rows));
     s.ok('the save no longer claims a re-tune it did not measure', !/re-tuned/i.test(aR.toast), aR.toast);
