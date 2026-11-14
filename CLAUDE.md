@@ -23981,3 +23981,67 @@ ask it. The brief stops letting the global pick outrank its own per-coach pick.
 utterance class (Chromium refuses a fake voice on a real one). Whether Android
 honours it is the real-device confirmation. Removing the lang line fails four
 checks by name.
+
+## The save said "plan re-tuned" and never measured it (v538)
+
+Reported: *"when you go into settings and edit my profile and goals, it does
+not change or adjust the daily exercises in the program."*
+
+**Driven first, and the save path is sound.** All four ways out of the editor
+(Save changes, Done, the tab bar, the Back button) write the answers, they
+survive a reload, and the engine responds to most of them. What is true is
+that several answers move **no session at all** in common states, measured on
+the next block for an athlete with a tested level:
+
+| answer | why it moves nothing |
+|---|---|
+| Training experience | a tested level outranks it; it can ease one step and never raise (`levelOf()`) |
+| Cardio / conditioning | a tight timeframe already lifts Average to the top (`condLevel()`) |
+| Equipment | most kit is not on the daily ladders |
+| Activity, timeframe | they set food targets |
+
+Each is a recorded decision. The defect was the toast: **"Profile updated —
+plan re-tuned"**, whatever had happened. A promise in UI text with no code
+behind it, on the screen the athlete uses to change the program.
+
+**The editor now measures.** `obEffect()` fingerprints the next
+`SESSIONS_PER_CYCLE` sessions, the warm-up and cool-down, the food targets and
+the time to finish. `openProfileEdit()` takes one before; `obEndEdit()` takes
+one after and opens a sheet. For EACH changed answer, `obWithAnswer()` rebuilds
+with that one answer put back, so a row can say "changed 31 of the next 42
+sessions" or "changed no session" for that answer alone. Set A, fingerprint,
+set B, fingerprint, shipped as a screen.
+
+- **A reason is printed only where code tests its condition**
+  (`obWhyNoChange()`): experience with a level on file (plus a Re-test button),
+  conditioning under `timelineIsAggressive()`, and kit. Everything else gets the
+  measured sentence and no guess.
+- **`obEndEdit()` is the one closer** for the three exits, and `go()` ends with
+  `obFlushReport()`, so the report opens on the tab the athlete landed on.
+- **Lines are matched by movement, not by position**, and a rest-only change
+  gets a line: two goals can share every set and rep (`recomp` and
+  `leanrecomp`).
+- **A rounding step is not an answer changed** (`OB_ROUND_TOL`): an imperial
+  athlete's height and weight come back a step away on every save.
+- **The engine rule is NOT changed.** Letting the experience answer raise a
+  tested level is a prescription decision and it is the athlete's to make.
+
+**An answer tapped and the app put away was lost.** A save ran only on Next,
+Back, Done or a tab change. `obHiddenCommit()` saves the open form when the
+page goes hidden. **EDIT MODE ONLY**: a page also goes hidden when it unloads,
+and a first-run page holds the default state, so the first version wrote an
+empty state over storage on every reload. The full suite caught it in one run
+(26 failures in suite 05, the checks that seed storage and reload).
+
+**Probe traps hit again**: a weight-stable goal has no pace, so a tight
+timeframe needs a cut under it; and a seed that does not reset an answer makes
+the next case tap a chip that is already on.
+
+**The full suite found two faults in the fix before it shipped**: the hidden
+commit above, and a pointer at Today with no pane (suite 23's paned-tab rule).
+
+**Twenty-nine mutants, all caught.** One escaped first: session lines paired
+by POSITION have the right shape and name a real movement, with another
+movement's figures beside it. Each line is now checked against what that
+movement was prescribed at before and is now. *Measure the payload, not the
+container.*

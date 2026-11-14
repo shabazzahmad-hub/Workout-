@@ -1977,6 +1977,375 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+  /* ---- v538: a profile edit must say what it did, measured ----------------
+     Reported: "when you go into settings and edit my profile and goals, it does
+     not change or adjust the daily exercises". Driven first: every exit from
+     the editor saves, and the engine DOES respond to most answers. What was
+     wrong is that several answers move nothing in common states — a tested
+     level outranks the experience answer upward, a tight timeframe already
+     lifts conditioning to the top, most kit is not in the daily ladder — and
+     the save said "plan re-tuned" whatever happened. So the save now measures
+     the program before and after and reports each changed answer.
+
+     Every case goes through the real button and the real chips. The engine
+     figure the report is compared against is computed HERE, not read back
+     from the app's own helper. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const seedBase = (lvl, over) => page.evaluate(([lvl, over]) => {
+      const mx = { Beginner: { plank: 45, side: 25, hollow: 20, lower: 10, push: 10, pull: 4, squat: 20, dyn: 20, power: 8, stamina: 8 },
+        Intermediate: { plank: 90, side: 50, hollow: 40, lower: 18, push: 25, pull: 10, squat: 35, dyn: 35, power: 14, stamina: 14 },
+        Advanced: { plank: 150, side: 95, hollow: 70, lower: 30, push: 48, pull: 22, squat: 62, dyn: 55, power: 22, stamina: 24 } }[lvl];
+      STATE.progressPtr = 60;
+      STATE.baseline = { date: todayISO(), score: { Beginner: 35, Intermediate: 60, Advanced: 95 }[lvl], level: lvl, testCount: 10, maxes: mx, results: { ...mx }, subs: {} };
+      STATE.reassess = {};
+      Object.assign(STATE.profile, { goal: 'recomp', experience: 'Intermediate', conditioning: 'moderate', mobility: 'ok', focusPrimary: 'abs',
+        targets: ['abs', 'full'], troubleZones: [], limitations: [], tightSpace: false, timelineWeeks: null, goalWeightLb: 165, unit: 'cm',
+        parq: [], parqDone: true, medCleared: false, activity: 1.45, heightCm: 178,
+        gear: ['bar', 'kettlebell', 'dumbbell', 'balancetrainer', 'ruck', 'sandbag', 'bench'], days: [0, 1, 2, 4, 5] });
+      // every answer a case may move is put back, or the next case taps a chip that is already on
+      STATE.nutrition.goal = 'recomp'; STATE.nutrition.weightKg = 86; STATE.nutrition.activity = 1.45; STATE.nutrition.heightCm = 178;
+      STATE.measurements = [{ date: todayISO(), weight: 86, waist: 96 }];
+      STATE.logs = {}; STATE.swaps = {}; STATE.achievements = {};
+      if (over) Object.assign(STATE.profile, over);
+      normalizeState(); try { recalcKcalFromStored(); } catch (e) {}
+      try { _celebQ = []; } catch (e) {}
+      save(); go('today');
+    }, [lvl, over || null]);
+    const fp = () => page.evaluate(() => {
+      const total = SESSIONS_PER_CYCLE * TOTAL_CYCLES, out = [];
+      for (let i = 0; i < SESSIONS_PER_CYCLE && STATE.progressPtr + i < total; i++) {
+        const b = buildSession(STATE.progressPtr + i, { full: true });
+        out.push([...b.main, b.finisher].filter(Boolean).map(m => m.exId + ':' + m.sets + 'x' + m.target + m.unit + 'r' + m.rest).join(','));
+      }
+      return out;
+    });
+    const diff = (a, b) => a.filter((x, i) => x !== b[i]).length;
+    const openEdit = () => page.evaluate(() => { go('guide');
+      const b = [...document.querySelectorAll('#v-guide button')].find(x => /Edit my profile/.test(x.textContent)); if (b) b.click();
+      return !!document.querySelector('#ob-name'); });
+    const tap = sel => page.evaluate(q => { const b = document.querySelector(q); if (!b) return false; b.click(); return true; }, sel);
+    const saveAll = async () => { for (let i = 0; i < 7; i++) await tap('#ob-next'); };
+    const rep = () => page.evaluate(() => {
+      const sh = document.querySelector('#sheet'), open = document.querySelector('#scrim').classList.contains('open') && !!sh.querySelector('[data-obrep]');
+      const txt = e => e ? e.textContent.replace(/\s+/g, ' ').trim() : null;
+      const rows = {}; if (open) sh.querySelectorAll('[data-obans]').forEach(e => { rows[e.dataset.obans] = txt(e); });
+      return { open, head: open ? txt(sh.querySelector('[data-obhead]')) : null, today: open ? [...sh.querySelectorAll('[data-obtoday] li')].map(txt) : [], rows,
+        toast: document.querySelector('#toast').textContent, tab: TAB, edit: OB_EDIT, mounted: !!document.querySelector('#ob-name') };
+    });
+    const shut = async () => { await page.evaluate(() => { try { _celebQ = []; } catch (e) {} if (document.querySelector('#scrim').classList.contains('open')) closeSheet(); });
+      await page.waitForFunction(() => !document.querySelector('#scrim').classList.contains('open'), null, { timeout: 5000 });
+      await page.waitForTimeout(450); };
+    const N = await page.evaluate(() => SESSIONS_PER_CYCLE);
+
+    /* A. a goal change that really moves the program */
+    await seedBase('Intermediate'); const a0 = await fp();
+    // what each movement of today's session is prescribed at, as the report words it
+    const rxMap = () => page.evaluate(() => { const b = buildSession(STATE.progressPtr, { full: true }), o = {};
+      [...b.main, b.finisher].filter(Boolean).forEach(m => { o[EX[m.exId].name] = m.sets + ' \u00d7 ' + _briefTarget(m); }); return o; });
+    const aRx0 = await rxMap();
+    s.ok('GUARD: the editor opens from the Settings button', await openEdit());
+    await tap('#ob-goal button[data-g="gain"]'); await saveAll();
+    const a1 = await fp(), aN = diff(a1, a0), aR = await rep();
+    s.ok('GUARD: the goal change really moves the program', aN > 0 && a1[0] !== a0[0], { aN });
+    s.ok('a saved edit opens the report', aR.open, aR);
+    s.ok('the goal row states the measured count', !!aR.rows.goal && aR.rows.goal.includes(aN + ' of the next ' + N + ' sessions'), { row: aR.rows.goal, aN });
+    s.ok('and says the food targets moved too', /food targets/i.test(aR.rows.goal || ''), aR.rows.goal);
+    s.ok('the headline says today’s session changed', /Today’s session changed/.test(aR.head || ''), aR.head);
+    s.ok('and lists what changed in it', aR.today.length > 0 && aR.today.length <= 8, aR.today);
+    /* matched by movement: a line never pairs two different movements */
+    s.ok('each line is about one movement', aR.today.every(l => /: (rest )?was .+, now .+\.$/.test(l) || /^(Added|Removed): /.test(l) || /^And \d+ more\.$/.test(l)), aR.today);
+    const aNames = await page.evaluate(() => { const b = buildSession(STATE.progressPtr, { full: true }); return [...b.main, b.finisher].filter(Boolean).map(m => EX[m.exId].name); });
+    /* THE NUMBERS BELONG TO THE MOVEMENT NAMED. A line built by pairing rows by
+       position has the right shape and names a real movement, with another
+       movement's figures beside it. So each line is checked against what that
+       movement was really prescribed at before, and is now. */
+    const aRx1 = await rxMap();
+    const aBad = aR.today.filter(l => { let m;
+      if ((m = /^(.+): was (.+), now (.+)\.$/.exec(l))) return !(aRx0[m[1]] === m[2] && aRx1[m[1]] === m[3]);
+      if ((m = /^Added: (.+) (\d+ \u00d7 .+)\.$/.exec(l))) return !(!(m[1] in aRx0) && aRx1[m[1]] === m[2]);
+      if ((m = /^Removed: (.+) (\d+ \u00d7 .+)\.$/.exec(l))) return !(!(m[1] in aRx1) && aRx0[m[1]] === m[2]);
+      return !/^And \d+ more\.$/.test(l); });
+    s.ok('GUARD: the session has a movement that stayed, one that came and one that went', aR.today.some(l => /: was /.test(l)) && aR.today.some(l => /^Added: /.test(l)) && aR.today.some(l => /^Removed: /.test(l)), aR.today);
+    s.eq('every line carries the figures of the movement it names', aBad, [], { today: aR.today, aRx0, aRx1 });
+    s.ok('and every changed or added line names a movement in the session as it is now', aR.today.filter(l => !/^(Removed:|And \d)/.test(l)).every(l => aNames.some(n => l.includes(n))), { today: aR.today, aNames });
+    s.ok('only the answer that changed gets a row', Object.keys(aR.rows).join(',') === 'goal', Object.keys(aR.rows));
+    s.ok('the save no longer claims a re-tune it did not measure', !/re-tuned/i.test(aR.toast), aR.toast);
+    const aS = await page.evaluate(() => ({ g: STATE.profile.goal, n: STATE.nutrition.goal, ls: JSON.parse(localStorage.getItem(STORE_KEY)).profile.goal }));
+    s.eq('the report leaves the saved answers in place', aS, { g: 'gain', n: 'gain', ls: 'gain' });
+    s.eq('and the program it built is still the edited one', diff(await fp(), a1), 0);
+    await shut();
+
+    /* B. the experience answer cannot raise a tested level — and now says so */
+    await seedBase('Beginner'); const b0 = await fp();
+    await openEdit(); await tap('#ob-exp button[data-x="Advanced"]'); await saveAll();
+    const bR = await rep();
+    s.eq('GUARD: a tested Beginner who answers Advanced gets the same program', diff(await fp(), b0), 0);
+    s.ok('the report still opens', bR.open, bR);
+    s.ok('the headline says no session changed', /No session changed/.test(bR.head || ''), bR.head);
+    s.ok('the experience row says it changed no session', /no session/i.test(bR.rows.experience || ''), bR.rows.experience);
+    s.ok('and names the level the program is built at', /Beginner/.test(bR.rows.experience || ''), bR.rows.experience);
+    s.ok('and offers the re-test', await page.evaluate(() => !!document.querySelector('#sheet [data-obans="experience"] button[onclick="retestNow()"]')));
+    await tap('#sheet [data-obans="experience"] button[onclick="retestNow()"]');
+    const bT = await page.evaluate(() => ({ open: document.querySelector('#scrim').classList.contains('open'), rep: !!document.querySelector('#sheet [data-obrep]'), test: !!(typeof assessState !== 'undefined' && assessState) && document.querySelector('#sheet').textContent.length > 80 }));
+    s.ok('the re-test button opens the test', bT.open && !bT.rep && bT.test, bT);
+    await shut();
+    await seedBase('Advanced', { experience: 'Advanced' }); const b2 = await fp();
+    await openEdit(); await tap('#ob-exp button[data-x="Beginner"]'); await saveAll();
+    const b2N = diff(await fp(), b2), b2R = await rep();
+    s.ok('FLOOR: easing the answer still changes the program', b2N > 0, { b2N });
+    s.ok('FLOOR: and its row reports the count, with no re-test note', (b2R.rows.experience || '').includes(b2N + ' of the next ') && !/re-test/i.test(b2R.rows.experience || ''), b2R.rows.experience);
+    await shut();
+
+    /* C. conditioning under a tight timeframe */
+    // a weight-stable goal has no pace at all, so the tight timeframe needs a cut under it
+    await seedBase('Intermediate', { timelineWeeks: 24, goal: 'lose' });
+    const cAgg = await page.evaluate(() => timelineIsAggressive()); const c0 = await fp();
+    await openEdit(); await tap('#ob-cond button[data-c="high"]'); await saveAll();
+    const cR = await rep();
+    s.ok('GUARD: the timeframe is a tight one', cAgg === true);
+    s.eq('GUARD: Average to Very fit builds the same sessions under it', diff(await fp(), c0), 0);
+    s.ok('the conditioning row names the timeframe as the reason', /no session/i.test(cR.rows.conditioning || '') && /timeframe/i.test(cR.rows.conditioning || ''), cR.rows.conditioning);
+    await shut();
+    await seedBase('Intermediate'); const c2 = await fp();
+    await openEdit(); await tap('#ob-cond button[data-c="high"]'); await saveAll();
+    const c2N = diff(await fp(), c2), c2R = await rep();
+    s.ok('FLOOR: with no timeframe the same tap changes sessions', c2N > 0 && (c2R.rows.conditioning || '').includes(c2N + ' of the next '), { c2N, row: c2R.rows.conditioning });
+    s.ok('FLOOR: and the row does not blame a timeframe', !/timeframe/i.test(c2R.rows.conditioning || ''), c2R.rows.conditioning);
+    await shut();
+
+    /* D. kit that no session in the window uses */
+    await seedBase('Intermediate'); const d0 = await fp();
+    await openEdit(); await tap('#ob-gear button[data-e="ruck"]'); await saveAll();
+    const dR = await rep();
+    s.eq('GUARD: dropping the ruck moves no session in the window', diff(await fp(), d0), 0);
+    s.ok('the equipment row says so and points at the Weights session', /no session/i.test(dR.rows.gear || '') && /Weights/.test(dR.rows.gear || ''), dR.rows.gear);
+    await shut();
+    // Today has four panes, so the pointer has to name the one the tile is on
+    s.ok('the pointer names the pane as well as the tab', /Today ▸ Workout/.test(dR.rows.gear || ''), dR.rows.gear);
+    s.ok('and the Weights session is where the row says it is', await page.evaluate(() => { go('today'); try { setTodayTab('workout'); } catch (e) {} return !!document.querySelector('#v-today button[onclick="startWeights()"]'); }));
+
+    /* E. answers that drive food or the warm-up, not the sessions */
+    await seedBase('Intermediate'); const e0 = await fp();
+    await openEdit(); await tap('#ob-act button[data-a="1.75"]'); await tap('#ob-mob button[data-m="low"]'); await saveAll();
+    const eR = await rep();
+    s.eq('GUARD: activity and mobility move no session', diff(await fp(), e0), 0);
+    s.ok('the activity row says it moved the food targets', /food targets/i.test(eR.rows.activity || '') && /no session/i.test(eR.rows.activity || ''), eR.rows.activity);
+    s.ok('the mobility row says it moved the warm-up', /warm-up/i.test(eR.rows.mobility || ''), eR.rows.mobility);
+    s.ok('and neither claims the other’s effect', !/warm-up/i.test(eR.rows.activity || '') && !/food targets/i.test(eR.rows.mobility || ''), eR.rows);
+    await shut();
+
+    /* E2. two answers saved together: each row is measured ALONE, so the
+       one that did nothing is not credited with the other one's sessions */
+    await seedBase('Intermediate'); const e2a = await fp();
+    await openEdit(); await tap('#ob-goal button[data-g="gain"]'); await tap('#ob-act button[data-a="1.75"]'); await saveAll();
+    const e2N = diff(await fp(), e2a), e2R = await rep();
+    s.ok('GUARD: the pair moved the program', e2N > 0, { e2N });
+    s.ok('the answer that moved it carries the count', (e2R.rows.goal || '').includes(e2N + ' of the next '), e2R.rows.goal);
+    s.ok('and the one that did not is not credited with it', /no session/i.test(e2R.rows.activity || '') && !/of the next/.test(e2R.rows.activity || ''), e2R.rows.activity);
+    await shut();
+
+    /* E3. two goals that share every set and rep and differ only in rest */
+    await seedBase('Intermediate');
+    const e3strip = a => a.map(x => x.replace(/r\d+/g, ''));
+    const e3a = await fp();
+    await openEdit(); await tap('#ob-goal button[data-g="leanrecomp"]'); await saveAll();
+    const e3b = await fp(), e3N = diff(e3b, e3a), e3R = await rep();
+    s.ok('GUARD: these two goals differ in rest and in nothing else', e3N > 0 && diff(e3strip(e3b), e3strip(e3a)) === 0 && e3b[0] !== e3a[0], { e3N });
+    s.ok('a rest-only change is still counted as a session changed', (e3R.rows.goal || '').includes(e3N + ' of the next '), e3R.rows.goal);
+    s.ok('and the session list says what the change was', e3R.today.length > 0 && e3R.today.every(l => /: rest was \d+ seconds?, now \d+ seconds?\.$/.test(l) || /^And \d+ more\.$/.test(l)), e3R.today);
+    await shut();
+
+    /* E4. a reason is printed only where its condition holds — pinned on the
+       helper, because no route reaches these two states with zero sessions */
+    await seedBase('Intermediate');
+    const e4 = await page.evaluate(() => {
+      const w = c => ({ p: { conditioning: c } });
+      const o = { looseTimeline: obWhyNoChange('conditioning', w('moderate'), w('high')) };
+      STATE.profile.goal = 'lose'; STATE.nutrition.goal = 'lose'; STATE.profile.timelineWeeks = 24;
+      o.tight = timelineIsAggressive();
+      o.tightModHigh = obWhyNoChange('conditioning', w('moderate'), w('high'));
+      o.tightFromLow = obWhyNoChange('conditioning', w('low'), w('moderate'));
+      const g = STATE.profile.gear; STATE.profile.gear = []; STATE.profile.hasBar = false; STATE.profile.hasBench = false;
+      o.noKitHasWeights = hasWeights(); o.noKit = obWhyNoChange('gear', w('x'), w('x'));
+      STATE.profile.gear = g; normalizeState();
+      o.kitHasWeights = hasWeights(); o.kit = obWhyNoChange('gear', w('x'), w('x'));
+      o.other = obWhyNoChange('space', w('x'), w('x'));
+      STATE.profile.goal = 'recomp'; STATE.nutrition.goal = 'recomp'; STATE.profile.timelineWeeks = null;
+      return o;
+    });
+    s.eq('with no tight timeframe the conditioning answer gets no timeframe reason', e4.looseTimeline, '');
+    s.ok('GUARD: the timeframe is then made a tight one', e4.tight === true);
+    s.ok('under it Average to Very fit gets the reason', /timeframe/i.test(e4.tightModHigh), e4.tightModHigh);
+    s.eq('and Just starting does not: a tight timeframe never lifts it', e4.tightFromLow, '');
+    s.ok('GUARD: an athlete with no kit has no Weights session', e4.noKitHasWeights === false && e4.kitHasWeights === true, e4);
+    s.ok('so the equipment reason does not point at one', e4.noKit.length > 0 && !/Weights/.test(e4.noKit), e4.noKit);
+    s.ok('and it does for an athlete who has one', /Weights/.test(e4.kit), e4.kit);
+    s.eq('an answer with no tested reason gets none', e4.other, '');
+
+    /* E5. the three states the cases above never reach */
+    await seedBase('Intermediate');
+    const e5 = await page.evaluate(() => { const b = STATE.baseline; STATE.baseline = null;
+      const w = { p: {} }, r = obWhyNoChange('experience', w, w); STATE.baseline = b; return r; });
+    s.eq('with no level on file the experience answer gets no re-test reason', e5, '');
+    // an answer that leaves today alone and moves a later session
+    let e5pick = null;
+    for (const t of ['glutes', 'arms', 'chest', 'back', 'shoulders', 'legs']) {
+      await seedBase('Intermediate'); const x0 = await fp();
+      await openEdit(); await tap('#ob-targets button[data-t="' + t + '"]'); await saveAll();
+      const x1 = await fp(), xr = await rep(); await shut();
+      if (x1[0] === x0[0] && diff(x1, x0) > 0) { e5pick = { t, n: diff(x1, x0), at: x1.findIndex((v, i) => v !== x0[i]), head: xr.head, today: xr.today, row: xr.rows.targets }; break; }
+    }
+    s.ok('GUARD: some focus area leaves today alone and moves a later session', !!e5pick, e5pick);
+    if (e5pick) {
+      s.ok('the headline then says today is the same', /Today’s session is the same/.test(e5pick.head || '') && !/session changed\./.test((e5pick.head || '').split('.')[0]), e5pick);
+      s.ok('and says how far off the first change is', (e5pick.head || '').includes('The first change is ' + e5pick.at + ' session' + (e5pick.at === 1 ? '' : 's') + ' from now'), e5pick);
+      s.eq('and lists no change for today', e5pick.today, []);
+      s.ok('and the row carries the count', (e5pick.row || '').includes(e5pick.n + ' of the next '), e5pick);
+    }
+    // a sixth training day moves the calendar, not the sessions
+    await seedBase('Intermediate'); const e6a = await fp();
+    const e6w0 = await page.evaluate(() => programWeeks());
+    await openEdit(); await tap('#ob-days button[data-d="3"]'); await saveAll();
+    const e6R = await rep(), e6w1 = await page.evaluate(() => programWeeks());
+    s.ok('GUARD: a sixth day shortens the program and moves no session', e6w1 < e6w0 && diff(await fp(), e6a) === 0, { e6w0, e6w1 });
+    s.ok('the training-days row says the time to finish moved, with the new figure', /time to finish/i.test(e6R.rows.days || '') && (e6R.rows.days || '').includes('about ' + e6w1 + ' weeks') && /no session/i.test(e6R.rows.days || ''), e6R.rows.days);
+    await shut();
+    // a health flag puts the athlete in safe mode, which eases every session
+    await seedBase('Intermediate'); const e7a = await fp();
+    await openEdit(); await page.evaluate(() => document.querySelector('#ob-parq button').click()); await saveAll();
+    const e7N = diff(await fp(), e7a), e7R = await rep();
+    s.ok('GUARD: a health flag eases the program', e7N > 0 && await page.evaluate(() => safeMode()), { e7N });
+    s.ok('the health-check row carries the count', (e7R.rows.health || '').includes(e7N + ' of the next '), e7R.rows.health);
+    await shut();
+
+    /* E8. the two sentences that used to promise a re-tune now promise the
+       report, which is the thing the code does */
+    await seedBase('Intermediate');
+    const e8 = await page.evaluate(() => { go('guide');
+      const card = document.querySelector('#v-guide').textContent;
+      [...document.querySelectorAll('#v-guide button')].find(x => /Edit my profile/.test(x.textContent)).click();
+      const wiz = document.querySelector('#v-guide').textContent;
+      document.querySelector('#ob-back').click();
+      return { card: /re-tune/i.test(card), cardSays: /shows what each change did/.test(card), wiz: /re-tune/i.test(wiz), wizSays: /shows you what each change did/.test(wiz) };
+    });
+    s.eq('neither Settings nor the editor promises a re-tune any more', { card: e8.card, wiz: e8.wiz }, { card: false, wiz: false });
+    s.ok('and both say the app shows what each change did', e8.cardSays && e8.wizSays, e8);
+
+    /* F. FLOOR: an edit that changes no answer says nothing about the program */
+    await seedBase('Intermediate');
+    await openEdit(); await saveAll(); await page.waitForTimeout(80);
+    const fR = await rep();
+    s.ok('FLOOR: saving with no change opens no report', !fR.open && !fR.mounted && fR.tab === 'today', fR);
+    s.ok('FLOOR: and the toast claims a save, not a re-tune', /saved/i.test(fR.toast) && !/re-tuned/i.test(fR.toast), fR.toast);
+
+    /* F2. the same floor for an imperial athlete, whose height and weight
+       both come back a rounding step away on every save */
+    await seedBase('Intermediate', { unit: 'in', heightCm: 179 });
+    await page.evaluate(() => { STATE.nutrition.heightCm = 179; STATE.nutrition.weightKg = 86.45; STATE.measurements = [{ date: todayISO(), weight: 86.45, waist: 96 }]; save(); });
+    const f2a = await page.evaluate(() => ({ h: STATE.profile.heightCm, w: STATE.nutrition.weightKg }));
+    await openEdit(); await saveAll(); await page.waitForTimeout(80);
+    const f2R = await rep(), f2b = await page.evaluate(() => ({ h: STATE.profile.heightCm, w: STATE.nutrition.weightKg }));
+    s.ok('GUARD: the imperial form really does move both figures by rounding', f2a.h !== f2b.h && f2a.w !== f2b.w, { f2a, f2b });
+    s.ok('FLOOR: a rounding step is not reported as an answer changed', !f2R.open, f2R);
+    await seedBase('Intermediate', { unit: 'in' });
+    await openEdit(); await page.evaluate(() => { document.querySelector('#ob-weight').value = '205'; }); await saveAll(); await page.waitForTimeout(80);
+    const f3R = await rep();
+    s.ok('FLOOR: a weight really typed is still reported', f3R.open && !!f3R.rows.body, f3R);
+    await shut();
+
+    /* G. the other three ways out report too */
+    await seedBase('Intermediate');
+    // an athlete from before the room question has no stored answer for it at all
+    await page.evaluate(() => { delete STATE.profile.tightSpace; save(); });
+    await openEdit(); await tap('#ob-focus button[data-f="legs"]'); await tap('#ob-back');
+    const gDone = await rep();
+    s.eq('FLOOR: a field the form fills in by default is not reported as an answer changed', Object.keys(gDone.rows), ['focus']);
+    s.ok('the Done button reports', gDone.open && !!gDone.rows.focus && !gDone.edit && gDone.tab === 'today', gDone);
+    await shut();
+    await seedBase('Intermediate');
+    await openEdit(); await tap('#ob-focus button[data-f="legs"]'); await tap('.nav button[data-tab="fuel"]');
+    const gNav = await rep();
+    s.ok('leaving by the tab bar reports, on the tab that was tapped', gNav.open && !!gNav.rows.focus && gNav.tab === 'fuel' && !gNav.edit, gNav);
+    await shut();
+    await seedBase('Intermediate');
+    await page.evaluate(() => { [...document.querySelectorAll('.nav button')].find(b => b.dataset.tab === 'guide').click(); });
+    await page.evaluate(() => { const b = [...document.querySelectorAll('#v-guide button')].find(x => /Edit my profile/.test(x.textContent)); b.click(); });
+    await tap('#ob-focus button[data-f="legs"]');
+    await page.goBack().catch(() => {}); await page.waitForTimeout(350);
+    const gBack = await rep();
+    s.ok('leaving by the Back button saves the answer', await page.evaluate(() => STATE.profile.focusPrimary === 'legs') && !gBack.edit && !gBack.mounted, gBack);
+    s.ok('and reports', gBack.open && !!gBack.rows.focus, gBack);
+    await page.goBack().catch(() => {}); await page.waitForTimeout(450);
+    const gBack2 = await rep();
+    s.ok('a second Back closes the report and nothing else', !gBack2.open && !gBack2.mounted && gBack2.tab === gBack.tab, gBack2);
+
+    /* H. an answer tapped and the app put away is not lost */
+    await seedBase('Intermediate');
+    await openEdit(); await tap('#ob-goal button[data-g="gain"]');
+    const h0 = await page.evaluate(() => STATE.profile.goal);
+    await page.evaluate(() => { Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
+      try { document.dispatchEvent(new Event('visibilitychange')); } finally { delete document.hidden; } });
+    const h1 = await page.evaluate(() => ({ g: STATE.profile.goal, ls: JSON.parse(localStorage.getItem(STORE_KEY)).profile.goal, hidden: document.hidden, edit: OB_EDIT }));
+    s.eq('GUARD: a tapped chip alone writes nothing', h0, 'recomp');
+    s.eq('putting the app away saves the open editor', { g: h1.g, ls: h1.ls }, { g: 'gain', ls: 'gain' });
+    s.ok('GUARD: the stub is gone and the editor is still open', h1.hidden === false && h1.edit === true, h1);
+    await saveAll();
+    const hR = await rep();
+    s.ok('and the report still measures from before the edit', hR.open && !!hR.rows.goal && /of the next/.test(hR.rows.goal), hR.rows);
+    await shut();
+    await seedBase('Intermediate');
+    const h2 = await page.evaluate(() => { const b = JSON.stringify(STATE.profile);
+      Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
+      try { document.dispatchEvent(new Event('visibilitychange')); } finally { delete document.hidden; }
+      return b === JSON.stringify(STATE.profile); });
+    s.ok('FLOOR: with no editor open, putting the app away writes no answer', h2);
+
+    /* H2. FLOOR: the first-run wizard does NOT save when the page goes hidden.
+       A page goes hidden when it unloads too, and a first-run page holds the
+       default state, so a save there wrote an empty state over storage on
+       every reload. Its own browser: the page has to be a genuine first run. */
+    {
+      const { browser: b2, page: p2, errors: e2 } = await launch(port);
+      const h3 = await p2.evaluate(() => {
+        const o = { firstRun: !STATE.onboarded && !!document.querySelector('#ob-name') && !OB_EDIT };
+        const g = document.querySelector('#ob-goal button[data-g="gain"]'); if (g) g.click();
+        localStorage.setItem(STORE_KEY, JSON.stringify({ marker: 'seeded-behind-the-app' }));
+        Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
+        try { document.dispatchEvent(new Event('visibilitychange')); } finally { delete document.hidden; }
+        o.kept = localStorage.getItem(STORE_KEY) === JSON.stringify({ marker: 'seeded-behind-the-app' });
+        o.goal = STATE.profile.goal;
+        localStorage.removeItem(STORE_KEY);
+        return o;
+      });
+      s.ok('GUARD: the page is a first run with the wizard up', h3.firstRun, h3);
+      s.ok('FLOOR: a first-run page going hidden leaves storage alone', h3.kept, h3);
+      s.ok('FLOOR: and reads no answer off the form', h3.goal !== 'gain', h3);
+      e2.forEach(e => s.fail('page error', e));
+      await b2.close();
+    }
+
+    /* I. a day already trained names the NEXT session, and the end of the program does not throw */
+    await seedBase('Intermediate');
+    await page.evaluate(() => { const p = STATE.progressPtr; STATE.logs[p] = { done: true, date: todayISO(), completedAt: todayISO(), ex: {} }; STATE.progressPtr = p + 1; save(); go('today'); });
+    const iClosed = await page.evaluate(() => todayClosed());
+    await openEdit(); await tap('#ob-goal button[data-g="gain"]'); await saveAll();
+    const iR = await rep();
+    s.ok('GUARD: today is closed', iClosed === true);
+    s.ok('on a day already trained the headline names the next session', /next session/i.test(iR.head || '') && !/Today’s session/.test(iR.head || ''), iR.head);
+    await shut();
+    await seedBase('Intermediate');
+    await page.evaluate(() => { STATE.progressPtr = SESSIONS_PER_CYCLE * TOTAL_CYCLES; save(); });
+    await openEdit(); await tap('#ob-goal button[data-g="gain"]'); await saveAll(); await page.waitForTimeout(80);
+    const iEnd = await rep();
+    s.ok('at the end of the program the report says there is no session to change', iEnd.open && /complete/i.test(iEnd.head || ''), iEnd);
+    await shut();
+
+    errors.forEach(e => s.fail('page error', e));
+    await browser.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
