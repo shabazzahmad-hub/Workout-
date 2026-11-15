@@ -2942,6 +2942,280 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+  /* ---- v540: an edit must reach the REAL daily session, in every state ------
+     Asked for after v539: "ensure this translates to the actual daily exercise
+     program". Driven through the real editor, then read off every surface that
+     shows today's session: the Today card, the guided player, the calendar
+     preview and the spoken brief. On a fresh day all four follow the edit.
+     Four states did not:
+
+     - sets already marked today: the edit swapped the movement out, and the
+       marked sets were counted nowhere (6 sets done read as 3);
+     - a session finished today: the header counted the log against a session
+       rebuilt from the new answers (15 of 15 sets read as 13/15, 87%);
+     - a time limit on: the report said "Added: ..." for a move the limit cuts;
+     - a hand swap: the focus area, and a goal change, took the swapped slot. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const seed = over => page.evaluate(over => {
+      const mx = { plank: 90, side: 50, hollow: 40, lower: 18, push: 25, pull: 10, squat: 35, dyn: 35, power: 14, stamina: 14 };
+      STATE.progressPtr = 60;
+      STATE.baseline = { date: todayISO(), score: 60, level: 'Intermediate', testCount: 10, maxes: mx, results: { ...mx }, subs: {} };
+      STATE.reassess = {};
+      Object.assign(STATE.profile, { goal: 'recomp', experience: 'Intermediate', conditioning: 'moderate', mobility: 'ok', focusPrimary: 'abs',
+        targets: ['abs', 'full'], troubleZones: [], limitations: [], tightSpace: false, timelineWeeks: null, goalWeightLb: 165, unit: 'cm',
+        parq: [], parqDone: true, medCleared: false, activity: 1.45, heightCm: 178, gear: ['bar', 'bench'], days: [0, 1, 2, 3, 4, 5, 6] });
+      STATE.nutrition.goal = 'recomp'; STATE.nutrition.weightKg = 86; STATE.nutrition.activity = 1.45; STATE.nutrition.heightCm = 178;
+      STATE.measurements = [{ date: todayISO(), weight: 86, waist: 96 }];
+      STATE.logs = {}; STATE.swaps = {}; STATE.achievements = {}; delete STATE._plResume; delete STATE._timeCap; delete STATE._trainAgain;
+      if (over) Object.assign(STATE.profile, over);
+      normalizeState(); try { recalcKcalFromStored(); } catch (e) {}
+      try { _celebQ = []; } catch (e) {}
+      save(); go('today');
+    }, over || null);
+    const tap = sel => page.evaluate(q => { const b = document.querySelector(q); if (!b) return false; b.click(); return true; }, sel);
+    const openEdit = () => page.evaluate(() => { go('guide');
+      const b = [...document.querySelectorAll('#v-guide button')].find(x => /Edit my profile/.test(x.textContent)); if (b) b.click();
+      return !!document.querySelector('#ob-name'); });
+    const saveAll = async () => { for (let i = 0; i < 7; i++) await tap('#ob-next'); };
+    const rep = () => page.evaluate(() => {
+      const sh = document.querySelector('#sheet'), open = document.querySelector('#scrim').classList.contains('open') && !!sh.querySelector('[data-obrep]');
+      const txt = e => e ? e.textContent.replace(/\s+/g, ' ').trim() : null;
+      return { open, head: open ? txt(sh.querySelector('[data-obhead]')) : null, today: open ? [...sh.querySelectorAll('[data-obtoday] li')].map(txt) : [],
+        kept: open ? txt(sh.querySelector('[data-obkept]')) : null };
+    });
+    const shut = async () => { await page.evaluate(() => { try { _celebQ = []; } catch (e) {} if (document.querySelector('#scrim').classList.contains('open')) closeSheet(); });
+      await page.waitForFunction(() => !document.querySelector('#scrim').classList.contains('open'), null, { timeout: 5000 });
+      await page.waitForTimeout(450); };
+    // every surface that shows today's session, read off the glass
+    const surf = async () => {
+      const a = await page.evaluate(() => {
+        const o = {}, rx = m => m.exId + ' ' + m.sets + 'x' + (m.unit === 'time' ? fmtTime(m.target) : m.target);
+        const tp = todayPtr(), b = buildSession(tp); o.engine = [...b.main, b.finisher].map(rx); o.names = [...b.main, b.finisher].map(m => EX[m.exId].name);
+        go('today'); TODAY_TAB = 'workout'; renderToday();
+        const v = document.querySelector('#v-today');
+        o.card = [...v.querySelectorAll('.ex[data-ex]')].map(e => e.dataset.ex + ' ' + e.querySelector('.ex-rx .big').textContent.replace('×', 'x'));
+        o.cardNames = [...v.querySelectorAll('.ex[data-ex] .ex-name')].map(e => e.textContent);
+        o.started = [...v.querySelectorAll('.ex[data-ex]')].filter(e => /Already started/.test(e.textContent)).map(e => e.dataset.ex);
+        o.header = (v.textContent.match(/(\d+)\/(\d+) exercises · (\d+)\/(\d+) sets · (\d+)%/) || []).slice(1).map(Number);
+        o.doneCard = (v.textContent.match(/(\d+) of (\d+)\s*moves/) || []).slice(1).map(Number);
+        const segs = briefSegments(), all = segs.map(s => (s.say || '') + ' ' + (s.text || '') + ' ' + (s.html || '')).join(' ');
+        o.briefMiss = o.names.filter(n => all.indexOf(n) < 0);
+        return o;
+      });
+      a.preview = await page.evaluate(() => { previewSession(todayPtr()); return [...document.querySelectorAll('#sheet .kv b')].map(e => e.textContent); });
+      await shut();
+      a.player = await page.evaluate(() => { try { openPlayer(); if (!PLAYER) return ['NO PLAYER'];
+        const rx = m => m.exId + ' ' + m.sets + 'x' + (m.unit === 'time' ? fmtTime(m.target) : m.target);
+        const it = PLAYER.items.map(rx); playerQuit(); return it; } catch (e) { return ['ERR ' + e]; } });
+      await page.waitForTimeout(700);
+      return a;
+    };
+    const eqArr = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const markSet = (id, i) => page.evaluate(([id, i]) => { go('today'); TODAY_TAB = 'workout'; renderToday();
+      const b = document.querySelector('#v-today .ex[data-ex="' + id + '"] .setdot[data-i="' + i + '"]'); if (!b) return false; b.click(); return true; }, [id, i]);
+
+    /* 1. A FRESH DAY: the edit reaches every surface */
+    for (const [label, sel] of [['the focus area', '#ob-focus button[data-f="shoulders"]'], ['a kettlebell', '#ob-gear button[data-e="kettlebell"]'], ['the goal', '#ob-goal button[data-g="gain"]']]) {
+      await seed(); const b0 = await surf();
+      s.ok('GUARD: the editor opens (' + label + ')', await openEdit());
+      await tap(sel); await saveAll(); const r = await rep(); await shut();
+      const a = await surf();
+      s.ok('GUARD: changing ' + label + ' really changes today’s session', !eqArr(a.engine, b0.engine), { before: b0.engine, after: a.engine });
+      s.ok('GUARD: the session has movements to compare (' + label + ')', a.engine.length >= 4 && a.card.length >= 4, a);
+      s.ok('the Today card shows the changed session (' + label + ')', eqArr(a.card, a.engine), { card: a.card, engine: a.engine });
+      s.ok('the guided player runs the changed session (' + label + ')', eqArr(a.player, a.engine), { player: a.player, engine: a.engine });
+      s.ok('the calendar preview lists the changed session (' + label + ')', a.names.every(n => a.preview.includes(n)), { names: a.names, preview: a.preview });
+      s.ok('the spoken brief names every movement of it (' + label + ')', a.briefMiss.length === 0, a.briefMiss);
+      const added = r.today.filter(l => /^Added: /.test(l)), removed = r.today.filter(l => /^Removed: /.test(l));
+      s.ok('GUARD: the report lists added and removed moves (' + label + ')', r.open && added.length > 0 && removed.length > 0, r);
+      s.ok('every move the report says was ADDED is on the Today card (' + label + ')', added.every(l => a.cardNames.some(n => l.indexOf('Added: ' + n + ' ') === 0)), { added, card: a.cardNames });
+      s.ok('FLOOR: with no set marked, the report says nothing about started moves (' + label + ')', r.kept === null, r.kept);
+      s.ok('FLOOR: and no card says it was already started (' + label + ')', a.started.length === 0, a.started);
+      s.ok('and no move it says was REMOVED is still there (' + label + ')', removed.every(l => !a.cardNames.some(n => l.indexOf('Removed: ' + n + ' ') === 0)), { removed, card: a.cardNames });
+    }
+
+    /* 2. SETS ALREADY MARKED: the work stays in the session */
+    await seed({ gear: ['bar', 'bench', 'kettlebell'] });
+    const m0 = await surf(); const ids0 = m0.engine.map(e => e.split(' ')[0]);
+    let allMarked = true; for (const id of ids0) allMarked = (await markSet(id, 0)) && allMarked;
+    const m1 = await surf();
+    s.ok('GUARD: one set is marked on every movement, through the card', allMarked && m1.header[2] === ids0.length, m1.header);
+    await openEdit(); await tap('#ob-focus button[data-f="legs"]'); await tap('#ob-gear button[data-e="kettlebell"]'); await saveAll();
+    const mR = await rep(); await shut(); const m2 = await surf();
+    // what the same answers build with NO log: the trap must be real, or "kept" passes on nothing
+    const mTrap = await page.evaluate(() => { const real = keepLoggedWork; keepLoggedWork = () => {};
+      let lost; try { const b = buildSession(STATE.progressPtr); const now = [...b.main, b.finisher].map(m => m.exId);
+        lost = Object.keys(STATE.logs[STATE.progressPtr].ex).filter(k => !now.includes(k)); } finally { keepLoggedWork = real; } return lost; });
+    s.ok('GUARD: without the rule, this edit swaps out movements that have sets marked', mTrap.length >= 2, mTrap);
+    s.ok('every movement with a marked set is still in today’s session', ids0.every(id => m2.card.some(c => c.split(' ')[0] === id)), { before: ids0, card: m2.card });
+    s.eq('the sets done on the header are all still counted', m2.header[2], m1.header[2], { before: m1.header, after: m2.header });
+    s.eq('and the session did not grow or shrink', m2.card.length, m1.card.length, m2.card);
+    // every kept slot keeps its own size: one round for the finisher, two sets for the extra move
+    s.ok('every kept movement keeps the sets and the target it had', eqArr(m2.card, m1.card), { before: m1.card, after: m2.card });
+    s.ok('the guided player runs the same kept session', eqArr(m2.player, m2.engine), { player: m2.player, engine: m2.engine });
+    s.ok('each kept movement is marked on its card', mTrap.every(id => m2.started.includes(id)) && m2.started.length === mTrap.length, { started: m2.started, mTrap });
+    s.ok('the report says the started moves stay, with the count', !!mR.kept && mR.kept.indexOf(mTrap.length + ' move') >= 0 && /sets marked/.test(mR.kept), mR);
+    s.ok('and does not claim today’s session changed', /Today’s session is the same/.test(mR.head || ''), mR.head);
+    // only TWO marked: they stay, and a slot with no marked set follows the new answers
+    await seed({ gear: ['bar', 'bench', 'kettlebell'] });
+    const p0 = await surf(); const pIds = p0.engine.map(e => e.split(' ')[0]);
+    const pNoLog = await page.evaluate(() => { const sv = JSON.stringify(STATE.profile);
+      STATE.profile.focusPrimary = 'legs'; STATE.profile.targets = ['legs', 'full']; STATE.profile.gear = ['bar', 'bench'];
+      const b = buildSession(STATE.progressPtr); const ids = [...b.main, b.finisher].map(m => m.exId); STATE.profile = JSON.parse(sv); return ids; });
+    const pGone = pIds.filter(id => !pNoLog.includes(id));
+    s.ok('GUARD: the new answers replace at least two movements', pGone.length >= 2, { pIds, pNoLog });
+    await markSet(pGone[0], 0);
+    await openEdit(); await tap('#ob-focus button[data-f="legs"]'); await tap('#ob-gear button[data-e="kettlebell"]'); await saveAll(); await shut();
+    const p2 = await surf(); const p2Ids = p2.engine.map(e => e.split(' ')[0]);
+    s.ok('the one movement with a marked set stays', p2Ids.includes(pGone[0]), { kept: pGone[0], p2Ids });
+    s.ok('FLOOR: a movement with NO marked set follows the new answers', pGone.slice(1).some(id => !p2Ids.includes(id)), { pGone, p2Ids });
+    s.eq('FLOOR: exactly one card says it was already started', p2.started.length, 1, p2.started);
+    s.ok('FLOOR: the session carries no repeat', new Set(p2Ids).size === p2Ids.length, p2Ids);
+
+    /* 3. A SESSION FINISHED TODAY is counted against its own record */
+    await seed();
+    await page.evaluate(() => { const b = buildSession(STATE.progressPtr); [...b.main, b.finisher].forEach(m => { for (let i = 0; i < m.sets; i++) toggleSet(m.exId, i); }); commitSession('good'); });
+    await page.waitForTimeout(900); await shut();
+    const d1 = await surf();
+    s.ok('GUARD: the finished session reads complete before the edit', d1.header.length === 5 && d1.header[4] === 100 && d1.header[0] === d1.header[1], d1.header);
+    await openEdit(); await tap('#ob-focus button[data-f="shoulders"]'); await saveAll(); const dR = await rep(); await shut();
+    const d2 = await surf();
+    const dTrap = await page.evaluate(() => { const tp = todayPtr(), b = buildSession(tp), l = STATE.logs[tp];
+      return [...b.main, b.finisher].filter(m => !(l.ex[m.exId] && l.ex[m.exId].done)).map(m => m.exId); });
+    s.ok('GUARD: rebuilt from the new answers, that session holds a movement that was never done', dTrap.length >= 1, dTrap);
+    s.ok('a finished session still reads complete after the edit', eqArr(d2.header, d1.header), { before: d1.header, after: d2.header });
+    s.ok('and its done card still counts every move', d2.doneCard.length === 2 && d2.doneCard[0] === d2.doneCard[1] && eqArr(d2.doneCard, d1.doneCard), { before: d1.doneCard, after: d2.doneCard });
+    /* recordedSession() is consulted only on a finished day, and only commitSession() writes `items`, so a
+       log with a list and no `done` cannot be built by tapping. Its contract is pinned directly: a movement
+       list on a log that is NOT finished is not a record, and a junk list is not one either. */
+    const rc = await page.evaluate(() => { const p = 200, b = buildSession(p), its = [...b.main, b.finisher].map(m => ({ exId: 'pushup', sets: 3, target: 9, unit: 'reps', rest: 45 }));
+      const ids = s => [...s.main, s.finisher].map(m => m.exId).join(',');
+      const o = {}; STATE.logs[p] = { date: todayISO(), ex: {}, done: false, items: its }; o.notDone = ids(recordedSession(p, b)) === ids(b);
+      STATE.logs[p].done = true; o.done = recordedSession(p, b).main.every(m => m.exId === 'pushup') && recordedSession(p, b).main.length === its.length - 1;
+      STATE.logs[p].items = [{ exId: 'notAMove', sets: 3, target: 9, unit: 'reps', rest: 45 }, its[0]]; o.junk = ids(recordedSession(p, b)) === ids(b);
+      STATE.logs[p].items = [its[0]]; o.single = ids(recordedSession(p, b)) === ids(b);
+      delete STATE.logs[p]; o.none = ids(recordedSession(p, b)) === ids(b); return o; });
+    s.ok('recordedSession: a finished log with a real list is read from it', rc.done, rc);
+    s.ok('recordedSession: a log that is not finished is never read as a record', rc.notDone, rc);
+    s.ok('recordedSession: a junk list, a one-item list and no log all fall back to the build', rc.junk && rc.single && rc.none, rc);
+    s.ok('the report speaks of the NEXT session, not of today’s', /Your next session/.test(dR.head || '') && !/Today’s session changed/.test(dR.head || ''), dR.head);
+
+    /* 4. A TIME LIMIT ON: the report describes the session as it is shown */
+    await seed();
+    const cap = await page.evaluate(() => { const full = sessionVolume(buildSession(STATE.progressPtr, { full: true })).minutes; setTimeCap(20);
+      const b = buildSession(STATE.progressPtr); return { full, min: timeCapFor(STATE.progressPtr), bonus: b.main.some(m => m.focus) }; });
+    await shut();
+    s.ok('GUARD: the 20-minute limit is on, and it cuts the extra move', cap.min === 20 && cap.full > 20 && cap.bonus === false, cap);
+    const c1 = await surf();
+    await openEdit(); await tap('#ob-focus button[data-f="shoulders"]'); await saveAll(); const cR = await rep(); await shut();
+    const c2 = await surf();
+    s.ok('GUARD: the session as shown did not change', eqArr(c2.card, c1.card), { before: c1.card, after: c2.card });
+    s.ok('the report does not say today’s session changed', !/Today’s session changed/.test(cR.head || ''), cR.head);
+    s.ok('it says the session is cut to 20 minutes', /cut to 20 minutes/.test(cR.head || ''), cR.head);
+    s.eq('and it lists no move as added to today', cR.today.length, 0, cR.today);
+    s.ok('it still counts the sessions that changed', /of the next \d+ sessions changed/.test(cR.head || ''), cR.head);
+    // FLOOR: a limit that cuts nothing leaves the ordinary report
+    await seed(); await page.evaluate(() => setTimeCap(45)); await shut();
+    await openEdit(); await tap('#ob-focus button[data-f="shoulders"]'); await saveAll(); const cF = await rep(); await shut();
+    s.ok('FLOOR: a limit that cuts nothing still says today’s session changed', /Today’s session changed/.test(cF.head || '') && cF.today.length > 0, cF);
+
+    /* 5. A HAND SWAP holds its slot */
+    await seed({ gear: ['bar', 'bench', 'kettlebell'] });
+    const sw = await page.evaluate(() => { const p = STATE.progressPtr, b = buildSession(p), m = b.main[2], here = [...b.main, b.finisher].map(x => x.exId);
+      const alt = LADDERS[m.slot].find(k => k !== m.exId && hasGearFor(k) && swapStillValid(k) && !here.includes(k)); setSwap(p, m.slot, alt);
+      const b2 = buildSession(p); return { slot: m.slot, alt, in: b2.main.some(x => x.exId === alt) }; });
+    s.ok('GUARD: the athlete’s swap is in today’s session', !!sw.alt && sw.in, sw);
+    const swTrap = await page.evaluate(alt => { const real = swapHeld, sv = JSON.stringify(STATE.profile); swapHeld = () => false;
+      let lost; try { STATE.profile.focusPrimary = 'chest'; STATE.profile.targets = ['chest', 'full']; const b = buildSession(STATE.progressPtr); lost = !b.main.some(x => x.exId === alt); }
+      finally { swapHeld = real; STATE.profile = JSON.parse(sv); } return lost; }, sw.alt);
+    s.ok('GUARD: without the rule, a chest focus takes that slot', swTrap === true, { swTrap });
+    const s1 = await surf();
+    await openEdit(); await tap('#ob-focus button[data-f="chest"]'); await saveAll(); await shut();
+    const s2 = await surf();
+    s.ok('the hand swap is still on the Today card after the focus changes', s2.card.some(c => c.split(' ')[0] === sw.alt), { alt: sw.alt, card: s2.card });
+    s.ok('FLOOR: the focus area still changes the rest of the session', !eqArr(s2.engine, s1.engine) && eqArr(s2.card, s2.engine), { before: s1.engine, after: s2.engine });
+
+    /* 6. THE CLASS, swept at the engine: sets marked, then the answers change */
+    const sweep = await page.evaluate(() => {
+      const base = { goal: 'recomp', focusPrimary: 'abs', targets: ['abs', 'full'], limitations: [], tightSpace: false, gear: ['bar', 'bench'] };
+      const set = o => { Object.assign(STATE.profile, JSON.parse(JSON.stringify(base)), JSON.parse(JSON.stringify(o))); STATE.nutrition.goal = STATE.profile.goal; };
+      const all = GEAR_KEYS.slice(), ids = s => [...s.main, s.finisher].map(m => m.exId);
+      const fp = s => [...s.main, s.finisher].map(m => m.exId + ':' + m.sets + 'x' + m.target + m.unit + 'r' + m.rest + ':' + m.slot).join(',');
+      const safe = id => spaceSwap(safeSwap(id)) === id;
+      const A = [[{}, { focusPrimary: 'shoulders', targets: ['shoulders', 'full'] }], [{ focusPrimary: 'chest', targets: ['chest'] }, { focusPrimary: 'legs', targets: ['legs'] }],
+        [{}, { gear: all }], [{ gear: all }, {}], [{}, { goal: 'gain' }], [{ goal: 'lose' }, { goal: 'core' }]];
+      const S = [[{ gear: all }, { gear: all, limitations: ['shoulder', 'wrist'] }], [{ gear: all }, { gear: all, tightSpace: true }]];
+      const total = SESSIONS_PER_CYCLE * TOTAL_CYCLES, real = keepLoggedWork;
+      const o = { cases: 0, changed: 0, lost: 0, lostOff: 0, dup: 0, shorter: 0, noLog: 0, done: 0, empty: 0, riskyKept: 0, safetyDropped: 0, safetyCases: 0 };
+      const run = (a, b, safety) => { for (let p = 0; p < total; p += 9) {
+        STATE.logs = {}; STATE.swaps = {}; set(a); const i0 = ids(buildSession(p, { full: true }));
+        set(b); const sB = buildSession(p, { full: true });
+        keepLoggedWork = () => {}; const off = fp(buildSession(p, { full: true })); keepLoggedWork = real;
+        if (off !== fp(sB)) o.noLog++;
+        STATE.logs[p] = { date: todayISO(), ex: {}, feel: null, done: false }; i0.forEach(id => { STATE.logs[p].ex[id] = { sets: [true], done: false }; });
+        keepLoggedWork = () => {}; const iOff = ids(buildSession(p, { full: true })); keepLoggedWork = real;
+        const s1 = buildSession(p, { full: true }), i1 = ids(s1);
+        if (safety) { o.safetyCases++; i0.forEach(id => { if (!safe(id) && !i1.includes(id)) o.safetyDropped++; }); }
+        else { o.cases++; if (fp(sB) !== fp(buildSession(p, { full: true }))) o.changed++; o.lostOff += i0.filter(id => !iOff.includes(id)).length; }
+        o.lost += i0.filter(id => !i1.includes(id) && safe(id)).length;
+        if (new Set(i1).size !== i1.length) o.dup++;
+        if (i1.length < ids(sB).length) o.shorter++;
+        [...s1.main, s1.finisher].forEach(m => { if (m.kept && !safe(m.exId)) o.riskyKept++; });
+        STATE.logs[p].done = true; if (fp(buildSession(p, { full: true })) !== fp(sB)) o.done++;
+        STATE.logs[p] = { date: todayISO(), ex: {}, feel: null, done: false }; i0.forEach(id => { STATE.logs[p].ex[id] = { sets: [false, false], done: false }; });
+        if (fp(buildSession(p, { full: true })) !== fp(sB)) o.empty++;
+      } };
+      A.forEach(([a, b]) => run(a, b, false)); S.forEach(([a, b]) => run(a, b, true));
+      // a hand swap against every goal and every focus area
+      const h = { goalTried: 0, goalKept: 0, goalLostOff: 0, focusTried: 0, focusKept: 0, focusLostOff: 0 };
+      const realHeld = swapHeld;
+      for (let p = 2; p < total; p += 13) { STATE.logs = {}; STATE.swaps = {}; set({}); const s = buildSession(p, { full: true });
+        for (const m of s.main.slice(2)) { if (!LADDERS[m.slot]) continue;
+          const alt = LADDERS[m.slot].find(k => k !== m.exId && hasGearFor(k) && swapStillValid(k) && !ids(s).includes(k)); if (!alt) continue;
+          STATE.swaps = {}; STATE.swaps[p] = {}; STATE.swaps[p][m.slot] = alt; set({});
+          if (!ids(buildSession(p, { full: true })).includes(alt)) continue;
+          for (const goal of ['gain', 'lose', 'core']) { set({ goal }); h.goalTried++; if (ids(buildSession(p, { full: true })).includes(alt)) h.goalKept++;
+            swapHeld = () => false; if (!ids(buildSession(p, { full: true })).includes(alt)) h.goalLostOff++; swapHeld = realHeld; }
+          for (const key of ['chest', 'back', 'shoulders', 'arms', 'legs', 'glutes']) { set({ focusPrimary: key, targets: [key, 'full'] }); h.focusTried++;
+            if (ids(buildSession(p, { full: true })).includes(alt)) h.focusKept++;
+            swapHeld = () => false; if (!ids(buildSession(p, { full: true })).includes(alt)) h.focusLostOff++; swapHeld = realHeld; }
+        } }
+      STATE.logs = {}; STATE.swaps = {}; set({});
+      // the helper's own contract
+      const c = { none: swapHeld(null, 'pushL'), empty: swapHeld({}, 'pushL'), real: swapHeld({ pushL: 'pushup' }, 'pushL'), junk: swapHeld({ pushL: 'notAMove' }, 'pushL'),
+        inherited: swapHeld({}, 'constructor'), other: swapHeld({ pushL: 'pushup' }, 'pullL') };
+      return { o, h, c };
+    });
+    s.ok('GUARD: the sweep ran, and the answers really changed the sessions', sweep.o.cases >= 200 && sweep.o.changed >= 150, sweep.o);
+    s.ok('GUARD: without the rule, marked movements leave the session', sweep.o.lostOff >= 100, sweep.o);
+    s.eq('no movement with a marked set leaves its session, in any case', sweep.o.lost, 0, sweep.o);
+    s.eq('no session carries a repeat', sweep.o.dup, 0, sweep.o);
+    s.eq('no session gets shorter', sweep.o.shorter, 0, sweep.o);
+    s.eq('FLOOR: with no log, the session is exactly what the builder made', sweep.o.noLog, 0, sweep.o);
+    s.eq('FLOOR: a finished log changes nothing in the build', sweep.o.done, 0, sweep.o);
+    s.eq('FLOOR: a log with no marked set changes nothing', sweep.o.empty, 0, sweep.o);
+    s.ok('GUARD: a new flag or a tight room rules out marked movements', sweep.o.safetyCases >= 50 && sweep.o.safetyDropped >= 20, sweep.o);
+    s.eq('SAFETY: a movement a flag or the room rules out is never put back', sweep.o.riskyKept, 0, sweep.o);
+    s.ok('GUARD: the hand-swap sweep ran, and the trap is real for both', sweep.h.goalTried >= 30 && sweep.h.focusTried >= 60 && sweep.h.goalLostOff > 0 && sweep.h.focusLostOff > 0, sweep.h);
+    s.eq('a hand swap survives every goal', sweep.h.goalKept, sweep.h.goalTried, sweep.h);
+    s.eq('a hand swap survives every focus area', sweep.h.focusKept, sweep.h.focusTried, sweep.h);
+    s.ok('swapHeld: a real swap holds, and nothing else does', sweep.c.real === true && sweep.c.none === false && sweep.c.empty === false && sweep.c.junk === false && sweep.c.inherited === false && sweep.c.other === false, sweep.c);
+
+    /* the rule is ASKED FOR at each site: no rendered check can see a consumer that stopped asking on a day with no log */
+    const src = await page.evaluate(() => ({ build: (buildSession.toString().match(/keepLoggedWork\(/g) || []).length,
+      goal: /swapHeld\(/.test(goalSlots.toString()), focus: /swapHeld\(/.test(focusSlotPick.toString()), passes: /goalSlots\([^)]*,sw\)/.test(buildSession.toString()) && /focusSlotPick\([^)]*,sw\)/.test(buildSession.toString()),
+      today: /recordedSession\(/.test(todayWorkoutHTML.toString()), shown: /buildSession\(from\)/.test(obEffect.toString()) }));
+    s.eq('the builder asks the kept-work rule exactly once', src.build, 1, src);
+    s.ok('both slot pickers ask the one swap rule, and the builder hands them the swaps', src.goal && src.focus && src.passes, src);
+    s.ok('Today reads a finished session from its record', src.today, src);
+    s.ok('the report measures today’s session as it is shown', src.shown, src);
+
+    errors.forEach(e => s.fail('page error', e));
+    await browser.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();

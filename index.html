@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='539';
+const APP_VERSION='540';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -2742,7 +2742,16 @@ const CARDIO_LADS=['cardioAL','cardioBL','cardioFinL','finisherL','legPowerL','h
    focus area would come to disagree about which slot is the main lift. */
 const SLOT_FIRST_SWAPPABLE=2;
 const STRUCT_LADS=['hingeL','rowL','pullL','chestL','squatL','bicepL'];
-function goalSlots(session,pos){
+/* THE ATHLETE'S OWN SWAP HOLDS ITS SLOT (v540). A swap is stored under the
+   slot's ladder name. A slot the goal or the focus area re-points takes
+   another ladder's name, so the athlete's choice for today was dropped with
+   nothing said. Measured: a goal change dropped the hand swap in 42 of 126
+   cases, and a focus change in every case where it took that slot. Both
+   pickers ask this, and both pass the next free slot instead. */
+function swapHeld(sw,l){
+  try{return !!(sw&&Object.prototype.hasOwnProperty.call(sw,l)&&exKnown(sw[l])&&swapStillValid(sw[l]));}catch(e){return false;}
+}
+function goalSlots(session,pos,sw){
   const slots=(session.slots||[]).slice();
   let goal='lose';try{goal=(STATE.profile&&STATE.profile.goal)||'lose';}catch(e){}
   /* LEAN RECOMP KEEPS TONE UP'S SPLIT, and that is a measured decision
@@ -2773,17 +2782,18 @@ function goalSlots(session,pos){
   const isCardio=l=>CARDIO_LADS.includes(l), isCore=l=>CORE_LADS.includes(l);
   const isStruct=l=>STRUCTURAL.includes(l);
   const count=fn=>slots.filter(fn).length;
+  const held=l=>swapHeld(sw,l);
   let at=-1,repl=null;
   if(goal==='shred'||goal==='lose'){
     // take from whichever family has the most to spare, never below 2 remaining
-    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&!isCardio(l)&&!isStruct(l)&&(isCore(l)?count(isCore)>=3:count(x=>!isCardio(x)&&!isCore(x))>=2));
-    if(at<0)at=slots.map((l,i)=>({l,i})).reverse().find(o=>o.i>=FIRST_SWAPPABLE&&isCore(o.l)&&count(isCore)>=3)?.i??-1;
+    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&!held(l)&&!isCardio(l)&&!isStruct(l)&&(isCore(l)?count(isCore)>=3:count(x=>!isCardio(x)&&!isCore(x))>=2));
+    if(at<0)at=slots.map((l,i)=>({l,i})).reverse().find(o=>o.i>=FIRST_SWAPPABLE&&!held(o.l)&&isCore(o.l)&&count(isCore)>=3)?.i??-1;
     repl=pick(['cardioAL','cardioBL','cardioFinL']);
   }else if(goal==='gain'){
-    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&isCardio(l)&&count(isCardio)>=1);
+    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&!held(l)&&isCardio(l)&&count(isCardio)>=1);
     repl=pick(['squatL','pushL','hingeL','chestL','rowL']);
   }else if(goal==='core'){
-    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&!isCore(l)&&!isStruct(l));
+    at=slots.findIndex((l,i)=>i>=FIRST_SWAPPABLE&&!held(l)&&!isCore(l)&&!isStruct(l));
     repl=pick(['plankL','hollowL','lowerL','rotL','sideL']);
   }
   if(at>=0&&repl&&LADDERS[repl]&&slots[at]!==repl)slots[at]=repl;
@@ -2812,7 +2822,7 @@ function goalSlots(session,pos){
    program as written. */
 const FOCUS_LADDERS={chest:['chestL','pushL'],back:['rowL','pullL'],shoulders:['shoulderL'],arms:['tricepL','bicepL'],legs:['squatL','legL'],glutes:['hingeL']};
 function focusLadders(key){return Object.prototype.hasOwnProperty.call(FOCUS_LADDERS,key)?FOCUS_LADDERS[key]:null;}
-function focusSlotPick(session,slots,pos){
+function focusSlotPick(session,slots,pos,sw){
   try{
     const key=focusAreaKey(STATE.profile&&STATE.profile.focusPrimary);
     const fam=key?focusLadders(key):null;
@@ -2826,6 +2836,7 @@ function focusSlotPick(session,slots,pos){
     for(let i=slots.length-1;i>=SLOT_FIRST_SWAPPABLE;i--){
       const l=slots[i];
       if(l!==orig[i])continue;
+      if(swapHeld(sw,l))continue;   // the athlete's own swap holds its slot
       if(isCardio(l)||STRUCT_LADS.includes(l)||fam.includes(l))continue;
       if(isCore(l)?count(isCore)>=3:count(x=>!isCardio(x)&&!isCore(x))>=2){at=i;break;}
     }
@@ -3858,8 +3869,8 @@ function buildSession(ptr,opts){
     return base;                  // nothing else available — accept the prescribed one
   };
   const dropped=[];
-  const gSlots=goalSlots(pos.session,pos);
-  const fPick=focusSlotPick(pos.session,gSlots,pos);
+  const gSlots=goalSlots(pos.session,pos,sw);
+  const fPick=focusSlotPick(pos.session,gSlots,pos,sw);
   const swapped=new Set();
   const main=gSlots.map((ladder,i)=>{
     let isFocus=false;
@@ -3944,6 +3955,7 @@ function buildSession(ptr,opts){
     corrective={exId:sw.corrective,...rx,sets:itemSets(sw.corrective,Math.min(rx.sets,2),pos),slot:'corrective',corrective:true,correctiveJoint:corrective.correctiveJoint};
   }
   if(corrective)main.push(corrective);
+  keepLoggedWork(ptr,pos,main,finisher,finLadName);
   const out={ptr,pos,cycle,week,session:pos.session,main,finisher,dropped};
   /* "I have 20 minutes today." Applied HERE, at the one builder, so the card,
      the guided player, the brief, the set chains, the completion gate and the
@@ -3952,6 +3964,86 @@ function buildSession(ptr,opts){
      full session for half the work. {full:true} asks for the plan as written. */
   const cap=(opts&&opts.full)?0:timeCapFor(ptr);
   return cap?fitSessionToTime(out,cap):out;
+}
+/* WORK ALREADY LOGGED STAYS IN ITS SESSION (v540).
+   A session is rebuilt from the athlete's answers on every paint. So an answer
+   changed part-way through a session (the focus area, the kit, the goal) could
+   swap out a movement that already had sets marked. Measured, one set marked
+   on each of six movements, then the focus area changed and a kettlebell
+   un-ticked: three movements left the session, the header went from 6 sets
+   done to 3, and those sets were counted nowhere.
+
+   The short-on-time cut has kept logged work since it shipped. This is the
+   same rule for every other reason a session can change.
+
+   Each logged movement that the new answers dropped goes back in place of a
+   movement with NO logged work: its own ladder first, then a kit slot of its
+   pattern, then its body region, then a slot the engine chose by itself (the
+   focus move, the kit move, the bonus). With nowhere to go it is added, so
+   nothing is lost. Every slot with no logged work still follows the new
+   answers.
+
+   SAFETY OUTRANKS IT. A movement that a flagged joint or a tight room now
+   rules out is not put back. A finished session is not touched here at all:
+   its record is its own list.
+
+   No log, or a log with no marked set: the session is exactly what the
+   builder made. */
+function loggedSetsIn(st){return !!(st&&Array.isArray(st.sets)&&st.sets.some(Boolean));}
+function keepLoggedWork(ptr,pos,main,finisher,finLad){
+  try{
+    const log=(STATE.logs||{})[ptr];
+    if(!log||log.done===true||!log.ex||typeof log.ex!=='object')return;
+    const has=id=>loggedSetsIn(log.ex[id]);
+    const here=new Set(main.map(m=>m.exId));here.add(finisher.exId);
+    const left=Object.keys(log.ex).filter(id=>exKnown(id)&&has(id)&&!here.has(id)&&spaceSwap(safeSwap(id))===id);
+    if(!left.length)return;
+    const free=main.map((m,i)=>({m,i})).filter(c=>!has(c.m.exId));
+    if(!has(finisher.exId))free.push({m:finisher,i:-1,fin:true});
+    const inLad=(l,id)=>Array.isArray(LADDERS[l])&&LADDERS[l].includes(id);
+    const own=m=>!!(m.focus||m.focusPick||m.kit);
+    const score=(o,c)=>{
+      const eo=EX[o],ec=EX[c.m.exId]||{};
+      if(c.fin)return inLad(finLad,o)?4:0;
+      if(c.m.corrective)return Object.keys(CORRECTIVE_POOL).some(j=>CORRECTIVE_POOL[j].includes(o))?4:0;
+      if(inLad(c.m.slot,o))return 4;
+      const pats=kitPatterns(c.m.slot);
+      if(pats&&eo.equip&&eo.equip.length&&pats.includes(eo.pattern)&&(eo.pattern!=='core'||eo.region===ec.region))return 3;
+      if(eo.region===ec.region)return 2;
+      return own(c.m)?1:0;
+    };
+    while(left.length){
+      let best=null;
+      left.forEach((o,oi)=>free.forEach((c,ci)=>{
+        const sc=score(o,c);if(sc<1)return;
+        const d=own(c.m)?1:0;
+        if(!best||sc>best.sc||(sc===best.sc&&d>best.d))best={sc,d,oi,ci};
+      }));
+      if(!best)break;
+      const o=left.splice(best.oi,1)[0],c=free.splice(best.ci,1)[0];
+      const rx=prescribe(o,pos);
+      // the slot keeps its own size: one round for the finisher, two sets for an extra
+      const n=c.fin?1:((c.m.focus||c.m.corrective)?Math.min(rx.sets,2):rx.sets);
+      const it={exId:o,...rx,sets:itemSets(o,n,pos),slot:c.m.slot,kept:true};
+      if(c.m.corrective){it.corrective=true;it.correctiveJoint=c.m.correctiveJoint;}
+      if(c.fin){Object.keys(finisher).forEach(k=>{delete finisher[k];});Object.assign(finisher,it);}
+      else main[c.i]=it;
+    }
+    left.forEach(o=>{main.push({exId:o,...prescribe(o,pos),slot:'kept',kept:true});});
+  }catch(e){}
+}
+/* A FINISHED SESSION IS COUNTED AGAINST ITS OWN RECORD (v540). Today rebuilt a
+   finished session from the athlete's CURRENT answers and counted the log
+   against that. Measured: all 15 sets done, then the focus area changed, and
+   the header read "5/6 exercises, 13/15 sets, 87%". commitSession() stores the
+   list that was really asked for, so a finished session reads that. */
+function recordedSession(ptr,sess){
+  try{
+    const l=(STATE.logs||{})[ptr];
+    if(!l||l.done!==true||!Array.isArray(l.items)||l.items.length<2||!l.items.every(sessionItemOk))return sess;
+    const its=l.items.map(m=>Object.assign({},m));
+    return Object.assign({},sess,{main:its.slice(0,-1),finisher:its[its.length-1]});
+  }catch(e){return sess;}
 }
 /* ============ SHORT ON TIME ==============================================
    A session cut to fit the minutes the athlete actually has. The order of the
@@ -5040,15 +5132,23 @@ function obEffect(){
     let items=[];
     try{const b=buildSession(from+i,{full:true});items=[...(b.main||[]),b.finisher].filter(Boolean);}catch(e){}
     sess.push(items.map(m=>m.exId+':'+m.sets+'x'+m.target+m.unit+'r'+m.rest).join(','));
-    if(i===0)first=items.map(m=>({exId:m.exId,sets:m.sets,target:m.target,unit:m.unit,rest:m.rest}));
   }
+  /* TODAY'S SESSION AS THE ATHLETE WILL SEE IT (v540). The count above is of
+     the plan as written. Today's own lines must describe the session on the
+     Today screen, and a time limit cuts that one. Measured with a 20-minute
+     limit on: the report said "Added: Elevated Pike Push-Up" and the Today
+     screen did not have it, because the limit cuts the extra move first. */
+  let shown='';
+  try{const b=buildSession(from),its=[...(b.main||[]),b.finisher].filter(Boolean);
+    first=its.map(m=>({exId:m.exId,sets:m.sets,target:m.target,unit:m.unit,rest:m.rest,kept:!!m.kept}));
+    shown=its.map(m=>m.exId+':'+m.sets+'x'+m.target+m.unit+'r'+m.rest).join(',');}catch(e){}
   let flow='';try{flow=JSON.stringify([warmupFlow(),cooldownFlow()]);}catch(e){}
   const food={kcal:null,prot:null,steps:null};
   try{const p=kcalTargetPreview();food.kcal=p?p.target:null;}catch(e){}
   try{food.prot=proteinTargetG()||null;}catch(e){}
   try{food.steps=stepTarget();}catch(e){}
   let weeks=null;try{weeks=programWeeks();}catch(e){}
-  return {sess,first,flow,food:JSON.stringify(food),weeks};
+  return {sess,first,shown,flow,food:JSON.stringify(food),weeks};
 }
 /* Did the athlete change this answer? Lists compare as SETS: the form writes
    them in screen order, and the #1 focus is always added to the other focus
@@ -5108,7 +5208,11 @@ function obEditReport(before){
      shifts every row below it, and a line pairing two unrelated movements
      reads as nonsense. */
   const lines=[];
-  if(firstAt===0){
+  const shownChanged=before.fx.shown!==after.shown;
+  /* No condition of its own: both lists are the session AS SHOWN, and two
+     equal lists produce no line. A test here would be a second copy of
+     shownChanged that no check could tell from the first. */
+  {
     const b=before.fx.first.slice(),c=after.first,num=m=>m.sets+' \u00d7 '+_briefTarget(m);
     c.forEach(y=>{
       const i=b.findIndex(x=>x.exId===y.exId);
@@ -5123,7 +5227,9 @@ function obEditReport(before){
     });
     b.forEach(x=>lines.push('Removed: '+_obItemText(x)+'.'));
   }
-  return {answers,n,total,firstAt,lines,closed:todayClosed(),weeksNow:after.weeks};
+  let cap=0;try{cap=timeCapFor(STATE.progressPtr)||0;}catch(e){}
+  return {answers,n,total,firstAt,lines,closed:todayClosed(),weeksNow:after.weeks,shownChanged,cap,
+    kept:after.first.filter(m=>m.kept).length};
 }
 /* A reason, only where the condition it names can be tested here. Everything
    else gets the measured sentence and no guess. */
@@ -5157,6 +5263,7 @@ function obReportHTML(r){
   let head,cls='info';
   if(!r.n)head='<b>The program is complete</b>, so there is no session left to change. Your answers are saved.';
   else if(!r.total)head='<b>No session changed.</b> The reason for each answer is below.';
+  else if(r.firstAt===0&&r.shownChanged===false&&r.cap){cls='ok';head='<b>Today’s session is the same, because it is cut to '+plural(r.cap,'minute')+'.</b> The cut drops the move that changed. Take the time limit off to see it today. In all, '+r.total+' of the next '+sessWord+' changed.';}
   else if(r.firstAt===0){cls='ok';head='<b>'+(r.closed?'Your next session changed.':'Today’s session changed.')+'</b> In all, '+r.total+' of the next '+sessWord+' changed.';}
   else{cls='ok';head='<b>'+(r.closed?'Your next session is the same.':'Today’s session is the same.')+'</b> '+r.total+' of the next '+sessWord+' changed. The first change is '+plural(r.firstAt,'session')+' from now.';}
   const rows=r.answers.map(a=>{
@@ -5175,6 +5282,7 @@ function obReportHTML(r){
     +'<div class="note '+cls+'" data-obhead="1">'+head+'</div>'
     +(r.lines&&r.lines.length?'<ul class="cuelist" data-obtoday="1">'+r.lines.slice(0,OB_LINES_MAX).map(l=>'<li>'+l+'</li>').join('')
       +(r.lines.length>OB_LINES_MAX?'<li>And '+(r.lines.length-OB_LINES_MAX)+' more.</li>':'')+'</ul>':'')
+    +(r.kept?'<p class="muted sm" data-obkept="1" style="margin:8px 0 0">You have already started today’s session. Your new answers would replace '+plural(r.kept,'move')+' that '+(r.kept===1?'has':'have')+' sets marked, so '+(r.kept===1?'it stays':'they stay')+' in today’s session. The moves with no sets marked follow your new answers.</p>':'')
     +'<div class="section-label">Each answer you changed</div>'+rows
     +'<button class="btn primary" style="margin-top:14px" onclick="closeSheet()">Done</button></div>';
 }
@@ -5676,7 +5784,7 @@ function todayWorkoutHTML(){
      save(), and doing that inside an HTML builder meant the render error boundary
      could re-run a half-applied mutation that had already been persisted. */
   const _tp=todayPtr();
-  const sess=buildSession(_tp);
+  const sess=recordedSession(_tp,buildSession(_tp));
   const log=STATE.logs[_tp]||{ex:{}};
   const vol=sessionVolume(sess);
   const wkNum=(sess.cycle*WEEKS_PER_CYCLE)+sess.week;
@@ -7914,7 +8022,7 @@ function exCardHTML(m,log,idx){
       ${ex.img?`<img class="ex-thumb" src="${ex.img}" alt="" loading="lazy" onerror="this.style.display='none'">`:''}
       <div class="grow">
         <div class="ex-name">${ex.name}</div>
-        <div class="ex-region">${(m.focus||m.focusPick)?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}${m.kit?'<span class="tag" style="background:var(--card2);font-weight:800">🏋️ Your kit</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
+        <div class="ex-region">${(m.focus||m.focusPick)?'<span class="tag" style="background:var(--fire-l);color:var(--accInk);font-weight:800">🎯 Your focus</span> ':''}${m.kit?'<span class="tag" style="background:var(--card2);font-weight:800">🏋️ Your kit</span> ':''}${m.kept?'<span class="tag" style="background:var(--card2);font-weight:800">✔ Already started</span> ':''}<span class="tag ${ex.region}">${ex.region}</span> &nbsp;${m.sets} × ${targetStr}</div>
         ${sideSwitch(m.exId)?`<div class="tiny" style="margin-top:3px;font-weight:800;color:var(--gold)">🔄 One side at a time — switch halfway through EACH set</div>`:''}
       </div>
       <div class="ex-rx"><div class="big">${m.sets}×${m.unit==='time'?fmtTime(m.target):m.target}</div><div class="sub">rest ${m.rest}s${m.tempo?' · '+_ve(m.tempo):''}</div></div>
