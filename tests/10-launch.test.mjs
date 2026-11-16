@@ -3406,6 +3406,196 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+  /* ---- v542: nutrition and progress numbers that disagreed with the plan ----
+     From the same full review. Each case builds the state that shows the
+     defect, with a guard that the old rule really gave the wrong answer there. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const iso = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      const n = STATE.nutrition;
+      // N9 + N1: weekly weigh-ins falling 0.45 kg a week, after one stall correction
+      STATE.measurements = [28, 21, 14, 7, 0].map((dd, i) => ({ date: iso(dd), weight: +(90 - 0.45 * i).toFixed(2) }));
+      const tr = trendKgPerWeek(56);
+      o.slope = tr && +tr.kgPerWeek.toFixed(3);
+      // the old rule, re-derived, as the guard
+      { const ms = STATE.measurements.map(m => ({ t: Date.parse(m.date), kg: m.weight }));
+        const head = ms.slice(0, 3), tail = ms.slice(-3), mean = a => a.reduce((x, y) => x + y.kg, 0) / a.length;
+        o.oldSlope = +((mean(tail) - mean(head)) / ((ms[ms.length - 1].t - ms[0].t) / 86400000) * 7).toFixed(3); }
+      STATE.measurements = [21, 14, 0].map((dd, i) => ({ date: iso(dd), weight: 90 - 0.5 * i * (i ? 1 : 0) - (i === 2 ? 0.5 : 0) }));
+      const three = trendKgPerWeek(56); o.three = three && +three.kgPerWeek.toFixed(3);
+      STATE.measurements = [21, 14, 7, 0].map(dd => ({ date: iso(dd), weight: 88 }));
+      const flat = trendKgPerWeek(56); o.flat = flat && +flat.kgPerWeek.toFixed(3);
+      STATE.measurements = [28, 21, 14, 7, 0].map((dd, i) => ({ date: iso(dd), weight: +(90 - 0.45 * i).toFixed(2) }));
+      Object.assign(n, { goal: 'lose', tdee: 2500, kcalAdj: -300, kcalTarget: 1700 });
+      STATE.profile.goal = 'lose';
+      const cc = calorieCheck();
+      o.verdict = cc && cc.verdict; o.expected = cc && +cc.expected.toFixed(3);
+      o.uncorrected = +((1700 - 2500) * 7 / 7700).toFixed(3);
+      // N3: the 7-day verdict reads the goal
+      o.gainUnder = intakeVerdict(2300, 2830, 'gain');
+      o.gainOn = intakeVerdict(2850, 2830, 'gain');
+      o.stableOn = intakeVerdict(2600, 2570, 'recomp');
+      o.stableOver = intakeVerdict(3000, 2570, 'recomp');
+      o.cutUnder = intakeVerdict(1900, 2000, 'lose');
+      o.cutOver = intakeVerdict(2200, 2000, 'lose');
+      // N4: the top-up advice asks the food filter
+      n.allergens = ['peanut', 'treenut']; n.diet = 'omnivore';
+      o.allergic = refTopUpHint(200); o.allergicBig = refTopUpHint(500);
+      n.allergens = [];
+      o.plain = refTopUpHint(200);
+      // N8: membership on the calc marker
+      o.inherited = macroKeyOk('constructor'); o.real = macroKeyOk('carbs');
+      // P2: the phase-2 badge reads the phase boundary
+      const ach = ACHIEVEMENTS.find(a => a.id === 'phase2');
+      STATE.progressPtr = SESSIONS_PER_CYCLE * PHASE1_CYCLES - 1; o.p2Before = ach.check();
+      STATE.progressPtr = SESSIONS_PER_CYCLE * PHASE1_CYCLES; o.p2At = ach.check();
+      o.p2Phase = phaseOf(Math.floor(STATE.progressPtr / SESSIONS_PER_CYCLE));
+      STATE.progressPtr = 3;
+      // P7: the two hand-written lists read their registries
+      o.ride = rideTargetHTML();
+      const _hl = STATE.holdLog; STATE.holdLog = []; o.holds = holdTrackerHTML(); STATE.holdLog = _hl;
+      o.modes = CARDIO_MODES.map(k => CARDIO_INFO[k].short);
+      o.holdNames = HOLD_TESTS.map(x => x.name.toLowerCase());
+      save();
+      return o;
+    });
+    s.ok('guard: the old trend rule read about half the real loss', Math.abs(r.oldSlope + 0.225) < 0.03, r);
+    s.ok('the weight trend reads the real rate on weekly weigh-ins', Math.abs(r.slope + 0.45) < 0.02, r);
+    s.ok('three readings falling over three weeks do not read as flat', r.three < -0.2, r);
+    s.eq('FLOOR: a flat scale reads flat', r.flat, 0, r);
+    s.ok('guard: the uncorrected maintenance gives a different plan', Math.abs(r.uncorrected - r.expected) > 0.2, r);
+    s.ok('the calorie check measures against the corrected maintenance', Math.abs(r.expected + 0.455) < 0.01, r);
+    s.eq('an athlete on the planned rate after one correction is on track, not cut again', r.verdict, 'ontrack', r);
+    s.ok('a bulk eating under its target is warned, not praised for fat loss', /under target/.test(r.gainUnder) && !/fat loss/.test(r.gainUnder) && /^⚠️/.test(r.gainUnder), r);
+    s.ok('a bulk on its target is on plan', /^✅/.test(r.gainOn) && /surplus/.test(r.gainOn), r);
+    s.ok('a weight-stable goal near its target is on plan', /^✅/.test(r.stableOn) && !/fat loss/.test(r.stableOn), r);
+    s.ok('a weight-stable goal far over its target is warned', /^⚠️/.test(r.stableOver) && /over/.test(r.stableOver), r);
+    s.ok('FLOOR: a cut under target keeps its own copy', /^✅/.test(r.cutUnder) && /fat loss/.test(r.cutUnder), r);
+    s.ok('FLOOR: a cut over target is warned', /^⚠️/.test(r.cutOver) && /200 kcal over/.test(r.cutOver), r);
+    s.ok('the short-of-target advice never names a food the athlete is allergic to', !/peanut|almond/i.test(r.allergic + r.allergicBig), r);
+    s.ok('a big gap is not told a spoonful closes it', /starch/.test(r.allergicBig), r);
+    s.ok('FLOOR: an athlete with no allergy still gets the banana and peanut butter', /banana/.test(r.plain) && /peanut butter/.test(r.plain), r);
+    s.ok('an inherited key is not a macro marker', r.inherited === false && r.real === true, r);
+    s.ok('guard: the full-body split opens after the first block', r.p2Phase === 2, r);
+    s.ok('the phase-2 badge unlocks when the split opens, not a block later', r.p2Before === false && r.p2At === true, r);
+    s.ok('the conditioning card names every cardio mode', r.modes.every(m => r.ride.toLowerCase().includes(m.toLowerCase())), r.modes);
+    s.ok('the empty hold tracker names every hold test', r.holdNames.every(h => r.holds.toLowerCase().includes(h)), r.holdNames);
+
+    // N2: a sex picked and never saved is not written by the next save
+    const t2 = await page.evaluate(async () => {
+      const o = {};
+      STATE.nutrition.sex = 'male'; STATE.profile.sex = 'male'; save();
+      openTDEE();
+      tdeeSex('female', document.querySelector('#sheet [data-sx="female"]'));
+      closeSheet(); await new Promise(r => setTimeout(r, 450));
+      openTDEE();
+      o.shown = (document.querySelector('#sheet [data-sx].on') || {}).dataset ? document.querySelector('#sheet [data-sx].on').dataset.sx : null;
+      saveTDEE(); await new Promise(r => setTimeout(r, 450));
+      o.saved = STATE.nutrition.sex;
+      return o;
+    });
+    s.eq('guard: the reopened calculator shows the stored sex', t2.shown, 'male', t2);
+    s.eq('a sex picked in a sheet closed without saving is not saved later', t2.saved, 'male', t2);
+
+    // N6: an edit keeps the calc marker and remembers no row label
+    const t6 = await page.evaluate(async () => {
+      const o = {};
+      const d = nutToday();
+      d.food = [foodRow('Rice ×2', 600, 12, 130, 2, 'l', '', 'carbs')];
+      STATE.nutrition.foods = []; save();
+      o.before = d.food[0].calc;
+      editFood(0); await new Promise(r => setTimeout(r, 100));
+      const meal = document.querySelector('#fa-meal'); if (meal) meal.value = 'd';
+      saveFood(); await new Promise(r => setTimeout(r, 450));
+      const row = nutToday().food[0];
+      o.after = row && row.calc; o.meal = row && row.meal;
+      o.remembered = (STATE.nutrition.foods || []).map(f => f.name);
+      return o;
+    });
+    s.eq('guard: the row was logged with its calc marker', t6.before, 'carbs', t6);
+    s.eq('an edit that leaves the number alone keeps the calc marker', t6.after, 'carbs', t6);
+    s.ok('an edit does not remember the row label as a food', !t6.remembered.includes('Rice ×2'), t6);
+
+    // N7: a day the app was not opened can be the grace day
+    const t7 = await page.evaluate(() => {
+      const o = {};
+      const iso = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      const hit = { protein: true, water: true, sleep: true, steps: true };
+      STATE.nutrition.days = {};
+      [1, 3].forEach(n => { STATE.nutrition.days[iso(n)] = { food: [], habits: { ...hit } }; });
+      o.oneGap = nutritionStreak();
+      STATE.nutrition.days = {};
+      [1, 4].forEach(n => { STATE.nutrition.days[iso(n)] = { food: [], habits: { ...hit } }; });
+      o.twoGap = nutritionStreak();
+      STATE.nutrition.days = {};
+      [1, 2, 3].forEach(n => { STATE.nutrition.days[iso(n)] = { food: [], habits: { ...hit } }; });
+      o.solid = nutritionStreak();
+      save();
+      return o;
+    });
+    s.eq('FLOOR: three logged days in a row are a streak of three', t7.solid, 3, t7);
+    s.eq('one day the app was not opened spends the grace instead of breaking', t7.oneGap, 2, t7);
+    s.eq('two days not opened still break it', t7.twoGap, 1, t7);
+
+    // P3 + P4: a run alone ticks the step habit, and is priced at today's pace everywhere
+    const t3 = await page.evaluate(() => {
+      const o = {};
+      const t = nutToday(); Object.keys(t).forEach(k => { if (/Val$|Lvl$|Unit$|^steps$|_stepAuto/.test(k)) delete t[k]; });
+      t.habits = {};
+      STATE.profile.runPace = 'easy';
+      setRunUnit('min'); setRunVal(120);
+      o.lvl = nutToday().runLvl;
+      o.equiv = stepEquivalent(); o.target = stepTarget();
+      o.habit = !!nutToday().habits.steps;
+      o.cardKcal = Math.round(runWork().kcal);
+      o.dayKcal = Math.round(CARDIO_INFO.run.dayKcal(nutToday()));
+      return o;
+    });
+    s.ok('guard: two hours of running pays the step target', t3.equiv >= t3.target, t3);
+    s.ok('a run alone ticks the step habit', t3.habit === true, t3);
+    s.eq('a logged run records the pace it was priced at', t3.lvl, 'easy', t3);
+    s.eq('Today and the day readers price that run the same', t3.cardKcal, t3.dayKcal, t3);
+
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    s.ok('only the BMQ session that is next moves the week', /if\(!_bq\.doneToday&&_bq\.next===PLAYER\.bmqKey\)bmqMarkDone/.test(src));
+    s.ok('no week is counted by dividing milliseconds by a week', !/\/\(7\*86400000\)/.test(src));
+    s.ok('a floored target is not described as the timeframe deficit alone', /kcalFloored\)\?`, held back by your safe minimum/.test(src));
+    errors.forEach(x => s.fail('page error', x));
+    await browser.close();
+  }
+
+  /* ---- v542: week counts across daylight saving --------------------------
+     Local midnights are 23 or 25 hours apart across a change, so a week count
+     taken by dividing milliseconds drifted by one on the boundary day. */
+  {
+    const b = await chromium.launch();
+    const ctx = await b.newContext({ timezoneId: 'America/Denver' });
+    const pg = await ctx.newPage();
+    await pg.clock.install({ time: new Date('2027-03-21T18:00:00Z') });   // noon in Denver, two weeks after a planFrom before the spring change
+    await pg.goto(base); await waitForBoot(pg);
+    const r = {};
+    Object.assign(r, await pg.evaluate(() => {
+      STATE.prep = { date: '2027-06-01', planFrom: '2027-03-07' };
+      return { today1: todayISO(), wk: prepWeekNo(),
+        oldWk: Math.floor((new Date('2027-03-21T00:00:00') - new Date('2027-03-07T00:00:00')) / (7 * 86400000)) + 1 };
+    }));
+    await pg.clock.setFixedTime(new Date('2026-10-25T18:00:00Z'));          // three weeks before a date after the autumn change
+    Object.assign(r, await pg.evaluate(() => {
+      STATE.prep = { date: '2026-11-15', planFrom: '2026-10-01' };
+      return { today2: todayISO(), left: forceWeeksLeft(),
+        oldLeft: Math.ceil((new Date('2026-11-15T00:00:00') - new Date('2026-10-25T00:00:00')) / (7 * 86400000)) };
+    }));
+    s.ok('guard: the clock really is on the two test days', r.today1 === '2027-03-21' && r.today2 === '2026-10-25', r);
+    s.ok('guard: dividing milliseconds gave the wrong week across the spring change', r.oldWk === 2, r);
+    s.eq('two weeks after the block opened is week 3, across the spring change', r.wk, 3, r);
+    s.ok('guard: dividing milliseconds gave four weeks across the autumn change', r.oldLeft === 4, r);
+    s.eq('three weeks before the test is three weeks, across the autumn change', r.left, 3, r);
+    await b.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
