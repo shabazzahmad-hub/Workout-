@@ -2974,7 +2974,7 @@ export default async function () {
        Every number in it is pinned against the code that produces it. */
     t.ok('the tip renders', !!lr.tipText, lr.tipText);
     t.ok('naming the ~12% deficit it actually runs', /~12% below maintenance/.test(lr.tipText), lr.tipText);
-    t.ok('the 2.2 g/kg protein it actually prescribes', /2\.2 g\/kg/.test(lr.tipText), lr.tipText);
+    t.ok('the 2.2 g/kg protein it actually prescribes', /2\.2 g per kg/.test(lr.tipText), lr.tipText); // v544: protRate() writes the unit out
     t.ok('and that the session is unchanged rep for rep', /rep for rep/.test(lr.tipText), lr.tipText);
     /* It must NOT claim the thing that was removed: the first version promised
        "an extra conditioning slot", which the measurement showed was the very

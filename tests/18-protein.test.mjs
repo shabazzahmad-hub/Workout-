@@ -157,11 +157,13 @@ export default async function run() {
       setNutGoal('recomp'); STATE.nutrition.kcalTarget = null;
       renderFuel();
       const h = document.querySelector('#v-fuel').innerHTML;
-      const o = { tip: /toward 2\.2 g\/kg/.test(h), maint: /at maintenance/.test(h) };
+      /* v544: the rate is written in the athlete's unit (protRate), so a metric
+         athlete reads "g per kg" rather than "g/kg". */
+      const o = { tip: /toward 2\.2 g per kg/.test(h), maint: /at maintenance/.test(h) };
       setNutGoal('lose');
       renderFuel();
       const hl = document.querySelector('#v-fuel').innerHTML;
-      o.loseUnchanged = /300–500 kcal\/day deficit/.test(hl) && !/toward 2\.2 g\/kg/.test(hl);
+      o.loseUnchanged = /300–500 kcal\/day deficit/.test(hl) && !/toward 2\.2 g per kg/.test(hl);
       STATE.nutrition.kcalTarget = realT; setNutGoal(real);
       return o;
     });
