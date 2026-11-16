@@ -5846,16 +5846,25 @@ export default async function () {
     const r = await page.evaluate(() => {
       const iso = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
       const DAY = 86400000, out = {};
-      const logKm = (runWk, ruckWk) => {
+      /* The logs sit in the four weeks before the block's start (v543): the
+         plan's base is what the athlete did BEFORE it opened, so moving
+         planFrom back while leaving the runs before TODAY measured a block
+         with nothing logged before it. Each week re-seeds before its own start. */
+      let cur = null;
+      const seedBefore = endMs => {
         STATE.nutrition.days = {};
-        for (let d = 1; d <= 28; d++) STATE.nutrition.days[iso(Date.now() - d * DAY)] =
-          { opened: true, runVal: runWk / 7, runUnit: 'dist', runLvl: 'steady',
-            ruckVal: ruckWk / 7, ruckUnit: 'dist', ruckLvl: 'brisk' };
+        if (!cur) return;
+        for (let d = 1; d <= 28; d++) STATE.nutrition.days[iso(endMs - d * DAY)] =
+          { opened: true, runVal: cur[0] / 7, runUnit: 'dist', runLvl: 'steady',
+            ruckVal: cur[1] / 7, ruckUnit: 'dist', ruckLvl: 'brisk' };
         STATE.nutrition.weightKg = 86;
       };
+      const logKm = (runWk, ruckWk) => { cur = [runWk, ruckWk]; seedBefore(Date.now()); };
       const at = (wk, totalWk) => {
+        const pfMs = Date.now() - (wk - 1) * 7 * DAY;
+        seedBefore(pfMs);
         STATE.prep = { date: iso(Date.now() + (totalWk - wk + 1) * 7 * DAY),
-                       planFrom: iso(Date.now() - (wk - 1) * 7 * DAY), path: 'operator' };
+                       planFrom: iso(pfMs), path: 'operator' };
         const e = enduranceWeek(true), k = ruckLadderWeek(true);
         return { wk: prepWeekNo(), run: e.curve, ruck: k.curve, atPeak: e.atPeak,
                  ruckAtPeak: k.atPeak, peak: e.peak, ruckPeak: k.peak, start: e.start };
@@ -5876,7 +5885,7 @@ export default async function () {
         out.bigLater = at(20, 54);
 
         // FLOOR: the beginner's ceiling is relative to their OWN start
-        STATE.nutrition.days = {};
+        cur = null; STATE.nutrition.days = {};
         STATE.prep = { date: iso(Date.now() + 30 * 7 * DAY), planFrom: iso(Date.now() - 30 * 7 * DAY), path: 'operator' };
         out.beginner = { wk: prepWeekNo(), run: enduranceWeek(true).curve, ruck: ruckLadderWeek(true).curve };
 
@@ -5909,6 +5918,7 @@ export default async function () {
         out.afterClear = { wk: prepWeekNo() };
 
         // the ceiling is SAID, not applied in silence
+        seedBefore(Date.now() - 30 * 7 * DAY);
         STATE.prep = { date: iso(Date.now() + 24 * 7 * DAY), planFrom: iso(Date.now() - 30 * 7 * DAY), path: 'operator' };
         const html = enduranceHTML() + ruckLadderHTML();
         out.note = { run: /reached its ceiling/i.test(html), holds: html.indexOf('Volume holds at') >= 0 };
