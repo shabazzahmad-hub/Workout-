@@ -3596,6 +3596,87 @@ const { browser, page, errors } = await launch(port);
     await b.close();
   }
 
+  /* ---- v543: the plan's base is what the athlete did before the block -------
+     Both plans read the LIVE trailing average and compounded the ramp from
+     planFrom on top of it, so following the plan raised the base and the next
+     week was ramped again from the raised figure: 10 km a week reached the
+     60 km ceiling by week 10. The base is anchored to the four weeks before the
+     block opened; the plate is anchored to the plate the block opened on. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const iso = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      const fut = n => { const d = new Date(); d.setDate(d.getDate() + n); return localISO(d); };
+      const days = STATE.nutrition.days = {};
+      const run = (n, km) => { days[iso(n)] = Object.assign(days[iso(n)] || { food: [], habits: {} }, { runVal: km, runUnit: 'dist', runLvl: 'steady' }); };
+      // the block opened 70 days ago; the four weeks before it carried 10 km a week
+      [98, 91, 84, 77].forEach(n => run(n, 10));
+      // since then the athlete ran far more — 40 km a week for the last four weeks
+      [28, 21, 14, 7].forEach(n => run(n, 40));
+      STATE.prep = { date: fut(90), planFrom: iso(70) };
+      const w = enduranceWeek(true);
+      o.wk = w.wk; o.start = w.start; o.km = w.km; o.curve = w.curve; o.anchored = w.anchored;
+      o.live = Math.round(trailingRunStats().avg * 10) / 10;
+      o.fixedCurve = Math.round(Math.min(10 * Math.pow(PREP_RAMP, w.wk - 1), prepPeak(10, PREP_PEAK_KM)) * 10) / 10;
+      // nothing before the block: the first logged week after it anchors the base
+      Object.keys(days).forEach(k => delete days[k]);
+      [49, 42].forEach(n => run(n, 12));
+      const w2 = enduranceWeek(true);
+      o.lagStart = w2.start; o.lag = w2.lag; o.lagCurve = w2.curve;
+      o.lagFixed = Math.round(Math.min(w2.start * Math.pow(PREP_RAMP, Math.max(0, w2.wk - 1 - w2.lag)), prepPeak(w2.start, PREP_PEAK_KM)) * 10) / 10;
+      // FLOOR: a block opened today reads the same as before
+      Object.keys(days).forEach(k => delete days[k]);
+      [21, 14, 7, 1].forEach(n => run(n, 15));
+      STATE.prep = { date: fut(90), planFrom: todayISO() };
+      const w3 = enduranceWeek(true);
+      o.todayStart = w3.start; o.todayLive = Math.round(trailingRunStats().avg * 10) / 10;
+
+      // the ruck plate: anchored to the plate the block opened on
+      Object.keys(days).forEach(k => delete days[k]);
+      const ruck = (n, km) => { days[iso(n)] = Object.assign(days[iso(n)] || { food: [], habits: {} }, { ruckVal: km, ruckUnit: 'dist', ruckLvl: 'brisk' }); };
+      [98, 91, 84, 77].forEach(n => ruck(n, 6));
+      STATE.prep = { date: fut(120), planFrom: iso(70), baseLb: 15 };
+      STATE.profile.ruckLb = 40;
+      const L = ruckLadderWeek(true);
+      o.startLb = L.startLb; o.lb = L.lb;
+      // a block stamped before the stamp existed backs the steps out of today's plate
+      delete STATE.prep.baseLb;
+      const L2 = ruckLadderWeek(true);
+      o.legacyStartLb = L2.startLb; o.legacyLb = L2.lb;
+      // the stamp is written with planFrom and cleared with the date
+      STATE.prep = {}; STATE.profile.ruckLb = 25; save();
+      return o;
+    });
+    s.ok('guard: the live trailing average has moved far above the block\'s start', r.live >= 35, r);
+    s.eq('the running plan\'s base is the four weeks before the block opened', r.start, 10, r);
+    s.ok('and it is marked as anchored', r.anchored === true, r);
+    s.eq('the week\'s curve is the fixed-base curve, not one ramped from the moved base', r.curve, r.fixedCurve, r);
+    s.ok('with nothing before the block, the first logged weeks anchor it', r.lagStart > 0 && r.lag >= 3, r);
+    s.eq('and the ramp counts from that week', r.lagCurve, r.lagFixed, r);
+    s.eq('FLOOR: a block opened today reads its base from the last four weeks', r.todayStart, r.todayLive, r);
+    s.eq('the ruck ladder starts from the plate the block opened on', r.startLb, 15, r);
+    s.ok('guard: the athlete carries a heavier plate now', r.lb >= 15 && r.lb < 40, r);
+    s.ok('a block stamped before the stamp existed starts no heavier than today\'s plate minus the steps taken', r.legacyStartLb <= 40 && r.legacyStartLb >= 10 && r.legacyLb <= 40, r);
+
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    s.ok('the plate is stamped with the block start', /STATE\.prep\.planFrom=todayISO\(\);\s*STATE\.prep\.baseLb=ruckLoadLb\(\);/.test(src));
+    s.ok('the stamp goes with the date', /delete STATE\.prep\.planFrom;delete STATE\.prep\.event;delete STATE\.prep\.baseLb;/.test(src));
+    const t3 = await page.evaluate(() => {
+      const o = {};
+      STATE.prep = { baseLb: 'heavy', planFrom: todayISO(), date: todayISO() }; normalizeState(); o.junk = STATE.prep.baseLb;
+      STATE.prep = { baseLb: 25, planFrom: todayISO(), date: todayISO() }; normalizeState(); o.real = STATE.prep.baseLb;
+      STATE.prep = { baseLb: 9999, planFrom: todayISO(), date: todayISO() }; normalizeState(); o.huge = STATE.prep.baseLb;
+      STATE.prep = {}; save();
+      return o;
+    });
+    s.ok('a junk block plate is dropped at boot', t3.junk === undefined && t3.huge === undefined, t3);
+    s.eq('FLOOR: a real block plate survives the boot', t3.real, 25, t3);
+    errors.forEach(x => s.fail('page error', x));
+    await browser.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();

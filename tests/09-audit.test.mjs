@@ -2494,7 +2494,18 @@ export default async function run() {
 
       // the ramp across eight weeks
       const weeks = [];
-      for (let w = 0; w < 8; w++) { STATE.prep.planFrom = iso(-7 * w);
+      /* TIME PASSING IS THE START MOVING BACK WITH ITS LOGS. This used to move
+         planFrom back and leave the runs where they were, which only read as a
+         climbing plan because the base was the LIVE trailing average — the
+         v543 defect itself. The plan's base is the four weeks before the block
+         opened, so each week re-seeds the same runs before its own planFrom. */
+      const seedBefore = from => {
+        Object.keys(days).forEach(k => { delete days[k].runVal; delete days[k].runUnit; delete days[k].runLvl; });
+        for (let i = 1; i <= 21; i++) { const d = iso(from - i);
+          days[d] = days[d] || { water: 0, habits: {} };
+          if (i % 2 === 0) { days[d].runVal = 5; days[d].runUnit = 'dist'; days[d].runLvl = 'steady'; } }
+      };
+      for (let w = 0; w < 8; w++) { STATE.prep.planFrom = iso(-7 * w); seedBefore(-7 * w);
         const e = enduranceWeek(); weeks.push({ wk: e.wk, km: e.km, curve: e.curve, down: e.down }); }
       o.weeks = weeks;
       /* Read the app's OWN cap rather than restating it, and allow for the

@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='542';
+const APP_VERSION='543';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -6449,9 +6449,9 @@ function _dayRunKm(t){
 
    `weeks` is returned alongside so the card can say which it counted — a base
    that drops because three weeks were empty is only legible if it says so. */
-function _trailingWeeks(readKm){
+function _trailingWeeks(readKm,endISO){
   const days=(nut().days)||{};
-  const now=new Date(todayISO()+'T00:00:00').getTime();
+  const now=new Date((isDateISO(endISO)?endISO:todayISO())+'T00:00:00').getTime();
   const km=[0,0,0,0], seen=[false,false,false,false];
   let any=false;
   Object.keys(days).forEach(d=>{
@@ -6471,6 +6471,35 @@ function _trailingWeeks(readKm){
            weeks:used.length, blank:used.filter(v=>v===0).length };
 }
 function trailingRunStats(){try{return _trailingWeeks(_dayRunKm);}catch(e){return null;}}
+/* THE PLAN'S BASE IS WHAT THE ATHLETE DID BEFORE THE BLOCK OPENED, and it stays
+   put. Both plans read the LIVE trailing average and then compounded the ramp
+   from `planFrom` on top of it — so an athlete who followed the plan raised the
+   average, and the next week was ramped again from the raised figure. Measured
+   on a 16-week block opened at 10 km a week and followed exactly: 46 km by week
+   9 and the 60 km ceiling by week 10, against 21 km on a fixed base. That is
+   the injury the 10% rule exists to prevent, delivered by the plan (v543).
+
+   With nothing logged before the block opened, the base is the first logged
+   week after it, and `lag` is how many weeks in that was — the ramp counts from
+   there, so "log a few runs and it rebuilds" stays true without the base ever
+   moving again. A plan with no `planFrom` stamp reads live, as before. */
+function prepBaseStats(readKm){
+  try{
+    const pf=prep().planFrom;
+    if(!isDateISO(pf))return {stats:_trailingWeeks(readKm),lag:0,anchored:false};
+    /* The window ends ON the block's first day, so a block opened today reads
+       exactly what the live read gives — one day earlier shifted every week
+       bucket by a day and gave a different base for the same logs. */
+    let st=_trailingWeeks(readKm,pf);
+    if(st&&st.avg>0)return {stats:st,lag:0,anchored:true};
+    const days=nut().days||{}, t=todayISO();
+    const first=Object.keys(days).filter(k=>isDateISO(k)&&k>=pf&&k<=t&&readKm(days[k])>0).sort()[0];
+    if(!first)return {stats:null,lag:0,anchored:true};
+    st=_trailingWeeks(readKm,first);
+    const lag=Math.floor(Math.round((Date.parse(first+'T00:00:00')-Date.parse(pf+'T00:00:00'))/86400000)/7);
+    return {stats:st,lag:Math.max(0,lag),anchored:true};
+  }catch(e){return {stats:null,lag:0,anchored:false};}
+}
 function trailingRuckStats(){try{return _trailingWeeks(_dayRuckKm);}catch(e){return null;}}
 function trailingRunKm(){const t=trailingRunStats();return t?t.avg:null;}
 /* ---- the two plans, added together ---------------------------------------
@@ -6603,9 +6632,19 @@ function ruckLadderWeek(raw){
   const left=prepWeeksLeft();
   if(left===null)return {noDate:true,passed:prepDatePassed()};
   const wk=prepWeekNo(), phase=prepPhase();
-  const base=trailingRuckKm();
+  const anc=prepBaseStats(_dayRuckKm);
+  const base=anc.stats?anc.stats.avg:null;
   const startKm=(base!==null&&base>0)?base:PREP_RUCK_FLOOR_KM;
-  const startLb=(base!==null&&base>0)?ruckLoadLb():RUCK_PLATES[0];
+  /* THE PLATE IS ANCHORED THE SAME WAY. ruckLoadLb() is the plate the athlete
+     carries NOW — after following the ladder, it already holds every step the
+     ladder took, and the walk below then added them again (v543). The plate at
+     the block's start is stamped beside planFrom; a block stamped before the
+     stamp existed backs the steps already taken out of today's plate, which
+     can only ever read LIGHTER than the truth. */
+  const _pb=prep().baseLb;
+  const _hasBase=base!==null&&base>0;
+  const _stamped=typeof _pb==='number'&&isFinite(_pb)&&_pb>0;
+  let startLb=!_hasBase?RUCK_PLATES[0]:(anc.lag>0?RUCK_PLATES[0]:(_stamped?Math.min(_pb,RUCK_LB_MAX):ruckLoadLb()));
   const ceil=ruckLoadCeilLb();
   /* Walk the cycle forward so the two variables can never move together, and
      so the week's answer does not depend on what was rendered last time. */
@@ -6667,7 +6706,7 @@ function ruckLadderWeek(raw){
     if(n<wantSteps)wantSteps=n;});
   if(!isFinite(wantSteps))wantSteps=0;
   const peak=prepPeak(startKm,PREP_RUCK_PEAK_KM);
-  let km=startKm, lb=startLb, climbing='distance', down=false, capped=false, took=0;
+  let km, lb, climbing, down, capped, took, tookBefore;
   const raise=()=>{if(lb+PREP_RUCK_STEP_LB<=ceil){lb+=PREP_RUCK_STEP_LB;took++;}else capped=true;};
   /* AN UNRESOLVED HOT SPOT HOLDS THIS WEEK, and only this week — the history
      the loop walks is what the athlete has already done, so the hold applies to
@@ -6676,18 +6715,29 @@ function ruckLadderWeek(raw){
      back feel the next morning decides whether load goes up, and a blister is
      that answer in its plainest form. */
   const hold=(()=>{try{return footHold();}catch(e){return false;}})();
-  for(let w=2;w<=wk;w++){
-    const slot=((w-1)%4)+1;                       // one slot raises load · slot 4 is the down week
-    const inTaper=w>=taperFrom;
-    if(slot===4){down=true;climbing='neither';continue;}
-    down=false;
-    if(w===wk&&hold){climbing='foot';continue;}
-    if(slot===loadSlot&&!inTaper&&took<wantSteps){
-      climbing='load';raise();
-    }else{
-      climbing='distance';
-      km=Math.min(km*PREP_RAMP,peak);
+  const walk=lb0=>{
+    km=startKm;lb=lb0;climbing='distance';down=false;capped=false;took=0;tookBefore=0;
+    for(let w=2;w<=wk;w++){
+      if(w===wk)tookBefore=took;
+      const slot=((w-1)%4)+1;                       // one slot raises load · slot 4 is the down week
+      const inTaper=w>=taperFrom;
+      if(slot===4){down=true;climbing='neither';continue;}
+      down=false;
+      if(w===wk&&hold){climbing='foot';continue;}
+      // nothing climbs before the week the base was read from
+      if(w<=1+anc.lag){climbing='distance';continue;}
+      if(slot===loadSlot&&!inTaper&&took<wantSteps){
+        climbing='load';raise();
+      }else{
+        climbing='distance';
+        km=Math.min(km*PREP_RAMP,peak);
+      }
     }
+  };
+  walk(startLb);
+  if(_hasBase&&!_stamped&&anc.lag===0&&anc.anchored){
+    startLb=Math.max(RUCK_PLATES[0],ruckLoadLb()-tookBefore*PREP_RUCK_STEP_LB);
+    walk(startLb);
   }
   /* `down` is owned by the LOOP and nowhere else. It used to be re-derived
      here as well, which meant a week could be treated as a climbing week by
@@ -7306,7 +7356,8 @@ function prepPathHTML(){
 function enduranceWeek(raw){
   const left=prepWeeksLeft(), phase=prepPhase();
   if(left===null)return {noDate:true,passed:prepDatePassed()};
-  const stats=trailingRunStats();
+  const anc=prepBaseStats(_dayRunKm);
+  const stats=anc.stats;
   const base=stats?stats.avg:null;
   const start=(base!==null&&base>0)?base:PREP_FLOOR_KM;
   /* Weeks ELAPSED since the plan opened, so the ramp compounds forward. It is
@@ -7322,7 +7373,7 @@ function enduranceWeek(raw){
      week that was still climbing, so the plateau is a real number the athlete
      earned rather than a cap invented here. */
   const plateauWk=prepClimbWeeks();
-  const climbTo=Math.max(0,(PREP_PLATEAU_PHASES.indexOf(phase)>=0?Math.min(wk,plateauWk):wk)-1);
+  const climbTo=Math.max(0,(PREP_PLATEAU_PHASES.indexOf(phase)>=0?Math.min(wk,plateauWk):wk)-1-anc.lag);
   const peak=prepPeak(start,PREP_PEAK_KM);
   /* ONE EXPRESSION, READ TWICE. `km` and `curve` are two halves of one figure,
      and clamping only one of them is how a card comes to print a number the
@@ -7355,7 +7406,7 @@ function enduranceWeek(raw){
   const footNew=fit?fit.newMode:null, footAdded=fit?fit.added:0;
   const footBig=!!(fit&&fit.big);
   return {left,phase,wk,down,km,curve,start:Math.round(start*10)/10,
-    blank:stats?stats.blank:0, counted:stats?stats.weeks:0,
+    blank:stats?stats.blank:0, counted:stats?stats.weeks:0, lag:anc.lag, anchored:anc.anchored,
           estimated:base===null,climbed,plateaued,plateauWk,atPeak,peak:Math.round(peak*10)/10,
           footTotal,footFrom,footStep,footBig,footNew,footAdded,
           note:prepPhaseNote(phase),
@@ -7413,7 +7464,7 @@ function enduranceHTML(){
            and is kept either way. */
         ? `<div class="note warn" style="margin:10px 0 0"><b>Built on an assumption, because nothing is logged.</b> It opened at ${_ve(distShow(PREP_FLOOR_KM))} a week because there were no runs to read, and has climbed to ${_ve(distShow(w.km))} from there. Log a few runs and it will rebuild from what you actually do.</div>`
         : `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${_ve(distShow(PREP_FLOOR_KM))} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`)
-      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you have been logging${w.blank>0?` — <b>${w.blank} of the last ${w.counted} weeks had no runs at all</b>, counted as the zero they were rather than skipped`:''}, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
+      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you ${w.anchored?(w.lag>0?'logged in your first weeks of running':'were running when the block began'):'have been logging'}${w.blank>0?` — <b>${w.blank} of ${w.anchored?'those':'the last'} ${w.counted} weeks had no runs at all</b>, counted as the zero they were rather than skipped`:''}, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
     ${w.atPeak?`<div class="note info" style="margin:10px 0 0"><b>The build has reached its ceiling.</b> Volume holds at ${_ve(distShow(w.peak))} a week from here — ${Math.round(PREP_PEAK_MULT*10)/10}× what you opened on, and ${_ve(ev.peak)}. The work gets sharper from here, not longer.</div>`:''}
     ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(distShow(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
     <div class="tiny muted" style="margin-top:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">This week</div>
@@ -7991,8 +8042,10 @@ function saveForceDate(ev){
   const newBlock=switched||!prevDate||todayISO()>=prevDate;
   STATE.prep.date=v;
   if(key==='force')delete STATE.prep.event; else STATE.prep.event=key;
-  if(newBlock||!isDateISO(STATE.prep.planFrom))
+  if(newBlock||!isDateISO(STATE.prep.planFrom)){
     STATE.prep.planFrom=todayISO();
+    STATE.prep.baseLb=ruckLoadLb();    // the plate the block opens on (v543)
+  }
   save();closeSheet();toast((key==='bmq'?'BMQ start date':'Test date')+' set 📅');openPrepHome();
 }
 function clearForceDate(){
@@ -8000,7 +8053,7 @@ function clearForceDate(){
      opens its block at whatever week the abandoned one had reached — the same
      stale-stamp defect by a second door. */
   const home=prepEvent();
-  if(STATE.prep&&typeof STATE.prep==='object'){delete STATE.prep.date;delete STATE.prep.planFrom;delete STATE.prep.event;}
+  if(STATE.prep&&typeof STATE.prep==='object'){delete STATE.prep.date;delete STATE.prep.planFrom;delete STATE.prep.event;delete STATE.prep.baseLb;}
   save();closeSheet();home==='bmq'?openBmqPrep():openForcePrep();
 }
 /* "TODAY IS ALREADY LOGGED" IS FALSE ON A PAIN STOP, and this note renders a
@@ -27524,6 +27577,8 @@ function normalizeState(){
    /* The run times are SECONDS. A non-number is dropped, not zeroed — a zero
       would render as a 0:00 time trial, which is not a measurement. */
    if(P.planFrom!==undefined&&!isDateISO(P.planFrom))delete P.planFrom;
+   /* the plate the block opened on: a real plate weight or nothing (v543) */
+   if(P.baseLb!==undefined&&!(typeof P.baseLb==='number'&&isFinite(P.baseLb)&&P.baseLb>0&&P.baseLb<=RUCK_LB_MAX))delete P.baseLb;
    /* Both new fields are SECONDS, and both are dropped rather than zeroed for
       the same reason the run times are: a zero renders as a 0:00 result, which
       is not a measurement. importData() accepts arbitrary JSON. */
