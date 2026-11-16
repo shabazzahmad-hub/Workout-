@@ -2141,8 +2141,8 @@ function idbKeys(){return new Promise(res=>{try{if(!idb)return res([]);const rq=
 function _snapshotPhotoIds(){
   const out=[];
   [PREIMPORT_KEY,CROSSTAB_KEY].forEach(k=>{try{
-    const raw=localStorage.getItem(k);if(!raw)return;
-    const p=_jsonSafe(raw);
+    const snap=localStorage.getItem(k);if(!snap)return;
+    const p=_jsonSafe(snap);
     ((p&&Array.isArray(p.photos))?p.photos:[]).forEach(x=>{if(x&&x.id)out.push(String(x.id));});
   }catch(e){}});
   return out;
