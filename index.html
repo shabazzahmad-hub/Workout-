@@ -20248,12 +20248,13 @@ function intakeHTML(){
    cut and every goal got it: a bulk averaging 500 kcal UNDER its target was
    praised for "what drives the fat loss", and one eating what it was asked to
    was warned it was over (v542). A cut is on plan at or under the target, a
-   bulk at or over it (within 5%), and a weight-stable goal within 7% either
-   way — the band that holds the scale. */
+   bulk at or over it (within 5%), and a weight-stable goal within the drift
+   the app already allows that goal (STABLE_DRIFT_KG_WK, about 110 kcal a day)
+   rather than a band invented here. */
 function intakeOnPlan(kcal,target,goal){
   if(!(target>0))return true;
   if(goal==='gain')return kcal>=target*0.95;
-  if(weightStableGoal(goal))return Math.abs(kcal-target)<=Math.max(150,target*0.07);
+  if(weightStableGoal(goal))return Math.abs(kcal-target)<=STABLE_DRIFT_KG_WK*KCAL_PER_KG/7;
   return kcal<=target;
 }
 function intakeVerdict(avg,target,goal){
