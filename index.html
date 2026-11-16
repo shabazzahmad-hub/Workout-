@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='540';
+const APP_VERSION='541';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -2131,8 +2131,25 @@ function idbKeys(){return new Promise(res=>{try{if(!idb)return res([]);const rq=
    be undone" and stay on the device for ever, unreachable by any screen.
    These are pictures of somebody's body, so that is the most expensive promise
    in the app to leave unkept. */
-async function prunePhotoBlobs(keepIds){
+/* A picture one of the two one-step-back snapshots still names is not an
+   orphan: the Restore button that snapshot drives would put its row back with
+   nothing behind it, and a photo is the one thing here that cannot be taken
+   again. So the snapshots' ids are kept unless the caller says otherwise —
+   which only "erase everything" does, because it erases the snapshots too
+   (v541). Read SYNCHRONOUSLY, before the first await, so the answer is the
+   snapshots as they stood when the prune was asked for. */
+function _snapshotPhotoIds(){
+  const out=[];
+  [PREIMPORT_KEY,CROSSTAB_KEY].forEach(k=>{try{
+    const raw=localStorage.getItem(k);if(!raw)return;
+    const p=_jsonSafe(raw);
+    ((p&&Array.isArray(p.photos))?p.photos:[]).forEach(x=>{if(x&&x.id)out.push(String(x.id));});
+  }catch(e){}});
+  return out;
+}
+async function prunePhotoBlobs(keepIds,opts){
   const keep=new Set((keepIds||[]).map(String));
+  if(!(opts&&opts.snapshots===false))_snapshotPhotoIds().forEach(id=>keep.add(id));
   (await idbKeys()).forEach(k=>{const s=String(k);
     if(s.slice(0,3)==='ph_'&&!keep.has(s.slice(3)))idbDel(s);});
 }
@@ -3747,7 +3764,10 @@ function swapStillValid(exId){
      It stays so that a future change to hasGearFor() cannot make this fail
      open again, and no check can catch its removal. */
   if(!exKnown(exId))return false;
-  try{return hasGearFor(exId)&&safeSwap(exId)===exId;}catch(e){console.error('[swapStillValid]',e);return false;}
+  /* The tight room is the third question every picking path asks, and this
+     one never did: a swap saved before the athlete declared a tight room kept
+     a travelling or inverted move in the session (v541). */
+  try{return hasGearFor(exId)&&safeSwap(exId)===exId&&spaceSwap(exId)===exId;}catch(e){console.error('[swapStillValid]',e);return false;}
 }
 function buildSession(ptr,opts){
   const pos=posOf(ptr);
@@ -3883,7 +3903,10 @@ function buildSession(ptr,opts){
     // An explicit swap wins — but only while it is still safe and still doable.
     // Otherwise a swap saved before an injury or a kit change was declared would
     // keep forcing the exercise the athlete just told us they cannot do.
-    if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder])){exId=sw[ladder];swapped.add(ladder);}
+    /* ...and never one already in the session. Logs are keyed by exercise id,
+       so two copies of one move read ONE log entry: three sets done read as
+       six, and the second copy in the player can never mark a set (v541). */
+    if(sw&&sw[ladder]&&EX[sw[ladder]]&&!used.has(sw[ladder])&&swapStillValid(sw[ladder])){exId=sw[ladder];swapped.add(ladder);}
     if(!exId||!EX[exId]){dropped.push(ladder);return null;}
     used.add(exId);
     const it={exId,...prescribe(exId,pos),slot:ladder};
@@ -3909,7 +3932,8 @@ function buildSession(ptr,opts){
   }
   const finLadName=pos.session.finisher;
   const finId=distinct(finLadName,rungIndex(finLadName,cycle,week,level));
-  let finEx=(sw&&sw.__fin&&EX[sw.__fin]&&swapStillValid(sw.__fin))?sw.__fin:finId;
+  const finSwapped=!!(sw&&sw.__fin&&EX[sw.__fin]&&!used.has(sw.__fin)&&swapStillValid(sw.__fin));
+  let finEx=finSwapped?sw.__fin:finId;
   /* The finisher is structural — every session ends on one. If the athlete's
      flagged joints leave nothing in its family, fall back to marching in place,
      which is safe on every joint list. */
@@ -3919,7 +3943,11 @@ function buildSession(ptr,opts){
      same unit — no minute is added. A null answer leaves the finisher exactly
      as it was, which is what makes it a no-op for every athlete with no test
      date, and in base, build and taper. */
-  {const sharp=sharpenFinisher(pos,used,finEx);if(sharp)finEx=sharp;}
+  /* An explicit swap outranks it, the same rule the kit move follows. It did
+     not: the swap sheet said "Swapped to X", the card kept the rehearsal, and in
+     the player the rebuilt session no longer held X, so its round was never
+     logged (v541). */
+  if(!finSwapped){const sharp=sharpenFinisher(pos,used,finEx);if(sharp)finEx=sharp;}
   used.add(finEx);
   const finisher={exId:finEx,...prescribe(finEx,pos),slot:finLadName};
   /* One all-out burnout round -- except that ONE round of a per-side movement
@@ -3938,7 +3966,9 @@ function buildSession(ptr,opts){
      tag. It used to take prescribe()'s raw sets: measured, the 8-Count Push-Up
      bonus was 2 sets and the Burpee it was swapped to was 3 — 50% more work on
      the one move meant to be small, and the focusKey dropped (v534). */
-  if(sw&&sw.focus&&EX[sw.focus]&&swapStillValid(sw.focus)){
+  /* Only while there IS a bonus (its corrective sibling below has always asked
+     that), and never a move already in the session (v541). */
+  if(bonus&&sw&&sw.focus&&EX[sw.focus]&&!used.has(sw.focus)&&swapStillValid(sw.focus)){
     const rx=prescribe(sw.focus,pos);
     bonus={exId:sw.focus,...rx,sets:itemSets(sw.focus,Math.min(rx.sets,2),pos),slot:'focus',focus:true,focusKey:bonus&&bonus.focusKey};
   }
@@ -4863,7 +4893,7 @@ function onboardHTML(){
     <div class="tiny muted" id="ob-steplbl" style="margin-top:6px">Step 1 of ${OB_STEPS} · v${APP_VERSION} · changes save as you go</div></div>
 
   ${step(1,'About you',`
-    <div class="field"><label for="ob-name">Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off" value="${(P.name||'').replace(/"/g,'&quot;')}"></div>
+    <div class="field"><label for="ob-name">Your name (optional)</label><input id="ob-name" maxlength="60" placeholder="Athlete" autocomplete="off" value="${(P.name||'').replace(/"/g,'&quot;')}"></div>
     <div class="numrow" style="gap:10px">
       <div class="field" style="flex:1.4;margin:0"><label>Sex (for calorie math)</label>
         <div class="daypick" id="ob-sex"><button data-s="male"${on(P.sex||'male','male')}>Male</button><button data-s="female"${on(P.sex,'female')}>Female</button></div></div>
@@ -5327,7 +5357,7 @@ function obFinishNav(){
 function obReadForm(){
   if(!$('#ob-name'))return;   // wizard not mounted — nothing to read
   const P=STATE.profile, N=STATE.nutrition;
-  P.name=($('#ob-name').value||'').trim();
+  P.name=($('#ob-name').value||'').trim().slice(0,60);   // the boot repair caps at 60; a writer that did not made a valid name read as a repair (v541)
   P.unit=($('#ob-unit button.on')||{dataset:{u:'cm'}}).dataset.u;
   const im=P.unit==='in';
   P.sex=($('#ob-sex button.on')||{dataset:{s:'male'}}).dataset.s;
@@ -8605,8 +8635,21 @@ function ladderNeighbor(m,dir){const lad=LADDERS[m.slot];if(!lad)return null;con
    easier/harder rungs; everything else (weights, quick workouts, the targeted
    focus bonus, bonus circuits) falls back to similar moves from the same region
    so EVERY exercise can be swapped, not just the ladder ones. */
+/* The other moves in the session the item belongs to: the player's own list
+   when the item is in it, otherwise today's built session. */
+function swapSessionIds(m){
+  try{
+    if(typeof PLAYER!=='undefined'&&PLAYER&&Array.isArray(PLAYER.items)&&PLAYER.items.includes(m))
+      return PLAYER.items.filter(x=>x!==m).map(x=>x&&x.exId).filter(Boolean);
+    const sess=buildSession(STATE.progressPtr);
+    return [...sess.main,sess.finisher].filter(x=>x&&x.exId!==m.exId).map(x=>x.exId);
+  }catch(e){return [];}
+}
 function swapOptions(m){
   const opts=[];const seen=new Set([m.exId]);
+  /* Never offer a move the session already holds (v541): logs are keyed by
+     exercise id, so a second copy reads the first copy's sets. */
+  try{(swapSessionIds(m)||[]).forEach(id=>seen.add(id));}catch(e){}
   /* Every offer must survive the same gates buildSession applies (swapStillValid).
      Only the fallback list used to be filtered, so Easier/Harder/Gentler could
      offer a move on a flagged joint or needing kit you don't own — the swap
@@ -8614,7 +8657,7 @@ function swapOptions(m){
      time, leaving the original exercise on screen and the sets seemingly gone. */
   const _lims=(STATE.profile&&STATE.profile.limitations)||[];
   const _risky=k=>jointRisky(k,_lims);
-  const offerable=k=>{try{return EX[k]&&!_risky(k)&&hasGearFor(k)&&safeSwap(k)===k;}catch(e){console.error('[offerable]',e);return false;}};
+  const offerable=k=>{try{return EX[k]&&!_risky(k)&&hasGearFor(k)&&safeSwap(k)===k&&spaceSwap(k)===k;}catch(e){console.error('[offerable]',e);return false;}};
   const push=(exId,label)=>{if(exId&&EX[exId]&&!seen.has(exId)&&offerable(exId)){seen.add(exId);opts.push({exId,label});}};
   const easier=ladderNeighbor(m,-1),harder=ladderNeighbor(m,1);
   if(easier)push(easier,'⬇ Easier');
@@ -8922,9 +8965,17 @@ function playerSwap(exId){
   const m=plCur();const rx=prescribe(exId,PLAYER.sess.pos);
   // persist it for the day's program session so it survives leaving the player
   let persisted=true;
+  const _old=m.exId;
   if(PLAYER.sess&&PLAYER.sess.ptr===STATE.progressPtr&&m.slot){
     const key=(m===PLAYER.sess.finisher)?'__fin':m.slot;
     try{setSwap(STATE.progressPtr,key,exId);}catch(e){persisted=false;}
+    /* CARRY THE LOGGED SETS ACROSS, as the Today card's swap always has. They
+       stayed on the old move, so the rebuilt session put the old move back
+       (keepLoggedWork, v540) and the new one fell out of it: measured, the very
+       next set read "Set completed, but the count may not have saved" and was
+       lost (v541). */
+    try{const log=STATE.logs[STATE.progressPtr];
+      if(log&&log.ex&&log.ex[_old]&&!log.ex[exId]){log.ex[exId]=log.ex[_old];delete log.ex[_old];save();}}catch(e){}
   }
   /* THE SET COUNT COMES FROM prescribe() TOO. It was computing rx and using
      only rx.target, so a swap from a two-sided movement to a PER-SIDE one kept
@@ -8935,9 +8986,17 @@ function playerSwap(exId){
 
      Never below the set the athlete is already on, so a swap can neither
      strand completed work nor end the item underneath them. */
-  m.exId=exId;m.unit=nEx.unit;m.target=rx.target;m.rest=nEx.rest||m.rest;
+  m.exId=exId;m.unit=nEx.unit;m.target=rx.target;m.rest=rx.rest||nEx.rest||m.rest;
+  /* SIZED BY THE SLOT, the way buildSession() sizes it: the finisher is one
+     round, the bonus and the corrective at most two. prescribe() alone turned a
+     one-round finisher into three or four (v541). itemSets() keeps a per-side
+     move even, and the floor keeps the set the athlete is standing on. */
   {const _rs=(typeof rx.sets==='number'&&isFinite(rx.sets)&&rx.sets>0)?Math.round(rx.sets):m.sets;
-   m.sets=Math.max(_rs||1,(PLAYER.s||0)+1);}
+   const _isFin=!!(PLAYER.sess&&m===PLAYER.sess.finisher);
+   const _n=_isFin?1:((m.focus||m.corrective)?Math.min(_rs||1,2):(_rs||1));
+   let _k=Math.max(itemSets(exId,_n,PLAYER.sess&&PLAYER.sess.pos),(PLAYER.s||0)+1);
+   if(nEx.side==='perSet'&&_k%2)_k++;
+   m.sets=_k;}
   // the in-session swap above always applies regardless — only the toast
   // needs to say so when the part that's supposed to survive leaving the
   // player silently didn't, instead of claiming an unqualified success
@@ -15714,7 +15773,11 @@ function timerHTML(label,secs,isHold,total,ex){
   </div>`;
 }
 function markSetFromTimer(exId){
-  const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
+  const sess=buildSession(STATE.progressPtr);let m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
+  /* The rebuild and the player can disagree about one move; the player is what
+     the athlete is doing, so its item answers rather than a throw (v541). */
+  if(!m&&typeof PLAYER!=='undefined'&&PLAYER&&Array.isArray(PLAYER.items))m=PLAYER.items.find(x=>x&&x.exId===exId);
+  if(!m)return;
   const log=ensureLog();const st=log.ex[exId]||{sets:[],done:false};st.sets=Array.isArray(st.sets)?st.sets:[];
   const i=setsDoneFor(st,m);if(i<m.sets)st.sets[i]=true;
   st.done=setsDoneFor(st,m)>=m.sets;if(st.done)recordPR(exId,m);
@@ -26308,7 +26371,9 @@ async function selfUpdate(){
        the guard exists to prevent. */
     setTimeout(async()=>{
       if(_sessionLive()){try{sessionStorage.removeItem('cf_selfupd');}catch(e){}return;}
-      try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg)await reg.unregister();}catch(e){}
+      /* getRegistration() answers with the LONGEST matching scope, which is another
+         app's when this page has none of its own. Ours only (v541). */
+      try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg&&reg.scope===new URL('./',location.href).href)await reg.unregister();}catch(e){}
       try{const keys=await caches.keys();await Promise.all(keys.filter(k=>/^coreforge-v\d+$/.test(k)).map(k=>caches.delete(k)));}catch(e){}
       location.reload();
     },400);
@@ -26503,6 +26568,18 @@ async function shareBackup(){
    should land when there is no key of ours for it to contradict. Re-normalised
    on the way back for the same reason every other read of it is: a value stored
    before that fix existed must not skip it. */
+/* The two one-step-back restores replace the WHOLE state with a snapshot taken
+   earlier. The keys in it are the keys this device had THEN: a key entered
+   since is wiped, and one cleared since comes back. A credential is a fact
+   about the device NOW, so these two take the device's current answer for all
+   three fields, including "none" (v541). */
+function keepDeviceCredsExact(old){
+  const s=(old&&old.settings)||{};
+  if(!STATE.settings||typeof STATE.settings!=='object')STATE.settings={};
+  if(s.azureKey){STATE.settings.azureKey=s.azureKey;if(s.azureRegion)STATE.settings.azureRegion=s.azureRegion;}
+  else delete STATE.settings.azureKey;
+  if(s.foodAiKey)STATE.settings.foodAiKey=s.foodAiKey;else delete STATE.settings.foodAiKey;
+}
 function carryDeviceCreds(old){
   const s=(old&&old.settings)||{};
   if(!STATE.settings)STATE.settings={};
@@ -26626,9 +26703,11 @@ function undoCrossTab(){
   try{
     const p=_jsonSafe(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
+    const _dev=STATE;
     STATE=p;
     const _xtBefore=JSON.stringify(STATE),_xtOn=!!STATE.onboarded;
     normalizeState();
+    keepDeviceCredsExact(_dev);
     flagRepairs(_xtBefore,_xtOn);
     save();
     try{localStorage.removeItem(CROSSTAB_KEY);}catch(e){}
@@ -26654,9 +26733,11 @@ function undoImport(){
   try{
     const p=_jsonSafe(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
+    const _dev=STATE;
     STATE=p;
     const _uiBefore=JSON.stringify(STATE),_uiOn=!!STATE.onboarded;
     normalizeState();
+    keepDeviceCredsExact(_dev);
     flagRepairs(_uiBefore,_uiOn);
     save();
     try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
@@ -26673,7 +26754,7 @@ function hardReset(){
   if(!confirm('Are you absolutely sure? Consider exporting a backup first.'))return;
   // Progress photos are stored as separate IndexedDB blobs, not inside STATE —
   // clearing STATE alone left every image on the device after an "erase ALL".
-  prunePhotoBlobs([]);   // every ph_* blob, including ones no row points at
+  prunePhotoBlobs([],{snapshots:false});   // every ph_* blob, including ones no row points at
   /* The pre-import snapshot is a COMPLETE copy of STATE, and unlike a backup
      file it is not stripped — it carries azureKey and foodAiKey in plain text.
      Leaving it behind made "This cannot be undone" false in the worst possible

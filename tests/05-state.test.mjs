@@ -4842,6 +4842,77 @@ export default async function run() {
     await browser.close();
   }
 
+  /* ---- v541: the one-step-back restores keep this device's keys, and a
+     prune keeps a picture a snapshot still names ----------------------------
+     undoImport() and undoCrossTab() replace the whole state with a snapshot
+     taken earlier, so the keys came back as they were THEN: a Gemini key
+     entered since was wiped, and one cleared since came back. And a prune at
+     an import deleted a photo the cross-tab snapshot still pointed at, so its
+     Restore put back a row with nothing behind it. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {};
+      window.confirm = () => true;
+      const snap = st => JSON.stringify(st);
+      // undoImport: a key entered since the import survives
+      const old = JSON.parse(JSON.stringify(STATE)); delete old.settings.foodAiKey; delete old.settings.azureKey;
+      localStorage.setItem(PREIMPORT_KEY, snap(old));
+      STATE.settings.foodAiKey = 'KEY-NEW'; save();
+      undoImport();
+      o.keptNew = STATE.settings.foodAiKey;
+      // undoImport: a key cleared since the import does not come back
+      const old2 = JSON.parse(JSON.stringify(STATE)); old2.settings.foodAiKey = 'KEY-OLD';
+      localStorage.setItem(PREIMPORT_KEY, snap(old2));
+      delete STATE.settings.foodAiKey; save();
+      undoImport();
+      o.clearedStays = STATE.settings.foodAiKey;
+      // undoCrossTab: the same rule
+      const old3 = JSON.parse(JSON.stringify(STATE)); delete old3.settings.azureKey;
+      localStorage.setItem(CROSSTAB_KEY, snap(old3));
+      STATE.settings.azureKey = 'AZ-NEW'; STATE.settings.azureRegion = 'eastus'; save();
+      undoCrossTab();
+      o.xtKept = STATE.settings.azureKey;
+      // FLOOR: the restore still restores athlete data
+      const old4 = JSON.parse(JSON.stringify(STATE)); old4.profile.name = 'Restored Name';
+      localStorage.setItem(PREIMPORT_KEY, snap(old4));
+      STATE.profile.name = 'Current Name'; save();
+      undoImport();
+      o.restoredName = STATE.profile.name;
+
+      // prune: a picture a snapshot names is kept; erase-everything still erases it
+      await idbPut('ph_SNAPX', 'data:image/jpeg;base64,AAAA');
+      await idbPut('ph_ORPHANX', 'data:image/jpeg;base64,AAAA');
+      const xt = JSON.parse(JSON.stringify(STATE)); xt.photos = [{ id: 'SNAPX', date: todayISO(), pose: 'front' }];
+      localStorage.setItem(CROSSTAB_KEY, snap(xt));
+      STATE.photos = [];
+      await prunePhotoBlobs([]);
+      await new Promise(r => setTimeout(r, 150));
+      o.snapKept = !!(await idbGet('ph_SNAPX'));
+      o.orphanGone = !(await idbGet('ph_ORPHANX'));
+      await prunePhotoBlobs([], { snapshots: false });
+      await new Promise(r => setTimeout(r, 150));
+      o.eraseClears = !(await idbGet('ph_SNAPX'));
+      localStorage.removeItem(CROSSTAB_KEY);
+      return o;
+    });
+    t.eq('undoing an import keeps a key entered since', r.keptNew, 'KEY-NEW');
+    t.ok('undoing an import does not bring back a key cleared since', r.clearedStays === undefined, JSON.stringify(r));
+    t.eq('undoing a cross-tab save keeps a key entered since', r.xtKept, 'AZ-NEW');
+    t.eq('FLOOR: the restore still puts the athlete data back', r.restoredName, 'Restored Name');
+    t.ok('a prune keeps a picture a one-step-back snapshot still names', r.snapKept === true, JSON.stringify(r));
+    t.ok('FLOOR: a picture nothing names is still pruned', r.orphanGone === true, JSON.stringify(r));
+    t.ok('FLOOR: erase-everything still erases a snapshot picture', r.eraseClears === true, JSON.stringify(r));
+
+    const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    t.ok('the name box is capped at the 60 the boot repair keeps', /id="ob-name" maxlength="60"/.test(src) && /\$\('#ob-name'\)\.value\|\|''\)\.trim\(\)\.slice\(0,60\)/.test(src));
+    t.ok('self-update unregisters only this app\'s own scope', /reg&&reg\.scope===new URL\('\.\/',location\.href\)\.href\)await reg\.unregister\(\)/.test(src));
+    t.ok('hard reset prunes with the snapshots excluded', /prunePhotoBlobs\(\[\],\{snapshots:false\}\)/.test(src));
+    errors.forEach(e => t.fail('page error on the restore keys', e));
+    await browser.close();
+  }
+
   srv.close();
   return t.finish();
 }

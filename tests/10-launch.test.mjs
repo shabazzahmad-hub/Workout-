@@ -3216,6 +3216,174 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+  /* ---- v541: a swap during a session keeps the work, and the session ----------
+     A review of the swap paths, after v540 added keepLoggedWork():
+
+     - the guided player's swap left the logged sets on the OLD move, so the
+       rebuilt session put the old move back and the new one fell out of it:
+       measured, the very next set read "Set completed, but the count may not
+       have saved" and was lost;
+     - the player sized a swapped finisher or bonus from prescribe() alone, so a
+       one-round finisher became three or four;
+     - the sharpen-phase rehearsal overrode the athlete's own finisher swap;
+     - a swap could put a move into the session twice;
+     - a stored swap ignored the tight-room setting. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const reset = () => page.evaluate(() => {
+      STATE.progressPtr = 3; STATE.logs = {}; STATE.swaps = {}; delete STATE._plResume; delete STATE._timeCap;
+      STATE.profile.tightSpace = false; STATE.profile.limitations = []; STATE.prep = {};
+      try { if (PLAYER) playerTeardown(); } catch (e) {}
+      save();
+    });
+
+    // 1. the reported shape: one set of A, swap to B, one set of B
+    await reset();
+    const a = await page.evaluate(() => {
+      const o = {};
+      openPlayer();
+      o.A = plCur().exId;
+      playerSetDone();
+      o.setsOnA = (STATE.logs[3].ex[o.A] || {}).sets;
+      o.B = (swapOptions(plCur())[0] || {}).exId;
+      plClear(); plEnterReady(false);
+      playerSwap(o.B);
+      playerSetDone();
+      const ex = STATE.logs[3].ex;
+      o.onB = ex[o.B] ? ex[o.B].sets.filter(Boolean).length : 0;
+      o.aLeft = !!ex[o.A];
+      const sess = buildSession(3);
+      o.rebuilt = [...sess.main, sess.finisher].map(m => m.exId);
+      o.toast = (document.getElementById('toast') || {}).textContent || '';
+      return o;
+    });
+    s.ok('guard: the set on the first move really was logged', Array.isArray(a.setsOnA) && a.setsOnA[0] === true, a);
+    s.ok('guard: the player offered a real swap', !!a.B && a.B !== a.A, a);
+    s.eq('a player swap carries the logged set across, and the next set lands', a.onB, 2, a);
+    s.ok('the old move holds no orphaned sets', a.aLeft === false, a);
+    s.ok('the rebuilt session holds the new move and not the old one', a.rebuilt.includes(a.B) && !a.rebuilt.includes(a.A), a);
+    s.ok('the athlete is not told the count may not have saved', !/may not have saved/.test(a.toast), a);
+
+    // 2. the finisher stays one round; a per-side swap stays even
+    await reset();
+    const b = await page.evaluate(() => {
+      const o = {};
+      openPlayer();
+      const fi = PLAYER.items.indexOf(PLAYER.sess.finisher);
+      o.fi = fi;
+      o.rawSets = prescribe('highknees', PLAYER.sess.pos).sets;
+      PLAYER.i = fi; PLAYER.s = 0; plClear(); plEnterReady(false);
+      playerSwap('highknees');
+      o.finSets = plCur().sets;
+      playerTeardown();
+      STATE.swaps = {}; STATE.logs = {}; save();
+      openPlayer();
+      PLAYER.i = 0; PLAYER.s = 2; plClear(); plEnterReady(false);
+      o.side = EX.sideplank.side;
+      playerSwap('sideplank');
+      o.sideSets = plCur().sets;
+      o.restSet = plCur().rest; o.rxRest = prescribe('sideplank', PLAYER.sess.pos).rest;
+      return o;
+    });
+    s.ok('guard: the finisher is in the player', b.fi >= 0, b);
+    s.ok('guard: prescribe() alone would give the swapped finisher several rounds', b.rawSets > 1, b);
+    s.eq('a swapped finisher stays ONE round', b.finSets, 1, b);
+    s.ok('guard: the swap target is a per-side movement', b.side === 'perSet', b);
+    s.ok('a per-side swap on set 3 lands on an even count that keeps the set', b.sideSets % 2 === 0 && b.sideSets >= 3, b);
+    s.eq('the swapped move takes the rest prescribe() gives it', b.restSet, b.rxRest, b);
+
+    // 3. the sharpen-phase rehearsal does not override the athlete's finisher swap
+    await reset();
+    const c = await page.evaluate(() => {
+      const o = {};
+      o.ladderFin = buildSession(3).finisher.exId;     // no test date: the ordinary finisher
+      const d = new Date(); d.setDate(d.getDate() + 28);
+      const f = new Date(); f.setDate(f.getDate() - 70);
+      STATE.prep = { date: localISO(d), planFrom: localISO(f) };
+      o.phase = prepPhase();
+      const plain = buildSession(3);
+      o.plainFin = plain.finisher.exId;
+      // a valid finisher swap that is not the rehearsal
+      const alt = ['highknees', 'sealjack', 'fastfeet', 'jumpingjack'].find(k => k !== o.plainFin && swapStillValid(k) && !plain.main.some(m => m.exId === k));
+      o.alt = alt;
+      setSwap(3, '__fin', alt);
+      o.swappedFin = buildSession(3).finisher.exId;
+      return o;
+    });
+    s.eq('guard: the athlete is in the sharpen phase', c.phase, 'sharpen', c);
+    s.ok('guard: the rehearsal really replaces the ordinary finisher', c.plainFin !== c.ladderFin, c);
+    s.eq('an explicit finisher swap outranks the rehearsal', c.swappedFin, c.alt, c);
+
+    // 4. no move twice, whatever was swapped; swapOptions never offers one in use
+    await reset();
+    const d = await page.evaluate(() => {
+      const o = {};
+      const sess = buildSession(3);
+      const ids = sess.main.map(m => m.exId);
+      o.target = ids[1];
+      setSwap(3, sess.main[0].slot, o.target);
+      setSwap(3, 'focus', ids[2]);
+      setSwap(3, '__fin', ids[3]);
+      const after = buildSession(3);
+      const all = [...after.main, after.finisher].map(m => m.exId);
+      o.dups = all.filter((x, i) => all.indexOf(x) !== i);
+      STATE.swaps = {}; save();
+      const fresh = buildSession(3);
+      const offered = [];
+      [...fresh.main, fresh.finisher].forEach(m => {
+        const others = [...fresh.main, fresh.finisher].filter(x => x !== m).map(x => x.exId);
+        swapOptions(m).forEach(op => { if (others.includes(op.exId)) offered.push(m.exId + '->' + op.exId); });
+      });
+      o.offered = offered;
+      return o;
+    });
+    s.ok('guard: the swap targets were moves already in the session', !!d.target, d);
+    s.eq('a swap never puts a move into the session twice', d.dups, [], d);
+    s.eq('the swap sheet never offers a move the session already holds', d.offered, [], d);
+
+    // 5. the tight room: a stored swap and an offer both ask it
+    await reset();
+    const e = await page.evaluate(() => {
+      const o = {};
+      const roomy = Object.keys(EX).filter(k => SPACE_SWAP[k] && EX[SPACE_SWAP[k]]);
+      o.roomy = roomy.length;
+      o.mover = roomy.find(k => hasGearFor(k) && safeSwap(k) === k);
+      o.okWide = swapStillValid(o.mover);
+      STATE.profile.tightSpace = true;
+      o.okTight = swapStillValid(o.mover);
+      const sess = buildSession(3);
+      const bad = [];
+      [...sess.main, sess.finisher].forEach(m => swapOptions(m).forEach(op => { if (spaceSwap(op.exId) !== op.exId) bad.push(op.exId); }));
+      o.bad = bad;
+      STATE.profile.tightSpace = false; save();
+      return o;
+    });
+    s.ok('guard: a move needs the room and is otherwise valid', !!e.mover && e.okWide === true, e);
+    s.ok('in a tight room a stored swap to that move is not honoured', e.okTight === false, e);
+    s.eq('in a tight room the swap sheet offers no move that needs the room', e.bad, [], e);
+
+    // 6. a move the rebuild does not hold still marks its set from the player
+    await reset();
+    const f = await page.evaluate(() => {
+      const o = {};
+      openPlayer();
+      const sess = buildSession(3);
+      const inSess = [...sess.main, sess.finisher].map(m => m.exId);
+      o.x = ['plank', 'deadbug', 'birddog', 'glutebridge'].find(k => !inSess.includes(k));
+      plCur().exId = o.x;
+      try { markSetFromTimer(o.x); o.threw = false; } catch (err) { o.threw = String(err); }
+      o.logged = !!(STATE.logs[3] && STATE.logs[3].ex[o.x]);
+      return o;
+    });
+    s.ok('guard: the move is not in the rebuilt session', !!f.x, f);
+    s.ok('marking a set the rebuild does not hold does not throw', f.threw === false, f);
+    s.ok('and the set is logged against the move the athlete is doing', f.logged === true, f);
+
+    errors.forEach(x => s.fail('page error', x));
+    await browser.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
