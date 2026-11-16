@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='540';
+const APP_VERSION='543';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -2131,8 +2131,25 @@ function idbKeys(){return new Promise(res=>{try{if(!idb)return res([]);const rq=
    be undone" and stay on the device for ever, unreachable by any screen.
    These are pictures of somebody's body, so that is the most expensive promise
    in the app to leave unkept. */
-async function prunePhotoBlobs(keepIds){
+/* A picture one of the two one-step-back snapshots still names is not an
+   orphan: the Restore button that snapshot drives would put its row back with
+   nothing behind it, and a photo is the one thing here that cannot be taken
+   again. So the snapshots' ids are kept unless the caller says otherwise —
+   which only "erase everything" does, because it erases the snapshots too
+   (v541). Read SYNCHRONOUSLY, before the first await, so the answer is the
+   snapshots as they stood when the prune was asked for. */
+function _snapshotPhotoIds(){
+  const out=[];
+  [PREIMPORT_KEY,CROSSTAB_KEY].forEach(k=>{try{
+    const snap=localStorage.getItem(k);if(!snap)return;
+    const p=_jsonSafe(snap);
+    ((p&&Array.isArray(p.photos))?p.photos:[]).forEach(x=>{if(x&&x.id)out.push(String(x.id));});
+  }catch(e){}});
+  return out;
+}
+async function prunePhotoBlobs(keepIds,opts){
   const keep=new Set((keepIds||[]).map(String));
+  if(!(opts&&opts.snapshots===false))_snapshotPhotoIds().forEach(id=>keep.add(id));
   (await idbKeys()).forEach(k=>{const s=String(k);
     if(s.slice(0,3)==='ph_'&&!keep.has(s.slice(3)))idbDel(s);});
 }
@@ -3747,7 +3764,10 @@ function swapStillValid(exId){
      It stays so that a future change to hasGearFor() cannot make this fail
      open again, and no check can catch its removal. */
   if(!exKnown(exId))return false;
-  try{return hasGearFor(exId)&&safeSwap(exId)===exId;}catch(e){console.error('[swapStillValid]',e);return false;}
+  /* The tight room is the third question every picking path asks, and this
+     one never did: a swap saved before the athlete declared a tight room kept
+     a travelling or inverted move in the session (v541). */
+  try{return hasGearFor(exId)&&safeSwap(exId)===exId&&spaceSwap(exId)===exId;}catch(e){console.error('[swapStillValid]',e);return false;}
 }
 function buildSession(ptr,opts){
   const pos=posOf(ptr);
@@ -3883,7 +3903,10 @@ function buildSession(ptr,opts){
     // An explicit swap wins — but only while it is still safe and still doable.
     // Otherwise a swap saved before an injury or a kit change was declared would
     // keep forcing the exercise the athlete just told us they cannot do.
-    if(sw&&sw[ladder]&&EX[sw[ladder]]&&swapStillValid(sw[ladder])){exId=sw[ladder];swapped.add(ladder);}
+    /* ...and never one already in the session. Logs are keyed by exercise id,
+       so two copies of one move read ONE log entry: three sets done read as
+       six, and the second copy in the player can never mark a set (v541). */
+    if(sw&&sw[ladder]&&EX[sw[ladder]]&&!used.has(sw[ladder])&&swapStillValid(sw[ladder])){exId=sw[ladder];swapped.add(ladder);}
     if(!exId||!EX[exId]){dropped.push(ladder);return null;}
     used.add(exId);
     const it={exId,...prescribe(exId,pos),slot:ladder};
@@ -3909,7 +3932,8 @@ function buildSession(ptr,opts){
   }
   const finLadName=pos.session.finisher;
   const finId=distinct(finLadName,rungIndex(finLadName,cycle,week,level));
-  let finEx=(sw&&sw.__fin&&EX[sw.__fin]&&swapStillValid(sw.__fin))?sw.__fin:finId;
+  const finSwapped=!!(sw&&sw.__fin&&EX[sw.__fin]&&!used.has(sw.__fin)&&swapStillValid(sw.__fin));
+  let finEx=finSwapped?sw.__fin:finId;
   /* The finisher is structural — every session ends on one. If the athlete's
      flagged joints leave nothing in its family, fall back to marching in place,
      which is safe on every joint list. */
@@ -3919,7 +3943,11 @@ function buildSession(ptr,opts){
      same unit — no minute is added. A null answer leaves the finisher exactly
      as it was, which is what makes it a no-op for every athlete with no test
      date, and in base, build and taper. */
-  {const sharp=sharpenFinisher(pos,used,finEx);if(sharp)finEx=sharp;}
+  /* An explicit swap outranks it, the same rule the kit move follows. It did
+     not: the swap sheet said "Swapped to X", the card kept the rehearsal, and in
+     the player the rebuilt session no longer held X, so its round was never
+     logged (v541). */
+  if(!finSwapped){const sharp=sharpenFinisher(pos,used,finEx);if(sharp)finEx=sharp;}
   used.add(finEx);
   const finisher={exId:finEx,...prescribe(finEx,pos),slot:finLadName};
   /* One all-out burnout round -- except that ONE round of a per-side movement
@@ -3938,7 +3966,9 @@ function buildSession(ptr,opts){
      tag. It used to take prescribe()'s raw sets: measured, the 8-Count Push-Up
      bonus was 2 sets and the Burpee it was swapped to was 3 — 50% more work on
      the one move meant to be small, and the focusKey dropped (v534). */
-  if(sw&&sw.focus&&EX[sw.focus]&&swapStillValid(sw.focus)){
+  /* Only while there IS a bonus (its corrective sibling below has always asked
+     that), and never a move already in the session (v541). */
+  if(bonus&&sw&&sw.focus&&EX[sw.focus]&&!used.has(sw.focus)&&swapStillValid(sw.focus)){
     const rx=prescribe(sw.focus,pos);
     bonus={exId:sw.focus,...rx,sets:itemSets(sw.focus,Math.min(rx.sets,2),pos),slot:'focus',focus:true,focusKey:bonus&&bonus.focusKey};
   }
@@ -4863,7 +4893,7 @@ function onboardHTML(){
     <div class="tiny muted" id="ob-steplbl" style="margin-top:6px">Step 1 of ${OB_STEPS} · v${APP_VERSION} · changes save as you go</div></div>
 
   ${step(1,'About you',`
-    <div class="field"><label for="ob-name">Your name (optional)</label><input id="ob-name" placeholder="Athlete" autocomplete="off" value="${(P.name||'').replace(/"/g,'&quot;')}"></div>
+    <div class="field"><label for="ob-name">Your name (optional)</label><input id="ob-name" maxlength="60" placeholder="Athlete" autocomplete="off" value="${(P.name||'').replace(/"/g,'&quot;')}"></div>
     <div class="numrow" style="gap:10px">
       <div class="field" style="flex:1.4;margin:0"><label>Sex (for calorie math)</label>
         <div class="daypick" id="ob-sex"><button data-s="male"${on(P.sex||'male','male')}>Male</button><button data-s="female"${on(P.sex,'female')}>Female</button></div></div>
@@ -5327,7 +5357,7 @@ function obFinishNav(){
 function obReadForm(){
   if(!$('#ob-name'))return;   // wizard not mounted — nothing to read
   const P=STATE.profile, N=STATE.nutrition;
-  P.name=($('#ob-name').value||'').trim();
+  P.name=($('#ob-name').value||'').trim().slice(0,60);   // the boot repair caps at 60; a writer that did not made a valid name read as a repair (v541)
   P.unit=($('#ob-unit button.on')||{dataset:{u:'cm'}}).dataset.u;
   const im=P.unit==='in';
   P.sex=($('#ob-sex button.on')||{dataset:{s:'male'}}).dataset.s;
@@ -6141,7 +6171,7 @@ function forceWeeksLeft(){
     if(!isDateISO(d))return null;
     const ms=new Date(d+'T00:00:00').getTime()-new Date(todayISO()+'T00:00:00').getTime();
     if(!isFinite(ms))return null;
-    return Math.ceil(ms/(7*86400000));
+    return Math.ceil(Math.round(ms/86400000)/7);
   }catch(e){return null;}
 }
 function fmtForce(ev,v){
@@ -6419,15 +6449,15 @@ function _dayRunKm(t){
 
    `weeks` is returned alongside so the card can say which it counted — a base
    that drops because three weeks were empty is only legible if it says so. */
-function _trailingWeeks(readKm){
+function _trailingWeeks(readKm,endISO){
   const days=(nut().days)||{};
-  const now=new Date(todayISO()+'T00:00:00').getTime();
+  const now=new Date((isDateISO(endISO)?endISO:todayISO())+'T00:00:00').getTime();
   const km=[0,0,0,0], seen=[false,false,false,false];
   let any=false;
   Object.keys(days).forEach(d=>{
     const ms=new Date(d+'T00:00:00').getTime();
     if(!isFinite(ms))return;
-    const wk=Math.floor((now-ms)/(7*86400000));
+    const wk=Math.floor(Math.round((now-ms)/86400000)/7);
     if(wk<0||wk>3)return;
     seen[wk]=true;
     const v=readKm(days[d]);
@@ -6441,6 +6471,35 @@ function _trailingWeeks(readKm){
            weeks:used.length, blank:used.filter(v=>v===0).length };
 }
 function trailingRunStats(){try{return _trailingWeeks(_dayRunKm);}catch(e){return null;}}
+/* THE PLAN'S BASE IS WHAT THE ATHLETE DID BEFORE THE BLOCK OPENED, and it stays
+   put. Both plans read the LIVE trailing average and then compounded the ramp
+   from `planFrom` on top of it — so an athlete who followed the plan raised the
+   average, and the next week was ramped again from the raised figure. Measured
+   on a 16-week block opened at 10 km a week and followed exactly: 46 km by week
+   9 and the 60 km ceiling by week 10, against 21 km on a fixed base. That is
+   the injury the 10% rule exists to prevent, delivered by the plan (v543).
+
+   With nothing logged before the block opened, the base is the first logged
+   week after it, and `lag` is how many weeks in that was — the ramp counts from
+   there, so "log a few runs and it rebuilds" stays true without the base ever
+   moving again. A plan with no `planFrom` stamp reads live, as before. */
+function prepBaseStats(readKm){
+  try{
+    const pf=prep().planFrom;
+    if(!isDateISO(pf))return {stats:_trailingWeeks(readKm),lag:0,anchored:false};
+    /* The window ends ON the block's first day, so a block opened today reads
+       exactly what the live read gives — one day earlier shifted every week
+       bucket by a day and gave a different base for the same logs. */
+    let st=_trailingWeeks(readKm,pf);
+    if(st&&st.avg>0)return {stats:st,lag:0,anchored:true};
+    const days=nut().days||{}, t=todayISO();
+    const first=Object.keys(days).filter(k=>isDateISO(k)&&k>=pf&&k<=t&&readKm(days[k])>0).sort()[0];
+    if(!first)return {stats:null,lag:0,anchored:true};
+    st=_trailingWeeks(readKm,first);
+    const lag=Math.floor(Math.round((Date.parse(first+'T00:00:00')-Date.parse(pf+'T00:00:00'))/86400000)/7);
+    return {stats:st,lag:Math.max(0,lag),anchored:true};
+  }catch(e){return {stats:null,lag:0,anchored:false};}
+}
 function trailingRuckStats(){try{return _trailingWeeks(_dayRuckKm);}catch(e){return null;}}
 function trailingRunKm(){const t=trailingRunStats();return t?t.avg:null;}
 /* ---- the two plans, added together ---------------------------------------
@@ -6573,9 +6632,19 @@ function ruckLadderWeek(raw){
   const left=prepWeeksLeft();
   if(left===null)return {noDate:true,passed:prepDatePassed()};
   const wk=prepWeekNo(), phase=prepPhase();
-  const base=trailingRuckKm();
+  const anc=prepBaseStats(_dayRuckKm);
+  const base=anc.stats?anc.stats.avg:null;
   const startKm=(base!==null&&base>0)?base:PREP_RUCK_FLOOR_KM;
-  const startLb=(base!==null&&base>0)?ruckLoadLb():RUCK_PLATES[0];
+  /* THE PLATE IS ANCHORED THE SAME WAY. ruckLoadLb() is the plate the athlete
+     carries NOW — after following the ladder, it already holds every step the
+     ladder took, and the walk below then added them again (v543). The plate at
+     the block's start is stamped beside planFrom; a block stamped before the
+     stamp existed backs the steps already taken out of today's plate, which
+     can only ever read LIGHTER than the truth. */
+  const _pb=prep().baseLb;
+  const _hasBase=base!==null&&base>0;
+  const _stamped=typeof _pb==='number'&&isFinite(_pb)&&_pb>0;
+  let startLb=!_hasBase?RUCK_PLATES[0]:(anc.lag>0?RUCK_PLATES[0]:(_stamped?Math.min(_pb,RUCK_LB_MAX):ruckLoadLb()));
   const ceil=ruckLoadCeilLb();
   /* Walk the cycle forward so the two variables can never move together, and
      so the week's answer does not depend on what was rendered last time. */
@@ -6637,7 +6706,7 @@ function ruckLadderWeek(raw){
     if(n<wantSteps)wantSteps=n;});
   if(!isFinite(wantSteps))wantSteps=0;
   const peak=prepPeak(startKm,PREP_RUCK_PEAK_KM);
-  let km=startKm, lb=startLb, climbing='distance', down=false, capped=false, took=0;
+  let km, lb, climbing, down, capped, took, tookBefore;
   const raise=()=>{if(lb+PREP_RUCK_STEP_LB<=ceil){lb+=PREP_RUCK_STEP_LB;took++;}else capped=true;};
   /* AN UNRESOLVED HOT SPOT HOLDS THIS WEEK, and only this week — the history
      the loop walks is what the athlete has already done, so the hold applies to
@@ -6646,18 +6715,29 @@ function ruckLadderWeek(raw){
      back feel the next morning decides whether load goes up, and a blister is
      that answer in its plainest form. */
   const hold=(()=>{try{return footHold();}catch(e){return false;}})();
-  for(let w=2;w<=wk;w++){
-    const slot=((w-1)%4)+1;                       // one slot raises load · slot 4 is the down week
-    const inTaper=w>=taperFrom;
-    if(slot===4){down=true;climbing='neither';continue;}
-    down=false;
-    if(w===wk&&hold){climbing='foot';continue;}
-    if(slot===loadSlot&&!inTaper&&took<wantSteps){
-      climbing='load';raise();
-    }else{
-      climbing='distance';
-      km=Math.min(km*PREP_RAMP,peak);
+  const walk=lb0=>{
+    km=startKm;lb=lb0;climbing='distance';down=false;capped=false;took=0;tookBefore=0;
+    for(let w=2;w<=wk;w++){
+      if(w===wk)tookBefore=took;
+      const slot=((w-1)%4)+1;                       // one slot raises load · slot 4 is the down week
+      const inTaper=w>=taperFrom;
+      if(slot===4){down=true;climbing='neither';continue;}
+      down=false;
+      if(w===wk&&hold){climbing='foot';continue;}
+      // nothing climbs before the week the base was read from
+      if(w<=1+anc.lag){climbing='distance';continue;}
+      if(slot===loadSlot&&!inTaper&&took<wantSteps){
+        climbing='load';raise();
+      }else{
+        climbing='distance';
+        km=Math.min(km*PREP_RAMP,peak);
+      }
     }
+  };
+  walk(startLb);
+  if(_hasBase&&!_stamped&&anc.lag===0&&anc.anchored){
+    startLb=Math.max(RUCK_PLATES[0],ruckLoadLb()-tookBefore*PREP_RUCK_STEP_LB);
+    walk(startLb);
   }
   /* `down` is owned by the LOOP and nowhere else. It used to be re-derived
      here as well, which meant a week could be treated as a climbing week by
@@ -6873,7 +6953,7 @@ function prepMidWeeksAway(){
   const mid=prepMidISO();
   if(!mid)return null;
   const ms=new Date(mid+'T00:00:00').getTime()-new Date(todayISO()+'T00:00:00').getTime();
-  return ms<=0?null:Math.ceil(ms/(7*86400000));
+  return ms<=0?null:Math.ceil(Math.round(ms/86400000)/7);
 }
 /* isDateISO(), not the pattern: toLocaleDateString() on an Invalid Date does
    not throw, it returns the STRING "Invalid Date", so the catch below never
@@ -6891,7 +6971,7 @@ function prepWeekNo(){
     if(!isDateISO(f))return 1;
     const ms=new Date(todayISO()+'T00:00:00').getTime()-new Date(f+'T00:00:00').getTime();
     if(!isFinite(ms)||ms<0)return 1;
-    return Math.max(1,Math.floor(ms/(7*86400000))+1);
+    return Math.max(1,Math.floor(Math.round(ms/86400000)/7)+1);
   }catch(e){return 1;}
 }
 /* The last week that still climbs. Sharpening starts at 6 weeks to go, so the
@@ -7276,7 +7356,8 @@ function prepPathHTML(){
 function enduranceWeek(raw){
   const left=prepWeeksLeft(), phase=prepPhase();
   if(left===null)return {noDate:true,passed:prepDatePassed()};
-  const stats=trailingRunStats();
+  const anc=prepBaseStats(_dayRunKm);
+  const stats=anc.stats;
   const base=stats?stats.avg:null;
   const start=(base!==null&&base>0)?base:PREP_FLOOR_KM;
   /* Weeks ELAPSED since the plan opened, so the ramp compounds forward. It is
@@ -7292,7 +7373,7 @@ function enduranceWeek(raw){
      week that was still climbing, so the plateau is a real number the athlete
      earned rather than a cap invented here. */
   const plateauWk=prepClimbWeeks();
-  const climbTo=Math.max(0,(PREP_PLATEAU_PHASES.indexOf(phase)>=0?Math.min(wk,plateauWk):wk)-1);
+  const climbTo=Math.max(0,(PREP_PLATEAU_PHASES.indexOf(phase)>=0?Math.min(wk,plateauWk):wk)-1-anc.lag);
   const peak=prepPeak(start,PREP_PEAK_KM);
   /* ONE EXPRESSION, READ TWICE. `km` and `curve` are two halves of one figure,
      and clamping only one of them is how a card comes to print a number the
@@ -7325,7 +7406,7 @@ function enduranceWeek(raw){
   const footNew=fit?fit.newMode:null, footAdded=fit?fit.added:0;
   const footBig=!!(fit&&fit.big);
   return {left,phase,wk,down,km,curve,start:Math.round(start*10)/10,
-    blank:stats?stats.blank:0, counted:stats?stats.weeks:0,
+    blank:stats?stats.blank:0, counted:stats?stats.weeks:0, lag:anc.lag, anchored:anc.anchored,
           estimated:base===null,climbed,plateaued,plateauWk,atPeak,peak:Math.round(peak*10)/10,
           footTotal,footFrom,footStep,footBig,footNew,footAdded,
           note:prepPhaseNote(phase),
@@ -7383,7 +7464,7 @@ function enduranceHTML(){
            and is kept either way. */
         ? `<div class="note warn" style="margin:10px 0 0"><b>Built on an assumption, because nothing is logged.</b> It opened at ${_ve(distShow(PREP_FLOOR_KM))} a week because there were no runs to read, and has climbed to ${_ve(distShow(w.km))} from there. Log a few runs and it will rebuild from what you actually do.</div>`
         : `<div class="note warn" style="margin:10px 0 0"><b>Starting low, because nothing is logged yet.</b> The plan opens at ${_ve(distShow(PREP_FLOOR_KM))} a week and climbs from there. Log a few runs and it will build from what you actually do instead.</div>`)
-      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you have been logging${w.blank>0?` — <b>${w.blank} of the last ${w.counted} weeks had no runs at all</b>, counted as the zero they were rather than skipped`:''}, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
+      : `<div class="tiny muted" style="margin-top:6px">Built from the <b>${_ve(distShow(w.start))}</b> a week you ${w.anchored?(w.lag>0?'logged in your first weeks of running':'were running when the block began'):'have been logging'}${w.blank>0?` — <b>${w.blank} of ${w.anchored?'those':'the last'} ${w.counted} weeks had no runs at all</b>, counted as the zero they were rather than skipped`:''}, climbing no more than <b>${Math.round((PREP_RAMP-1)*100)}%</b> a week.</div>`}
     ${w.atPeak?`<div class="note info" style="margin:10px 0 0"><b>The build has reached its ceiling.</b> Volume holds at ${_ve(distShow(w.peak))} a week from here — ${Math.round(PREP_PEAK_MULT*10)/10}× what you opened on, and ${_ve(ev.peak)}. The work gets sharper from here, not longer.</div>`:''}
     ${w.down?`<div class="tiny muted" style="margin-top:6px">Next week goes back to <b>${_ve(distShow(w.curve===w.km?w.curve:Math.round(w.curve*PREP_RAMP*10)/10))}</b>. That looks like a jump against this week and is not one — it is ${Math.round((PREP_RAMP-1)*100)}% up on the last week you were not cutting.</div>`:''}
     <div class="tiny muted" style="margin-top:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:800">This week</div>
@@ -7961,8 +8042,10 @@ function saveForceDate(ev){
   const newBlock=switched||!prevDate||todayISO()>=prevDate;
   STATE.prep.date=v;
   if(key==='force')delete STATE.prep.event; else STATE.prep.event=key;
-  if(newBlock||!isDateISO(STATE.prep.planFrom))
+  if(newBlock||!isDateISO(STATE.prep.planFrom)){
     STATE.prep.planFrom=todayISO();
+    STATE.prep.baseLb=ruckLoadLb();    // the plate the block opens on (v543)
+  }
   save();closeSheet();toast((key==='bmq'?'BMQ start date':'Test date')+' set 📅');openPrepHome();
 }
 function clearForceDate(){
@@ -7970,7 +8053,7 @@ function clearForceDate(){
      opens its block at whatever week the abandoned one had reached — the same
      stale-stamp defect by a second door. */
   const home=prepEvent();
-  if(STATE.prep&&typeof STATE.prep==='object'){delete STATE.prep.date;delete STATE.prep.planFrom;delete STATE.prep.event;}
+  if(STATE.prep&&typeof STATE.prep==='object'){delete STATE.prep.date;delete STATE.prep.planFrom;delete STATE.prep.event;delete STATE.prep.baseLb;}
   save();closeSheet();home==='bmq'?openBmqPrep():openForcePrep();
 }
 /* "TODAY IS ALREADY LOGGED" IS FALSE ON A PAIN STOP, and this note renders a
@@ -8605,8 +8688,21 @@ function ladderNeighbor(m,dir){const lad=LADDERS[m.slot];if(!lad)return null;con
    easier/harder rungs; everything else (weights, quick workouts, the targeted
    focus bonus, bonus circuits) falls back to similar moves from the same region
    so EVERY exercise can be swapped, not just the ladder ones. */
+/* The other moves in the session the item belongs to: the player's own list
+   when the item is in it, otherwise today's built session. */
+function swapSessionIds(m){
+  try{
+    if(typeof PLAYER!=='undefined'&&PLAYER&&Array.isArray(PLAYER.items)&&PLAYER.items.includes(m))
+      return PLAYER.items.filter(x=>x!==m).map(x=>x&&x.exId).filter(Boolean);
+    const sess=buildSession(STATE.progressPtr);
+    return [...sess.main,sess.finisher].filter(x=>x&&x.exId!==m.exId).map(x=>x.exId);
+  }catch(e){return [];}
+}
 function swapOptions(m){
   const opts=[];const seen=new Set([m.exId]);
+  /* Never offer a move the session already holds (v541): logs are keyed by
+     exercise id, so a second copy reads the first copy's sets. */
+  try{(swapSessionIds(m)||[]).forEach(id=>seen.add(id));}catch(e){}
   /* Every offer must survive the same gates buildSession applies (swapStillValid).
      Only the fallback list used to be filtered, so Easier/Harder/Gentler could
      offer a move on a flagged joint or needing kit you don't own — the swap
@@ -8614,7 +8710,7 @@ function swapOptions(m){
      time, leaving the original exercise on screen and the sets seemingly gone. */
   const _lims=(STATE.profile&&STATE.profile.limitations)||[];
   const _risky=k=>jointRisky(k,_lims);
-  const offerable=k=>{try{return EX[k]&&!_risky(k)&&hasGearFor(k)&&safeSwap(k)===k;}catch(e){console.error('[offerable]',e);return false;}};
+  const offerable=k=>{try{return EX[k]&&!_risky(k)&&hasGearFor(k)&&safeSwap(k)===k&&spaceSwap(k)===k;}catch(e){console.error('[offerable]',e);return false;}};
   const push=(exId,label)=>{if(exId&&EX[exId]&&!seen.has(exId)&&offerable(exId)){seen.add(exId);opts.push({exId,label});}};
   const easier=ladderNeighbor(m,-1),harder=ladderNeighbor(m,1);
   if(easier)push(easier,'⬇ Easier');
@@ -8922,9 +9018,17 @@ function playerSwap(exId){
   const m=plCur();const rx=prescribe(exId,PLAYER.sess.pos);
   // persist it for the day's program session so it survives leaving the player
   let persisted=true;
+  const _old=m.exId;
   if(PLAYER.sess&&PLAYER.sess.ptr===STATE.progressPtr&&m.slot){
     const key=(m===PLAYER.sess.finisher)?'__fin':m.slot;
     try{setSwap(STATE.progressPtr,key,exId);}catch(e){persisted=false;}
+    /* CARRY THE LOGGED SETS ACROSS, as the Today card's swap always has. They
+       stayed on the old move, so the rebuilt session put the old move back
+       (keepLoggedWork, v540) and the new one fell out of it: measured, the very
+       next set read "Set completed, but the count may not have saved" and was
+       lost (v541). */
+    try{const log=STATE.logs[STATE.progressPtr];
+      if(log&&log.ex&&log.ex[_old]&&!log.ex[exId]){log.ex[exId]=log.ex[_old];delete log.ex[_old];save();}}catch(e){}
   }
   /* THE SET COUNT COMES FROM prescribe() TOO. It was computing rx and using
      only rx.target, so a swap from a two-sided movement to a PER-SIDE one kept
@@ -8935,9 +9039,17 @@ function playerSwap(exId){
 
      Never below the set the athlete is already on, so a swap can neither
      strand completed work nor end the item underneath them. */
-  m.exId=exId;m.unit=nEx.unit;m.target=rx.target;m.rest=nEx.rest||m.rest;
+  m.exId=exId;m.unit=nEx.unit;m.target=rx.target;m.rest=rx.rest||nEx.rest||m.rest;
+  /* SIZED BY THE SLOT, the way buildSession() sizes it: the finisher is one
+     round, the bonus and the corrective at most two. prescribe() alone turned a
+     one-round finisher into three or four (v541). itemSets() keeps a per-side
+     move even, and the floor keeps the set the athlete is standing on. */
   {const _rs=(typeof rx.sets==='number'&&isFinite(rx.sets)&&rx.sets>0)?Math.round(rx.sets):m.sets;
-   m.sets=Math.max(_rs||1,(PLAYER.s||0)+1);}
+   const _isFin=!!(PLAYER.sess&&m===PLAYER.sess.finisher);
+   const _n=_isFin?1:((m.focus||m.corrective)?Math.min(_rs||1,2):(_rs||1));
+   let _k=Math.max(itemSets(exId,_n,PLAYER.sess&&PLAYER.sess.pos),(PLAYER.s||0)+1);
+   if(nEx.side==='perSet'&&_k%2)_k++;
+   m.sets=_k;}
   // the in-session swap above always applies regardless — only the toast
   // needs to say so when the part that's supposed to survive leaving the
   // player silently didn't, instead of claiming an unqualified success
@@ -9653,7 +9765,10 @@ function plEnterDone(){
        athlete was asked to do exactly this one. Only a session that did some
        work counts: a player opened and closed with nothing marked is not a
        session done. */
-    if(PLAYER.bmqKey&&PLAYER.setsDone>0){try{bmqMarkDone(PLAYER.bmqKey,true);}catch(e){}}
+    /* Only the session that is NEXT moves the week. An "out of order" strength
+       session ticked itself and everything before it — the ruck and the run
+       read done that were never done (v542). */
+    if(PLAYER.bmqKey&&PLAYER.setsDone>0){try{const _bq=bmqToday();if(!_bq.doneToday&&_bq.next===PLAYER.bmqKey)bmqMarkDone(PLAYER.bmqKey,true);}catch(e){}}
     return;
   }
   /* BELOW the free branch, not above it. The stamp used to sit one line before
@@ -14944,7 +15059,7 @@ function holdTrackerHTML(){
   const any=holdLog().length;
   let h=`<div class="section-label">Hold to failure · your own record</div>`;
   if(!any){
-    return h+`<div class="note info">No holds tested yet. Special training ▸ <b>Hold to failure</b> times a plank, a dead hang or a wall sit to your limit and keeps the number here.</div>`;
+    return h+`<div class="note info">No holds tested yet. Special training ▸ <b>Hold to failure</b> times ${HOLD_TESTS.map(x=>'a '+x.name.toLowerCase()).reduce((a,b,i,arr)=>a+(i===arr.length-1?' or ':', ')+b)} to your limit and keeps the number here.</div>`;
   }
   h+=`<div class="card pad">`;
   HOLD_TESTS.forEach(t=>{
@@ -15714,7 +15829,11 @@ function timerHTML(label,secs,isHold,total,ex){
   </div>`;
 }
 function markSetFromTimer(exId){
-  const sess=buildSession(STATE.progressPtr);const m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
+  const sess=buildSession(STATE.progressPtr);let m=[...sess.main,sess.finisher].find(x=>x.exId===exId);
+  /* The rebuild and the player can disagree about one move; the player is what
+     the athlete is doing, so its item answers rather than a throw (v541). */
+  if(!m&&typeof PLAYER!=='undefined'&&PLAYER&&Array.isArray(PLAYER.items))m=PLAYER.items.find(x=>x&&x.exId===exId);
+  if(!m)return;
   const log=ensureLog();const st=log.ex[exId]||{sets:[],done:false};st.sets=Array.isArray(st.sets)?st.sets:[];
   const i=setsDoneFor(st,m);if(i<m.sets)st.sets[i]=true;
   st.done=setsDoneFor(st,m)>=m.sets;if(st.done)recordPR(exId,m);
@@ -17160,7 +17279,7 @@ const ACHIEVEMENTS=[
   {id:'s200',emoji:'🛡️',name:'Double Century',desc:'200 workouts completed',check:()=>sessionsDoneCount()>=200},
   {id:'s378',emoji:'🎖️',name:'Full Tour',desc:plural(SESSIONS_PER_CYCLE*TOTAL_CYCLES,'session')+' — the complete program',check:()=>sessionsDoneCount()>=SESSIONS_PER_CYCLE*TOTAL_CYCLES},
   {id:'blocks3',emoji:'🔷',name:'Three Blocks Deep',desc:'Finish 3 '+WEEKS_PER_CYCLE+'-week blocks',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*3},
-  {id:'phase2',emoji:'🏗️',name:'Into Phase 2',desc:'Reach the full-body split',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*2},
+  {id:'phase2',emoji:'🏗️',name:'Into Phase 2',desc:'Reach the full-body split',check:()=>STATE.progressPtr>=SESSIONS_PER_CYCLE*PHASE1_CYCLES},
   {id:'plank60',emoji:'🧱',name:'Solid Minute',desc:'A prescribed 60s+ hold',check:()=>bestHoldPR()>=60},
   {id:'plank120',emoji:'🗿',name:'Two-Minute Titan',desc:'A prescribed 120s hold',check:()=>bestHoldPR()>=120},
   /* The length is derived. The check has always read SESSIONS_PER_CYCLE while
@@ -18472,7 +18591,7 @@ function foodRow(name,kcal,p,c,f,meal,portion,calc,src){
   return {name:String(name||'Meal').slice(0,60),kcal:_nn(kcal),p:_nn(p),
     c:_nn(c),f:_nn(f),meal:mealKey(meal)||currentMealSlot(),at:Date.now(),
     ...(cleanPortion(portion)?{portion:cleanPortion(portion)}:{}),
-    ...(_MACRO_KEY[calc]?{calc}:{}),
+    ...(macroKeyOk(calc)?{calc}:{}),
     ...(src==='shot'?{src:'shot'}:{})};
 }
 /* THE SAME SHAPE, for the athlete's SAVED and RECENT foods. `nutrition.foods`
@@ -18634,7 +18753,10 @@ function removeFood(idx){const d=nutToday();if(rowAt(d.food,idx)){d.food.splice(
 function editFood(idx){const d=nutToday();const it=rowAt(d.food,idx);if(!it)return;
   // carry the portion through an edit — it describes what was eaten, and dropping
   // it on every correction would erase the photo's own record of the amount
-  openQuickAdd({name:it.name,kcal:it.kcal,p:it.p,c:it.c,f:it.f,meal:it.meal,editIdx:idx,portion:it.portion});}
+  openQuickAdd({name:it.name,kcal:it.kcal,p:it.p,c:it.c,f:it.f,meal:it.meal,editIdx:idx,portion:it.portion,
+    /* the "calculated, not read" marker survives an edit that leaves the number
+       alone; it was dropped by every edit, even one that only moved the meal (v542) */
+    macroDerived:macroKeyOk(it.calc)?{which:it.calc,grams:it[_MACRO_KEY[it.calc]]}:null});}
 function quickPick(i){const f=rowAt(COMMON_FOODS,i);if(!f)return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
 /* ---- Macro targets: protein from bodyweight, fat ~27% of calories, carbs fill
    the rest. Only shown once a calorie target exists. ---- */
@@ -18734,7 +18856,8 @@ function saveFood(){
   const q=_faQty();const kcal=Math.round(perK*q),pr=Math.round(perP*q),cb=Math.round(perC*q),ft=Math.round(perF*q);
   if(kcal<=0&&pr<=0&&cb<=0&&ft<=0){toast('Enter calories or macros');return;}
   const meal=($('#fa-meal')&&$('#fa-meal').value)||currentMealSlot();
-  rememberFood(name,Math.round(perK),Math.round(perP),Math.round(perC),Math.round(perF));
+  // an edit corrects a logged row; its label ("Chicken ×2") is not a food to remember (v542)
+  if(typeof saveFood._editIdx!=='number')rememberFood(name,Math.round(perK),Math.round(perP),Math.round(perC),Math.round(perF));
   const label=q!==1?(name+' ×'+_fmtQty(q)):name;
   /* Held as the PER-SERVING amount, never multiplied by the quantity — the '×2'
      already in the label is what carries the multiple, so scaling this too would
@@ -18746,7 +18869,7 @@ function saveFood(){
      actually wrote into the box. */
   let calc='';
   {const d=saveFood._derived;
-   if(d&&_MACRO_KEY[d.which]){
+   if(d&&macroKeyOk(d.which)){
      const typed=d.which==='protein'?perP:(d.which==='carbs'?perC:perF);
      if(Math.round(typed)===Math.round(d.grams))calc=d.which;
    }}
@@ -19599,6 +19722,8 @@ function _missingMacro(est){
   return m.length===1?m[0]:null;
 }
 const _MACRO_KEY={protein:'p',carbs:'c',fat:'f'};
+/* an inherited key ('constructor') is truthy on a plain object (v542) */
+function macroKeyOk(k){return typeof k==='string'&&Object.prototype.hasOwnProperty.call(_MACRO_KEY,k);}
 /* A second, NARROW look at the same image for the one number the first pass
    dropped.
 
@@ -20160,7 +20285,7 @@ function intakeHTML(){
       rows.forEach(({f,i})=>{
         h+=`<div class="kv" style="border-top:1px solid var(--line);gap:6px">
           <button onclick="editFood(${i})" style="flex:1;min-width:0;text-align:left;background:none;border:none;color:var(--ink);cursor:pointer;padding:8px 0">
-            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${macrosUncaptured(f)?'':`${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}`}</span>${macrosUncaptured(f)?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ macros not captured — tap to add</span>`:(gp=>gp?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ ${gp.which} missing — tap to add ~${gp.grams} g</span>`:'')(foodMacroGap(f))}${_MACRO_KEY[f.calc]?`<span class="tiny muted"> · ${_ve(f.calc)} calculated from the calories, not read</span>`:''}${f.portion?`<span class="tiny muted"> · 📏 ${_ve(f.portion)}</span>`:''}</button>
+            ${_ve(f.name)} <span class="tiny muted">· ${f.kcal} kcal · ${macrosUncaptured(f)?'':`${f.p}p${f.c?' · '+f.c+'c':''}${f.f?' · '+f.f+'f':''}`}</span>${macrosUncaptured(f)?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ macros not captured — tap to add</span>`:(gp=>gp?`<span class="tiny" style="color:var(--gold);font-weight:700">⚠️ ${gp.which} missing — tap to add ~${gp.grams} g</span>`:'')(foodMacroGap(f))}${macroKeyOk(f.calc)?`<span class="tiny muted"> · ${_ve(f.calc)} calculated from the calories, not read</span>`:''}${f.portion?`<span class="tiny muted"> · 📏 ${_ve(f.portion)}</span>`:''}</button>
           <button class="chip" style="flex:0 0 auto" aria-label="Remove this food" onclick="removeFood(${i})">✕</button></div>`;
       });
     });
@@ -20172,6 +20297,31 @@ function intakeHTML(){
   return h;
 }
 /* ---- 7-day intake trend: are you actually hitting the target on average? ---- */
+/* WHICH WAY IS "ON PLAN" DEPENDS ON THE GOAL. The verdict was written for a
+   cut and every goal got it: a bulk averaging 500 kcal UNDER its target was
+   praised for "what drives the fat loss", and one eating what it was asked to
+   was warned it was over (v542). A cut is on plan at or under the target, a
+   bulk at or over it (within 5%), and a weight-stable goal within the drift
+   the app already allows that goal (STABLE_DRIFT_KG_WK, about 110 kcal a day)
+   rather than a band invented here. */
+function intakeOnPlan(kcal,target,goal){
+  if(!(target>0))return true;
+  if(goal==='gain')return kcal>=target*0.95;
+  if(weightStableGoal(goal))return Math.abs(kcal-target)<=STABLE_DRIFT_KG_WK*KCAL_PER_KG/7;
+  return kcal<=target;
+}
+function intakeVerdict(avg,target,goal){
+  const ok=intakeOnPlan(avg,target,goal), d=avg-target;
+  if(goal==='gain')return ok
+    ?'✅ Averaging '+avg+' kcal against your '+target+' kcal target — that is the surplus a bulk needs.'
+    :'⚠️ Averaging '+(-d)+' kcal under target across the days you logged — a bulk needs the surplus.';
+  if(weightStableGoal(goal))return ok
+    ?'✅ Averaging within '+Math.abs(d)+' kcal of your '+target+' kcal target — that holds the scale.'
+    :'⚠️ Averaging '+Math.abs(d)+' kcal '+(d>0?'over':'under')+' target across the days you logged.';
+  return ok
+    ?'✅ Averaging under your '+target+' kcal target — that\'s what drives the fat loss.'
+    :'⚠️ Averaging '+d+' kcal over target across the days you logged.';
+}
 function intakeTrendHTML(){
   const n=nut();const kcalT=n.kcalTarget;const days=[];
   for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);const key=localISO(dt);
@@ -20187,7 +20337,7 @@ function intakeTrendHTML(){
   const avgP=Math.round(logged.reduce((a,d)=>a+d.p,0)/logged.length);
   const max=Math.max(kcalT||0,...days.map(d=>d.kcal),1);
   const bars=days.map(d=>{const pct=Math.round(d.kcal/max*100);
-    const col=!d.n?'var(--line)':(kcalT&&d.kcal>kcalT?'var(--fire-l)':'var(--green)');
+    const col=!d.n?'var(--line)':(kcalT&&!intakeOnPlan(d.kcal,kcalT,n.goal)?'var(--fire-l)':'var(--green)');
     return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
       <div style="width:100%;height:56px;display:flex;align-items:flex-end"><div style="width:100%;height:${Math.max(3,pct)}%;background:${col};border-radius:4px"></div></div>
       <div class="tiny muted">${d.label}</div></div>`;}).join('');
@@ -20195,7 +20345,7 @@ function intakeTrendHTML(){
     <div class="row" style="justify-content:space-between"><div><b>${avg} kcal</b> <span class="tiny muted">daily average</span></div><div class="tiny muted">${avgP}g protein avg · ${logged.length}/6 days logged</div></div>
     <div class="row" style="gap:6px;align-items:flex-end;margin-top:10px">${bars}</div>
     ${kcalT?(logged.length>=5
-      ? `<div class="tiny muted" style="margin-top:8px">${avg<=kcalT?'✅ Averaging under your '+kcalT+' kcal target — that\'s what drives the fat loss.':'⚠️ Averaging '+(avg-kcalT)+' kcal over target across the days you logged.'}</div>`
+      ? `<div class="tiny muted" style="margin-top:8px">${intakeVerdict(avg,kcalT,n.goal)}</div>`
       /* Unlogged days are not random — they are the restaurant and the weekend,
          so dropping them biases the average in exactly the direction that
          produces false reassurance. Below 5 closed days, report, do not judge. */
@@ -22100,13 +22250,14 @@ function setSkipVal(v){
   const n=Math.max(0,+v||0);
   const cap=cardioCap('skip',m.sunit);
   t.skipVal=Math.min(cap,Math.round(n*100)/100);
+  t.skipLvl=m.slvl;   // the pace it is priced at today, so every reader prices it the same (v542)
   syncStepHabit();save();repaintMovement();
 }
 function addSkipVal(d){setSkipVal((movement().sval||0)+d);}
 function setSkipUnit(u){
   if(!SKIP_UNITS.some(x=>x[0]===u))return;
   const t=nutToday();const m=movement();const min=skipMinutes();
-  t.skipUnit=u;
+  t.skipUnit=u;t.skipLvl=m.slvl;
   if(min>0){
     t.skipVal=u==='min'?Math.round(min)
       :(u==='reps'?Math.round(min*skipRepsPerMin(m.slvl))
@@ -22263,6 +22414,7 @@ function setBikeVal(v){
   if(m.unit==='dist')n=showToKm(n);
   const cap=cardioCap('bike',m.unit);
   t.bikeVal=Math.min(cap,Math.round(n*100)/100);
+  t.bikeLvl=m.lvl;   // the pace it is priced at today, so every reader prices it the same (v542)
   syncStepHabit();save();repaintMovement();
 }
 function addBikeVal(d){
@@ -22278,7 +22430,7 @@ function bikeStep(u){return u==='min'?5:(u==='dist'?1:50);}
 function setBikeUnit(u){
   if(!BIKE_UNITS.some(x=>x[0]===u))return;
   const t=nutToday();const m=movement();const min=bikeMinutes();
-  t.bikeUnit=u;
+  t.bikeUnit=u;t.bikeLvl=m.lvl;
   if(min>0){
     t.bikeVal=u==='min'?Math.round(min)
       :(u==='dist'?Math.round(min*bikeKmPerMin(m.lvl)*100)/100
@@ -22308,6 +22460,7 @@ function setRuckVal(v){
   if(m.runit==='dist')n=showToKm(n);
   const cap=cardioCap('ruck',m.runit);
   t.ruckVal=Math.min(cap,Math.round(n*100)/100);
+  t.ruckLvl=m.rlvl;   // the pace it is priced at today, so every reader prices it the same (v542)
   syncStepHabit();save();repaintMovement();
 }
 function addRuckVal(d){
@@ -22321,7 +22474,7 @@ function ruckStep(u){return u==='min'?5:(u==='dist'?0.5:50);}
 function setRuckUnit(u){
   if(!RUCK_UNITS.some(x=>x[0]===u))return;
   const t=nutToday();const m=movement();const min=ruckMinutes();
-  t.ruckUnit=u;
+  t.ruckUnit=u;t.ruckLvl=m.rlvl;
   if(min>0){
     t.ruckVal=u==='min'?Math.round(min)
       :(u==='dist'?Math.round(min*ruckKmPerMin(m.rlvl)*100)/100
@@ -22335,6 +22488,7 @@ function setRunVal(v){
   if(m.nunit==='dist')n=showToKm(n);
   const cap=cardioCap('run',m.nunit);
   t.runVal=Math.min(cap,Math.round(n*100)/100);
+  t.runLvl=m.nlvl;   // the pace it is priced at today, so every reader prices it the same (v542)
   syncStepHabit();save();repaintMovement();
 }
 function addRunVal(d){
@@ -22348,7 +22502,7 @@ function runStep(u){return u==='min'?5:(u==='dist'?0.5:50);}
 function setRunUnit(u){
   if(!RUN_UNITS.some(x=>x[0]===u))return;
   const t=nutToday();const m=movement();const min=runMinutes();
-  t.runUnit=u;
+  t.runUnit=u;t.runLvl=m.nlvl;
   if(min>0){
     t.runVal=u==='min'?Math.round(min)
       :(u==='dist'?Math.round(min*runKmPerMin(m.nlvl)*100)/100
@@ -22636,7 +22790,9 @@ function syncStepHabit(){
      bike is not consent to be programmed one. So an hour of hard jacks credited
      15,780 step-equivalents and 342 kcal and still left the step habit
      unticked, quietly costing a nutrition-streak day. */
-  const everLogged=m.steps||m.val||m.jval||t._stepAuto;
+  /* every cardio mode, read from the registry: a ruck, a run or skipping alone
+     paid the step target and left the habit unticked (v542) */
+  const everLogged=m.steps||CARDIO_MODES.some(k=>{const vk=CARDIO_INFO[k]&&CARDIO_INFO[k].valKey;return !!(vk&&+t[vk]>0);})||t._stepAuto;
   if(!everLogged)return;
   if(!t.habits||typeof t.habits!=='object')t.habits={};
   t._stepAuto=1;
@@ -22707,7 +22863,7 @@ function rideTargetHTML(){
     <div class="row" style="justify-content:space-between;align-items:baseline">
       <div><b>${r.mins} min</b>${breakdown?` <span class="tiny muted">· ${_ve(breakdown)}</span>`:''}<div class="tiny muted">Target ${RIDE_TARGET.n} × ${RIDE_TARGET.min} min easy · resets Monday</div></div>
       <span class="tiny muted">${r.kcal} kcal</span></div>
-    <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, nothing burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part. Jumping jacks, the bike, a ruck and a run all count — pick whichever you will actually do today. Plain walking pays your <b>step target</b> above instead, not this one: the app can see a step count but cannot tell a deliberate walk from a busy day.</div>
+    <div class="note info" style="margin:10px 0 0"><b>Easy means easy.</b> Full sentences, nothing burning. This is the volume that shifts body fat without taking anything out of your sessions — the intervals in your workouts are already doing the hard part. ${cardioNamesSentence()} all count — pick whichever you will actually do today. Plain walking pays your <b>step target</b> above instead, not this one: the app can see a step count but cannot tell a deliberate walk from a busy day.</div>
   </div>`;
 }
 /* TODAY, REVIEWED — on the tab that reports things.
@@ -23173,7 +23329,17 @@ function nutritionStreak(){
        fired, because entries are daily — the allowance has to age out against
        the date it was used, not against the previous row. */
     if(graceAt&&(new Date(graceAt)-new Date(dates[i]))/86400000>7){grace=nutStreakGrace();graceAt=null;}
-    if(prev&&(new Date(prev)-new Date(dates[i]))/86400000>1)break;   // days must be consecutive
+    /* A DAY WITH NO ENTRY spends the grace too. The comment above says a day the
+       app was never opened was punished harder than a day tried and missed, and
+       that it was fixed; this line still broke on it with the grace unused
+       (v542). Both dates are bare ISO strings, so the subtraction is exact. */
+    if(prev){
+      const miss=Math.round((new Date(prev)-new Date(dates[i]))/86400000)-1;
+      if(miss>0){
+        if(miss<=grace){grace-=miss;graceAt=new Date(new Date(dates[i]).getTime()+86400000).toISOString().slice(0,10);}
+        else break;   // days must be consecutive
+      }
+    }
     streak++;prev=dates[i];
   }
   return streak;
@@ -23752,6 +23918,20 @@ function foodAlg(f){const a=FOOD_ALG[f&&f[0]];return Array.isArray(a)?a:null;}
 function foodDiets(f){return FOOD_DIET_OVERRIDE[f&&f[0]]||CAT_DIETS[f&&f[4]]||['omnivore'];}
 /* Fails CLOSED: an unlisted food is treated as unsafe rather than assumed
    clean, so forgetting to tag a new food hides it instead of serving it. */
+/* The short-of-target note named peanut butter to everybody, including the
+   athletes whose allergies made the day fall short in the first place — the
+   cottage-cheese line beside it had always asked (v542). It asks foodOk() now,
+   and a gap a spoonful cannot close says so. */
+function refTopUpHint(gapK){
+  const ok=n=>{try{const i=FOOD_BY_NAME[n];return i!==undefined&&foodOk(FOODS[i]);}catch(e){return false;}};
+  const fats=[['Peanut butter','a spoon of peanut butter'],['Almonds','a small handful of almonds'],['Olive oil','a spoon of olive oil'],['Avocado','half an avocado']];
+  const fat=(fats.find(x=>ok(x[0]))||[])[1];
+  const fruit=ok('Banana')?'a banana':(ok('Apple')?'an apple':'');
+  if(gapK>300)return 'more of the starch closes most of it'+(fat?', and '+fat+' the rest':'')+'.';
+  if(fruit&&fat)return fruit+' and '+fat+' closes it.';
+  if(fat)return fat+' closes it.';
+  return 'a little more of the starch closes it.';
+}
 function foodOk(f){
   try{
     const alg=foodAlg(f);
@@ -24685,7 +24865,7 @@ function renderRef(){
       h+=`<div class="note ${Math.abs(gapK)>300||Math.abs(gapP)>25?'warn':'info'}" style="margin:2px 0 6px">This one will not stretch all the way to your target without amounts nobody plates.
         ${gapP>12?`Add about <b>${gapP} g of protein</b>${_alg.includes('dairy')||_diet==='vegan'?'':` — ${amountForProtein(FOODS[FOOD_BY_NAME['Cottage cheese']],gapP)} g of cottage cheese does it`}. `:''}
         ${gapP<-12?`It runs <b>${-gapP} g over</b> on protein, which is not a problem, just more food than you need. `:''}
-        ${gapK>140?`It lands <b>${gapK} kcal short</b> — a banana and a spoon of peanut butter closes it.`:''}
+        ${gapK>140?`It lands <b>${gapK} kcal short</b> — ${refTopUpHint(gapK)}`:''}
         ${gapK<-140?`It runs <b>${-gapK} kcal over</b> — take it out of the starch.`:''}</div>`;
     }
     d.meals.forEach((m,mi)=>{
@@ -24816,7 +24996,7 @@ function renderFuel(){
    if(_tld!==null&&STATE.profile.timelineWeeks>0){
      const _w=STATE.profile.timelineWeeks;
      const _lbl=timelineLabel(_w);
-     h+=`<div class="tiny muted" style="margin:6px 2px 0">⏱ Paced to your <b>${_lbl}</b> timeframe — a <b>${_tld}</b> kcal daily deficit${(typeof timelineIsAggressive==='function'&&timelineIsAggressive())?`, with protein and step targets raised to match`:``}. Change it in Settings ▸ Profile &amp; goals.</div>`;
+     h+=`<div class="tiny muted" style="margin:6px 2px 0">⏱ Paced to your <b>${_lbl}</b> timeframe — a <b>${_tld}</b> kcal daily deficit${(STATE.nutrition&&STATE.nutrition.kcalFloored)?`, held back by your safe minimum, so your target sits at that floor instead`:''}${(typeof timelineIsAggressive==='function'&&timelineIsAggressive())?`, with protein and step targets raised to match`:``}. Change it in Settings ▸ Profile &amp; goals.</div>`;
    }}
   /* Protein was the one target the athlete could not state. It was computed
      from bodyweight and goal, full stop — so somebody who wanted 165 g had no
@@ -25181,12 +25361,23 @@ function trendKgPerWeek(days){
     if(win.length<3)return null;
     const spanDays=(win[win.length-1].t-win[0].t)/86400000;
     if(spanDays<21)return null;      // less than three weeks is noise, not a trend
-    /* Endpoints are averaged over up to three readings each: a single heavy
-       morning at either end can swing a six-week trend by a third. */
-    const head=win.slice(0,3),tail=win.slice(-3);
-    const mean=a=>a.reduce((x,y)=>x+y.kg,0)/a.length;
-    return {kgPerWeek:(mean(tail)-mean(head))/spanDays*7,days:Math.round(spanDays),n:win.length,
-      from:Math.round(mean(head)*10)/10,to:Math.round(mean(tail)*10)/10};
+    /* A LEAST-SQUARES SLOPE over every reading in the window. It used to take
+       the mean of the first three and the last three readings and divide by
+       the span from the FIRST reading to the LAST — so the two means sat
+       closer together in time than the span said. On the weekly weigh-in the
+       app itself asks for, four readings falling half a kilo a week read as
+       0.17 kg/week, the calorie check called that "stalled" and cut 300 kcal
+       from an athlete exactly on plan; three readings always read zero (v542).
+       A slope uses every reading, so one heavy morning still cannot swing it. */
+    const t0=win[0].t;
+    const xs=win.map(m=>(m.t-t0)/86400000), ys=win.map(m=>m.kg);
+    const mx=xs.reduce((a,b)=>a+b,0)/xs.length, my=ys.reduce((a,b)=>a+b,0)/ys.length;
+    let sxy=0,sxx=0;
+    for(let i=0;i<xs.length;i++){sxy+=(xs[i]-mx)*(ys[i]-my);sxx+=(xs[i]-mx)*(xs[i]-mx);}
+    const slope=sxx>0?sxy/sxx:0;            // kg per day
+    const at=x=>my+slope*(x-mx);
+    return {kgPerWeek:slope*7,days:Math.round(spanDays),n:win.length,
+      from:Math.round(at(xs[0])*10)/10,to:Math.round(at(xs[xs.length-1])*10)/10};
   }catch(e){return null;}
 }
 function calorieCheck(){
@@ -25201,7 +25392,14 @@ function calorieCheck(){
        nothing at all. */
     const stable=weightStableGoal(n.goal);
     // signed: negative means the plan expects weight to come off
-    const expected=stable?0:(n.kcalTarget-n.tdee)*7/KCAL_PER_KG;
+    /* AGAINST THE CORRECTED MAINTENANCE. kcalAdj is the scale's correction to
+       the maintenance estimate, and the target already carries it. Measuring
+       the target against the UNCORRECTED tdee counted that correction as extra
+       deficit the plan had promised: after one stall cut, an athlete losing
+       exactly the planned rate read as "stalled" again and was cut again —
+       a ratchet to the -500 cap (v542). */
+    const _adj=(typeof n.kcalAdj==='number'&&isFinite(n.kcalAdj))?n.kcalAdj:0;
+    const expected=stable?0:(n.kcalTarget-(n.tdee+_adj))*7/KCAL_PER_KG;
     /* A gain plan needs checking exactly as much as a cut. This used to bail on
        anything that was not a deficit, so an athlete bulking for three months
        and gaining nothing — or gaining a kilo a week of mostly fat — got no
@@ -25325,6 +25523,10 @@ function calorieCheckHTML(){
 }
 
 function openTDEE(){
+  /* A pick made in a sheet that was closed without saving is not an answer:
+     it stayed in openTDEE._sex and the next save wrote it while the reopened
+     sheet showed the stored sex (v542). */
+  openTDEE._sex=null;
   const n=nut();const imp=STATE.profile.unit==='in';
   openSheet(`
     <h3>Your calorie target</h3>
@@ -26308,7 +26510,9 @@ async function selfUpdate(){
        the guard exists to prevent. */
     setTimeout(async()=>{
       if(_sessionLive()){try{sessionStorage.removeItem('cf_selfupd');}catch(e){}return;}
-      try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg)await reg.unregister();}catch(e){}
+      /* getRegistration() answers with the LONGEST matching scope, which is another
+         app's when this page has none of its own. Ours only (v541). */
+      try{const reg=await navigator.serviceWorker.getRegistration('./');if(reg&&reg.scope===new URL('./',location.href).href)await reg.unregister();}catch(e){}
       try{const keys=await caches.keys();await Promise.all(keys.filter(k=>/^coreforge-v\d+$/.test(k)).map(k=>caches.delete(k)));}catch(e){}
       location.reload();
     },400);
@@ -26503,6 +26707,18 @@ async function shareBackup(){
    should land when there is no key of ours for it to contradict. Re-normalised
    on the way back for the same reason every other read of it is: a value stored
    before that fix existed must not skip it. */
+/* The two one-step-back restores replace the WHOLE state with a snapshot taken
+   earlier. The keys in it are the keys this device had THEN: a key entered
+   since is wiped, and one cleared since comes back. A credential is a fact
+   about the device NOW, so these two take the device's current answer for all
+   three fields, including "none" (v541). */
+function keepDeviceCredsExact(old){
+  const s=(old&&old.settings)||{};
+  if(!STATE.settings||typeof STATE.settings!=='object')STATE.settings={};
+  if(s.azureKey){STATE.settings.azureKey=s.azureKey;if(s.azureRegion)STATE.settings.azureRegion=s.azureRegion;}
+  else delete STATE.settings.azureKey;
+  if(s.foodAiKey)STATE.settings.foodAiKey=s.foodAiKey;else delete STATE.settings.foodAiKey;
+}
 function carryDeviceCreds(old){
   const s=(old&&old.settings)||{};
   if(!STATE.settings)STATE.settings={};
@@ -26626,9 +26842,11 @@ function undoCrossTab(){
   try{
     const p=_jsonSafe(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
+    const _dev=STATE;
     STATE=p;
     const _xtBefore=JSON.stringify(STATE),_xtOn=!!STATE.onboarded;
     normalizeState();
+    keepDeviceCredsExact(_dev);
     flagRepairs(_xtBefore,_xtOn);
     save();
     try{localStorage.removeItem(CROSSTAB_KEY);}catch(e){}
@@ -26654,9 +26872,11 @@ function undoImport(){
   try{
     const p=_jsonSafe(raw);
     if(!p||typeof p!=='object')throw new Error('bad snapshot');
+    const _dev=STATE;
     STATE=p;
     const _uiBefore=JSON.stringify(STATE),_uiOn=!!STATE.onboarded;
     normalizeState();
+    keepDeviceCredsExact(_dev);
     flagRepairs(_uiBefore,_uiOn);
     save();
     try{localStorage.removeItem(PREIMPORT_KEY);}catch(e){}
@@ -26673,7 +26893,7 @@ function hardReset(){
   if(!confirm('Are you absolutely sure? Consider exporting a backup first.'))return;
   // Progress photos are stored as separate IndexedDB blobs, not inside STATE —
   // clearing STATE alone left every image on the device after an "erase ALL".
-  prunePhotoBlobs([]);   // every ph_* blob, including ones no row points at
+  prunePhotoBlobs([],{snapshots:false});   // every ph_* blob, including ones no row points at
   /* The pre-import snapshot is a COMPLETE copy of STATE, and unlike a backup
      file it is not stripped — it carries azureKey and foodAiKey in plain text.
      Leaving it behind made "This cannot be undone" false in the worst possible
@@ -26874,7 +27094,7 @@ function normalizeState(){
               write site, since both reach innerHTML. validateData() now
               round-trips a fully populated row through this repair, so the
               next field added cannot go missing the same way. */
-           ...(_MACRO_KEY[x.calc]?{calc:x.calc}:{}),
+           ...(macroKeyOk(x.calc)?{calc:x.calc}:{}),
            ...(x.src==='shot'?{src:'shot'}:{})}));
    });
    STATE.nutrition.days=days;}
@@ -27357,6 +27577,8 @@ function normalizeState(){
    /* The run times are SECONDS. A non-number is dropped, not zeroed — a zero
       would render as a 0:00 time trial, which is not a measurement. */
    if(P.planFrom!==undefined&&!isDateISO(P.planFrom))delete P.planFrom;
+   /* the plate the block opened on: a real plate weight or nothing (v543) */
+   if(P.baseLb!==undefined&&!(typeof P.baseLb==='number'&&isFinite(P.baseLb)&&P.baseLb>0&&P.baseLb<=RUCK_LB_MAX))delete P.baseLb;
    /* Both new fields are SECONDS, and both are dropped rather than zeroed for
       the same reason the run times are: a zero renders as a 0:00 result, which
       is not a measurement. importData() accepts arbitrary JSON. */

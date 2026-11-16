@@ -24289,3 +24289,36 @@ Only the first was this change. Each was fixed, not re-run.
 The local run printed what was live before it was torn down
 (`["player:work"]`), which is what turned a likely cause into a measured one.
 Suite 10: 781 checks. Suite 23: 2481. Suite 09: 1220.
+
+## A swap in the player left the work on the old move (v541)
+
+Found by a four-part code review of the whole app, then measured. The guided
+player's `playerSwap()` never carried the logged sets across — the Today
+card's `doSwap()` always had. Before v540 that only orphaned a set; v540's
+`keepLoggedWork()` turned it into a loss: the old move had marked sets and was
+no longer in the session, so the rebuild put it BACK and pushed the new move
+out, and the very next set read *"Set completed, but the count may not have
+saved"*. **A rule that keeps logged work needs every writer of a swap to move
+the work with it** — one of a pair guarded and its twin not, made worse by a
+fix one round earlier.
+
+The same review closed the rest of the swap class: the player sized a swapped
+finisher or bonus from `prescribe()` alone (a one-round finisher became three),
+the sharpen rehearsal overrode an explicit finisher swap, a swap could put one
+move into the session twice, and `swapStillValid()` never asked the tight-room
+question. And two data-safety gaps: the one-step-back restores brought back the
+API keys the snapshot held rather than the device's current ones, and a photo
+prune at an import deleted a picture the cross-tab snapshot still named.
+
+**Four of 18 faults escaped first, all weak checks of mine**, each a rule
+already in this file: a per-side case whose count was already even (the
+rounding rule never ran), a rest case where the movement's own rest equalled
+the prescribed one (safe mode makes them differ), a duplicate case that
+swapped an EARLY slot (the later slot then picks another move by itself — the
+guard only matters when the target is already used by an earlier slot), and
+an over-eager twin no floor read. *A guard is only visible when the value
+beside it cannot supply the answer.* All 18 caught after.
+
+**A source count pinned at an exact number counts every new reader too.** CI
+went red on a v414 check that counts `_jsonSafe(raw)` to prove the two
+restores parse safely; the new snapshot reader used the same variable name.

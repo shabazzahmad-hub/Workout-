@@ -3216,6 +3216,467 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+  /* ---- v541: a swap during a session keeps the work, and the session ----------
+     A review of the swap paths, after v540 added keepLoggedWork():
+
+     - the guided player's swap left the logged sets on the OLD move, so the
+       rebuilt session put the old move back and the new one fell out of it:
+       measured, the very next set read "Set completed, but the count may not
+       have saved" and was lost;
+     - the player sized a swapped finisher or bonus from prescribe() alone, so a
+       one-round finisher became three or four;
+     - the sharpen-phase rehearsal overrode the athlete's own finisher swap;
+     - a swap could put a move into the session twice;
+     - a stored swap ignored the tight-room setting. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const reset = () => page.evaluate(() => {
+      STATE.progressPtr = 3; STATE.logs = {}; STATE.swaps = {}; delete STATE._plResume; delete STATE._timeCap;
+      STATE.profile.tightSpace = false; STATE.profile.limitations = []; STATE.prep = {};
+      try { if (PLAYER) playerTeardown(); } catch (e) {}
+      save();
+    });
+
+    // 1. the reported shape: one set of A, swap to B, one set of B
+    await reset();
+    const a = await page.evaluate(() => {
+      const o = {};
+      openPlayer();
+      o.A = plCur().exId;
+      playerSetDone();
+      o.setsOnA = (STATE.logs[3].ex[o.A] || {}).sets;
+      o.B = (swapOptions(plCur())[0] || {}).exId;
+      plClear(); plEnterReady(false);
+      playerSwap(o.B);
+      playerSetDone();
+      const ex = STATE.logs[3].ex;
+      o.onB = ex[o.B] ? ex[o.B].sets.filter(Boolean).length : 0;
+      o.aLeft = !!ex[o.A];
+      const sess = buildSession(3);
+      o.rebuilt = [...sess.main, sess.finisher].map(m => m.exId);
+      o.toast = (document.getElementById('toast') || {}).textContent || '';
+      return o;
+    });
+    s.ok('guard: the set on the first move really was logged', Array.isArray(a.setsOnA) && a.setsOnA[0] === true, a);
+    s.ok('guard: the player offered a real swap', !!a.B && a.B !== a.A, a);
+    s.eq('a player swap carries the logged set across, and the next set lands', a.onB, 2, a);
+    s.ok('the old move holds no orphaned sets', a.aLeft === false, a);
+    s.ok('the rebuilt session holds the new move and not the old one', a.rebuilt.includes(a.B) && !a.rebuilt.includes(a.A), a);
+    s.ok('the athlete is not told the count may not have saved', !/may not have saved/.test(a.toast), a);
+
+    // 2. the finisher stays one round; a per-side swap stays even
+    await reset();
+    const b = await page.evaluate(() => {
+      const o = {};
+      openPlayer();
+      const fi = PLAYER.items.indexOf(PLAYER.sess.finisher);
+      o.fi = fi;
+      o.rawSets = prescribe('highknees', PLAYER.sess.pos).sets;
+      PLAYER.i = fi; PLAYER.s = 0; plClear(); plEnterReady(false);
+      playerSwap('highknees');
+      o.finSets = plCur().sets;
+      playerTeardown();
+      STATE.swaps = {}; STATE.logs = {}; save();
+      openPlayer();
+      PLAYER.i = 0; PLAYER.s = 2; plClear(); plEnterReady(false);
+      o.side = EX.sideplank.side;
+      playerSwap('sideplank');
+      o.sideSets = plCur().sets;
+      // standing on set 5: the floor alone gives 5, so only the even rule makes it 6
+      o.rxSide = itemSets('sideplank', prescribe('sideplank', PLAYER.sess.pos).sets, PLAYER.sess.pos);
+      PLAYER.s = 4; plClear(); plEnterReady(false);
+      playerSwap('sideplank');
+      o.sideSets5 = plCur().sets;
+      // the rest prescribe() gives, in a state where it differs from the movement's own
+      STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+      o.safe = safeMode();
+      o.rxRest = prescribe('glutebridge', PLAYER.sess.pos).rest; o.exRest = EX.glutebridge.rest;
+      PLAYER.s = 0; plClear(); plEnterReady(false);
+      playerSwap('glutebridge');
+      o.restSet = plCur().rest;
+      o.gbSets = plCur().sets; o.gbRx = itemSets('glutebridge', prescribe('glutebridge', PLAYER.sess.pos).sets, PLAYER.sess.pos);
+      STATE.profile.parq = []; STATE.profile.medCleared = false; save();
+      return o;
+    });
+    s.ok('guard: the finisher is in the player', b.fi >= 0, b);
+    s.ok('guard: prescribe() alone would give the swapped finisher several rounds', b.rawSets > 1, b);
+    s.eq('a swapped finisher stays ONE round', b.finSets, 1, b);
+    s.ok('guard: the swap target is a per-side movement', b.side === 'perSet', b);
+    s.ok('a per-side swap on set 3 lands on an even count that keeps the set', b.sideSets % 2 === 0 && b.sideSets >= 3, b);
+    s.ok('guard: on set 5 the floor alone would give an odd count', b.rxSide < 5, b);
+    s.eq('a per-side swap past its count rounds up to the next even set', b.sideSets5, 6, b);
+    s.ok('guard: in safe mode prescribe() gives a rest the movement itself does not', b.safe === true && b.rxRest !== b.exRest, b);
+    s.eq('the swapped move takes the rest prescribe() gives it', b.restSet, b.rxRest, b);
+    s.ok('guard: an ordinary move is prescribed more than one set', b.gbRx > 1, b);
+    s.eq('FLOOR: an ordinary swap takes the sets prescribe() gives it', b.gbSets, b.gbRx, b);
+
+    // 3. the sharpen-phase rehearsal does not override the athlete's finisher swap
+    await reset();
+    const c = await page.evaluate(() => {
+      const o = {};
+      o.ladderFin = buildSession(3).finisher.exId;     // no test date: the ordinary finisher
+      const d = new Date(); d.setDate(d.getDate() + 28);
+      const f = new Date(); f.setDate(f.getDate() - 70);
+      STATE.prep = { date: localISO(d), planFrom: localISO(f) };
+      o.phase = prepPhase();
+      const plain = buildSession(3);
+      o.plainFin = plain.finisher.exId;
+      // a valid finisher swap that is not the rehearsal
+      const alt = ['highknees', 'sealjack', 'fastfeet', 'jumpingjack'].find(k => k !== o.plainFin && swapStillValid(k) && !plain.main.some(m => m.exId === k));
+      o.alt = alt;
+      setSwap(3, '__fin', alt);
+      o.swappedFin = buildSession(3).finisher.exId;
+      return o;
+    });
+    s.eq('guard: the athlete is in the sharpen phase', c.phase, 'sharpen', c);
+    s.ok('guard: the rehearsal really replaces the ordinary finisher', c.plainFin !== c.ladderFin, c);
+    s.eq('an explicit finisher swap outranks the rehearsal', c.swappedFin, c.alt, c);
+
+    // 4. no move twice, whatever was swapped; swapOptions never offers one in use
+    await reset();
+    const d = await page.evaluate(() => {
+      const o = {};
+      const sess = buildSession(3);
+      const ids = sess.main.map(m => m.exId);
+      // the last ladder slot, swapped to the move the FIRST slot already holds:
+      // the first slot is built first, so only the guard can refuse it
+      const lad = sess.main.map((m, i) => (LADDERS[m.slot] ? i : -1)).filter(i => i > 0);
+      o.lastIdx = lad[lad.length - 1];
+      o.target = ids[0];
+      setSwap(3, sess.main[o.lastIdx].slot, o.target);
+      setSwap(3, 'focus', ids[2]);
+      setSwap(3, '__fin', ids[3]);
+      const after = buildSession(3);
+      const all = [...after.main, after.finisher].map(m => m.exId);
+      o.dups = all.filter((x, i) => all.indexOf(x) !== i);
+      STATE.swaps = {}; save();
+      const fresh = buildSession(3);
+      const offered = [];
+      [...fresh.main, fresh.finisher].forEach(m => {
+        const others = [...fresh.main, fresh.finisher].filter(x => x !== m).map(x => x.exId);
+        swapOptions(m).forEach(op => { if (others.includes(op.exId)) offered.push(m.exId + '->' + op.exId); });
+      });
+      o.offered = offered;
+      return o;
+    });
+    s.ok('guard: the swap targets were moves already in the session', !!d.target && d.lastIdx > 0, d);
+    s.eq('a swap never puts a move into the session twice', d.dups, [], d);
+    s.eq('the swap sheet never offers a move the session already holds', d.offered, [], d);
+
+    // 5. the tight room: a stored swap and an offer both ask it
+    await reset();
+    const e = await page.evaluate(() => {
+      const o = {};
+      const roomy = Object.keys(EX).filter(k => SPACE_SWAP[k] && EX[SPACE_SWAP[k]]);
+      o.roomy = roomy.length;
+      o.mover = roomy.find(k => hasGearFor(k) && safeSwap(k) === k);
+      o.okWide = swapStillValid(o.mover);
+      STATE.profile.tightSpace = true;
+      o.okTight = swapStillValid(o.mover);
+      const sess = buildSession(3);
+      const bad = [];
+      [...sess.main, sess.finisher].forEach(m => swapOptions(m).forEach(op => { if (spaceSwap(op.exId) !== op.exId) bad.push(op.exId); }));
+      o.bad = bad;
+      STATE.profile.tightSpace = false; save();
+      return o;
+    });
+    s.ok('guard: a move needs the room and is otherwise valid', !!e.mover && e.okWide === true, e);
+    s.ok('in a tight room a stored swap to that move is not honoured', e.okTight === false, e);
+    s.eq('in a tight room the swap sheet offers no move that needs the room', e.bad, [], e);
+
+    // 6. a move the rebuild does not hold still marks its set from the player
+    await reset();
+    const f = await page.evaluate(() => {
+      const o = {};
+      openPlayer();
+      const sess = buildSession(3);
+      const inSess = [...sess.main, sess.finisher].map(m => m.exId);
+      o.x = ['plank', 'deadbug', 'birddog', 'glutebridge'].find(k => !inSess.includes(k));
+      plCur().exId = o.x;
+      try { markSetFromTimer(o.x); o.threw = false; } catch (err) { o.threw = String(err); }
+      o.logged = !!(STATE.logs[3] && STATE.logs[3].ex[o.x]);
+      return o;
+    });
+    s.ok('guard: the move is not in the rebuilt session', !!f.x, f);
+    s.ok('marking a set the rebuild does not hold does not throw', f.threw === false, f);
+    s.ok('and the set is logged against the move the athlete is doing', f.logged === true, f);
+
+    errors.forEach(x => s.fail('page error', x));
+    await browser.close();
+  }
+
+  /* ---- v542: nutrition and progress numbers that disagreed with the plan ----
+     From the same full review. Each case builds the state that shows the
+     defect, with a guard that the old rule really gave the wrong answer there. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const iso = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      const n = STATE.nutrition;
+      // N9 + N1: weekly weigh-ins falling 0.45 kg a week, after one stall correction
+      STATE.measurements = [28, 21, 14, 7, 0].map((dd, i) => ({ date: iso(dd), weight: +(90 - 0.45 * i).toFixed(2) }));
+      const tr = trendKgPerWeek(56);
+      o.slope = tr && +tr.kgPerWeek.toFixed(3);
+      // the old rule, re-derived, as the guard
+      { const ms = STATE.measurements.map(m => ({ t: Date.parse(m.date), kg: m.weight }));
+        const head = ms.slice(0, 3), tail = ms.slice(-3), mean = a => a.reduce((x, y) => x + y.kg, 0) / a.length;
+        o.oldSlope = +((mean(tail) - mean(head)) / ((ms[ms.length - 1].t - ms[0].t) / 86400000) * 7).toFixed(3); }
+      STATE.measurements = [21, 14, 0].map((dd, i) => ({ date: iso(dd), weight: 90 - 0.5 * i * (i ? 1 : 0) - (i === 2 ? 0.5 : 0) }));
+      const three = trendKgPerWeek(56); o.three = three && +three.kgPerWeek.toFixed(3);
+      STATE.measurements = [21, 14, 7, 0].map(dd => ({ date: iso(dd), weight: 88 }));
+      const flat = trendKgPerWeek(56); o.flat = flat && +flat.kgPerWeek.toFixed(3);
+      STATE.measurements = [28, 21, 14, 7, 0].map((dd, i) => ({ date: iso(dd), weight: +(90 - 0.45 * i).toFixed(2) }));
+      Object.assign(n, { goal: 'lose', tdee: 2500, kcalAdj: -300, kcalTarget: 1700 });
+      STATE.profile.goal = 'lose';
+      const cc = calorieCheck();
+      o.verdict = cc && cc.verdict; o.expected = cc && +cc.expected.toFixed(3);
+      o.uncorrected = +((1700 - 2500) * 7 / 7700).toFixed(3);
+      // N3: the 7-day verdict reads the goal
+      o.gainUnder = intakeVerdict(2300, 2830, 'gain');
+      o.gainOn = intakeVerdict(2850, 2830, 'gain');
+      o.stableOn = intakeVerdict(2600, 2570, 'recomp');
+      o.stableOver = intakeVerdict(3000, 2570, 'recomp');
+      o.cutUnder = intakeVerdict(1900, 2000, 'lose');
+      o.cutOver = intakeVerdict(2200, 2000, 'lose');
+      // N4: the top-up advice asks the food filter
+      n.allergens = ['peanut', 'treenut']; n.diet = 'omnivore';
+      o.allergic = refTopUpHint(200); o.allergicBig = refTopUpHint(500);
+      n.allergens = [];
+      o.plain = refTopUpHint(200);
+      // N8: membership on the calc marker
+      o.inherited = macroKeyOk('constructor'); o.real = macroKeyOk('carbs');
+      // P2: the phase-2 badge reads the phase boundary
+      const ach = ACHIEVEMENTS.find(a => a.id === 'phase2');
+      STATE.progressPtr = SESSIONS_PER_CYCLE * PHASE1_CYCLES - 1; o.p2Before = ach.check();
+      STATE.progressPtr = SESSIONS_PER_CYCLE * PHASE1_CYCLES; o.p2At = ach.check();
+      o.p2Phase = phaseOf(Math.floor(STATE.progressPtr / SESSIONS_PER_CYCLE));
+      STATE.progressPtr = 3;
+      // P7: the two hand-written lists read their registries
+      o.ride = rideTargetHTML();
+      const _hl = STATE.holdLog; STATE.holdLog = []; o.holds = holdTrackerHTML(); STATE.holdLog = _hl;
+      o.modes = CARDIO_MODES.map(k => CARDIO_INFO[k].short);
+      o.holdNames = HOLD_TESTS.map(x => x.name.toLowerCase());
+      save();
+      return o;
+    });
+    s.ok('guard: the old trend rule read about half the real loss', Math.abs(r.oldSlope + 0.225) < 0.03, r);
+    s.ok('the weight trend reads the real rate on weekly weigh-ins', Math.abs(r.slope + 0.45) < 0.02, r);
+    s.ok('three readings falling over three weeks do not read as flat', r.three < -0.2, r);
+    s.eq('FLOOR: a flat scale reads flat', r.flat, 0, r);
+    s.ok('guard: the uncorrected maintenance gives a different plan', Math.abs(r.uncorrected - r.expected) > 0.2, r);
+    s.ok('the calorie check measures against the corrected maintenance', Math.abs(r.expected + 0.455) < 0.01, r);
+    s.eq('an athlete on the planned rate after one correction is on track, not cut again', r.verdict, 'ontrack', r);
+    s.ok('a bulk eating under its target is warned, not praised for fat loss', /under target/.test(r.gainUnder) && !/fat loss/.test(r.gainUnder) && /^⚠️/.test(r.gainUnder), r);
+    s.ok('a bulk on its target is on plan', /^✅/.test(r.gainOn) && /surplus/.test(r.gainOn), r);
+    s.ok('a weight-stable goal near its target is on plan', /^✅/.test(r.stableOn) && !/fat loss/.test(r.stableOn), r);
+    s.ok('a weight-stable goal far over its target is warned', /^⚠️/.test(r.stableOver) && /over/.test(r.stableOver), r);
+    s.ok('FLOOR: a cut under target keeps its own copy', /^✅/.test(r.cutUnder) && /fat loss/.test(r.cutUnder), r);
+    s.ok('FLOOR: a cut over target is warned', /^⚠️/.test(r.cutOver) && /200 kcal over/.test(r.cutOver), r);
+    s.ok('the short-of-target advice never names a food the athlete is allergic to', !/peanut|almond/i.test(r.allergic + r.allergicBig), r);
+    s.ok('a big gap is not told a spoonful closes it', /starch/.test(r.allergicBig), r);
+    s.ok('FLOOR: an athlete with no allergy still gets the banana and peanut butter', /banana/.test(r.plain) && /peanut butter/.test(r.plain), r);
+    s.ok('an inherited key is not a macro marker', r.inherited === false && r.real === true, r);
+    s.ok('guard: the full-body split opens after the first block', r.p2Phase === 2, r);
+    s.ok('the phase-2 badge unlocks when the split opens, not a block later', r.p2Before === false && r.p2At === true, r);
+    s.ok('the conditioning card names every cardio mode', r.modes.every(m => r.ride.toLowerCase().includes(m.toLowerCase())), r.modes);
+    s.ok('the empty hold tracker names every hold test', r.holdNames.every(h => r.holds.toLowerCase().includes(h)), r.holdNames);
+
+    // N2: a sex picked and never saved is not written by the next save
+    const t2 = await page.evaluate(async () => {
+      const o = {};
+      STATE.nutrition.sex = 'male'; STATE.profile.sex = 'male'; save();
+      openTDEE();
+      tdeeSex('female', document.querySelector('#sheet [data-sx="female"]'));
+      closeSheet(); await new Promise(r => setTimeout(r, 450));
+      openTDEE();
+      o.shown = (document.querySelector('#sheet [data-sx].on') || {}).dataset ? document.querySelector('#sheet [data-sx].on').dataset.sx : null;
+      saveTDEE(); await new Promise(r => setTimeout(r, 450));
+      o.saved = STATE.nutrition.sex;
+      return o;
+    });
+    s.eq('guard: the reopened calculator shows the stored sex', t2.shown, 'male', t2);
+    s.eq('a sex picked in a sheet closed without saving is not saved later', t2.saved, 'male', t2);
+
+    // N6: an edit keeps the calc marker and remembers no row label
+    const t6 = await page.evaluate(async () => {
+      const o = {};
+      const d = nutToday();
+      d.food = [foodRow('Rice ×2', 600, 12, 130, 2, 'l', '', 'carbs')];
+      STATE.nutrition.foods = []; save();
+      o.before = d.food[0].calc;
+      editFood(0); await new Promise(r => setTimeout(r, 100));
+      const meal = document.querySelector('#fa-meal'); if (meal) meal.value = 'd';
+      saveFood(); await new Promise(r => setTimeout(r, 450));
+      const row = nutToday().food[0];
+      o.after = row && row.calc; o.meal = row && row.meal;
+      o.remembered = (STATE.nutrition.foods || []).map(f => f.name);
+      return o;
+    });
+    s.eq('guard: the row was logged with its calc marker', t6.before, 'carbs', t6);
+    s.eq('an edit that leaves the number alone keeps the calc marker', t6.after, 'carbs', t6);
+    s.ok('an edit does not remember the row label as a food', !t6.remembered.includes('Rice ×2'), t6);
+
+    // N7: a day the app was not opened can be the grace day
+    const t7 = await page.evaluate(() => {
+      const o = {};
+      const iso = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      const hit = { protein: true, water: true, sleep: true, steps: true };
+      STATE.nutrition.days = {};
+      [1, 3].forEach(n => { STATE.nutrition.days[iso(n)] = { food: [], habits: { ...hit } }; });
+      o.oneGap = nutritionStreak();
+      STATE.nutrition.days = {};
+      [1, 4].forEach(n => { STATE.nutrition.days[iso(n)] = { food: [], habits: { ...hit } }; });
+      o.twoGap = nutritionStreak();
+      STATE.nutrition.days = {};
+      [1, 2, 3].forEach(n => { STATE.nutrition.days[iso(n)] = { food: [], habits: { ...hit } }; });
+      o.solid = nutritionStreak();
+      save();
+      return o;
+    });
+    s.eq('FLOOR: three logged days in a row are a streak of three', t7.solid, 3, t7);
+    s.eq('one day the app was not opened spends the grace instead of breaking', t7.oneGap, 2, t7);
+    s.eq('two days not opened still break it', t7.twoGap, 1, t7);
+
+    // P3 + P4: a run alone ticks the step habit, and is priced at today's pace everywhere
+    const t3 = await page.evaluate(() => {
+      const o = {};
+      const t = nutToday(); Object.keys(t).forEach(k => { if (/Val$|Lvl$|Unit$|^steps$|_stepAuto/.test(k)) delete t[k]; });
+      t.habits = {};
+      STATE.profile.runPace = 'easy';
+      setRunUnit('min'); setRunVal(120);
+      o.lvl = nutToday().runLvl;
+      o.equiv = stepEquivalent(); o.target = stepTarget();
+      o.habit = !!nutToday().habits.steps;
+      o.cardKcal = Math.round(runWork().kcal);
+      o.dayKcal = Math.round(CARDIO_INFO.run.dayKcal(nutToday()));
+      return o;
+    });
+    s.ok('guard: two hours of running pays the step target', t3.equiv >= t3.target, t3);
+    s.ok('a run alone ticks the step habit', t3.habit === true, t3);
+    s.eq('a logged run records the pace it was priced at', t3.lvl, 'easy', t3);
+    s.eq('Today and the day readers price that run the same', t3.cardKcal, t3.dayKcal, t3);
+
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    s.ok('only the BMQ session that is next moves the week', /if\(!_bq\.doneToday&&_bq\.next===PLAYER\.bmqKey\)bmqMarkDone/.test(src));
+    s.ok('no week is counted by dividing milliseconds by a week', !/\/\(7\*86400000\)/.test(src));
+    s.ok('a floored target is not described as the timeframe deficit alone', /kcalFloored\)\?`, held back by your safe minimum/.test(src));
+    errors.forEach(x => s.fail('page error', x));
+    await browser.close();
+  }
+
+  /* ---- v542: week counts across daylight saving --------------------------
+     Local midnights are 23 or 25 hours apart across a change, so a week count
+     taken by dividing milliseconds drifted by one on the boundary day. */
+  {
+    const b = await chromium.launch();
+    const ctx = await b.newContext({ timezoneId: 'America/Denver' });
+    const pg = await ctx.newPage();
+    await pg.clock.install({ time: new Date('2027-03-21T18:00:00Z') });   // noon in Denver, two weeks after a planFrom before the spring change
+    await pg.goto(base); await waitForBoot(pg);
+    const r = {};
+    Object.assign(r, await pg.evaluate(() => {
+      STATE.prep = { date: '2027-06-01', planFrom: '2027-03-07' };
+      return { today1: todayISO(), wk: prepWeekNo(),
+        oldWk: Math.floor((new Date('2027-03-21T00:00:00') - new Date('2027-03-07T00:00:00')) / (7 * 86400000)) + 1 };
+    }));
+    await pg.clock.setFixedTime(new Date('2026-10-25T18:00:00Z'));          // three weeks before a date after the autumn change
+    Object.assign(r, await pg.evaluate(() => {
+      STATE.prep = { date: '2026-11-15', planFrom: '2026-10-01' };
+      return { today2: todayISO(), left: forceWeeksLeft(),
+        oldLeft: Math.ceil((new Date('2026-11-15T00:00:00') - new Date('2026-10-25T00:00:00')) / (7 * 86400000)) };
+    }));
+    s.ok('guard: the clock really is on the two test days', r.today1 === '2027-03-21' && r.today2 === '2026-10-25', r);
+    s.ok('guard: dividing milliseconds gave the wrong week across the spring change', r.oldWk === 2, r);
+    s.eq('two weeks after the block opened is week 3, across the spring change', r.wk, 3, r);
+    s.ok('guard: dividing milliseconds gave four weeks across the autumn change', r.oldLeft === 4, r);
+    s.eq('three weeks before the test is three weeks, across the autumn change', r.left, 3, r);
+    await b.close();
+  }
+
+  /* ---- v543: the plan's base is what the athlete did before the block -------
+     Both plans read the LIVE trailing average and compounded the ramp from
+     planFrom on top of it, so following the plan raised the base and the next
+     week was ramped again from the raised figure: 10 km a week reached the
+     60 km ceiling by week 10. The base is anchored to the four weeks before the
+     block opened; the plate is anchored to the plate the block opened on. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const iso = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+      const fut = n => { const d = new Date(); d.setDate(d.getDate() + n); return localISO(d); };
+      const days = STATE.nutrition.days = {};
+      const run = (n, km) => { days[iso(n)] = Object.assign(days[iso(n)] || { food: [], habits: {} }, { runVal: km, runUnit: 'dist', runLvl: 'steady' }); };
+      // the block opened 70 days ago; the four weeks before it carried 10 km a week
+      [98, 91, 84, 77].forEach(n => run(n, 10));
+      // since then the athlete ran far more — 40 km a week for the last four weeks
+      [28, 21, 14, 7].forEach(n => run(n, 40));
+      STATE.prep = { date: fut(90), planFrom: iso(70) };
+      const w = enduranceWeek(true);
+      o.wk = w.wk; o.start = w.start; o.km = w.km; o.curve = w.curve; o.anchored = w.anchored;
+      o.live = Math.round(trailingRunStats().avg * 10) / 10;
+      o.fixedCurve = Math.round(Math.min(10 * Math.pow(PREP_RAMP, w.wk - 1), prepPeak(10, PREP_PEAK_KM)) * 10) / 10;
+      // nothing before the block: the first logged week after it anchors the base
+      Object.keys(days).forEach(k => delete days[k]);
+      [49, 42].forEach(n => run(n, 12));
+      const w2 = enduranceWeek(true);
+      o.lagStart = w2.start; o.lag = w2.lag; o.lagCurve = w2.curve;
+      o.lagFixed = Math.round(Math.min(w2.start * Math.pow(PREP_RAMP, Math.max(0, w2.wk - 1 - w2.lag)), prepPeak(w2.start, PREP_PEAK_KM)) * 10) / 10;
+      // FLOOR: a block opened today reads the same as before
+      Object.keys(days).forEach(k => delete days[k]);
+      [21, 14, 7, 1].forEach(n => run(n, 15));
+      STATE.prep = { date: fut(90), planFrom: todayISO() };
+      const w3 = enduranceWeek(true);
+      o.todayStart = w3.start; o.todayLive = Math.round(trailingRunStats().avg * 10) / 10;
+
+      // the ruck plate: anchored to the plate the block opened on
+      Object.keys(days).forEach(k => delete days[k]);
+      const ruck = (n, km) => { days[iso(n)] = Object.assign(days[iso(n)] || { food: [], habits: {} }, { ruckVal: km, ruckUnit: 'dist', ruckLvl: 'brisk' }); };
+      [98, 91, 84, 77].forEach(n => ruck(n, 6));
+      STATE.prep = { date: fut(120), planFrom: iso(70), baseLb: 15 };
+      STATE.profile.ruckLb = 40;
+      const L = ruckLadderWeek(true);
+      o.startLb = L.startLb; o.lb = L.lb;
+      // a block stamped before the stamp existed backs the steps out of today's plate
+      delete STATE.prep.baseLb;
+      const L2 = ruckLadderWeek(true);
+      o.legacyStartLb = L2.startLb; o.legacyLb = L2.lb;
+      // the stamp is written with planFrom and cleared with the date
+      STATE.prep = {}; STATE.profile.ruckLb = 25; save();
+      return o;
+    });
+    s.ok('guard: the live trailing average has moved far above the block\'s start', r.live >= 35, r);
+    s.eq('the running plan\'s base is the four weeks before the block opened', r.start, 10, r);
+    s.ok('and it is marked as anchored', r.anchored === true, r);
+    s.eq('the week\'s curve is the fixed-base curve, not one ramped from the moved base', r.curve, r.fixedCurve, r);
+    s.ok('with nothing before the block, the first logged weeks anchor it', r.lagStart > 0 && r.lag >= 3, r);
+    s.eq('and the ramp counts from that week', r.lagCurve, r.lagFixed, r);
+    s.eq('FLOOR: a block opened today reads its base from the last four weeks', r.todayStart, r.todayLive, r);
+    s.eq('the ruck ladder starts from the plate the block opened on', r.startLb, 15, r);
+    s.ok('guard: the athlete carries a heavier plate now', r.lb >= 15 && r.lb < 40, r);
+    s.ok('a block stamped before the stamp existed starts no heavier than today\'s plate minus the steps taken', r.legacyStartLb <= 40 && r.legacyStartLb >= 10 && r.legacyLb <= 40, r);
+
+    const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    s.ok('the plate is stamped with the block start', /STATE\.prep\.planFrom=todayISO\(\);\s*STATE\.prep\.baseLb=ruckLoadLb\(\);/.test(src));
+    s.ok('the stamp goes with the date', /delete STATE\.prep\.planFrom;delete STATE\.prep\.event;delete STATE\.prep\.baseLb;/.test(src));
+    const t3 = await page.evaluate(() => {
+      const o = {};
+      STATE.prep = { baseLb: 'heavy', planFrom: todayISO(), date: todayISO() }; normalizeState(); o.junk = STATE.prep.baseLb;
+      STATE.prep = { baseLb: 25, planFrom: todayISO(), date: todayISO() }; normalizeState(); o.real = STATE.prep.baseLb;
+      STATE.prep = { baseLb: 9999, planFrom: todayISO(), date: todayISO() }; normalizeState(); o.huge = STATE.prep.baseLb;
+      STATE.prep = {}; save();
+      return o;
+    });
+    s.ok('a junk block plate is dropped at boot', t3.junk === undefined && t3.huge === undefined, t3);
+    s.eq('FLOOR: a real block plate survives the boot', t3.real, 25, t3);
+    errors.forEach(x => s.fail('page error', x));
+    await browser.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();
