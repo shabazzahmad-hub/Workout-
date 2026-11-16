@@ -3283,7 +3283,20 @@ const { browser, page, errors } = await launch(port);
       o.side = EX.sideplank.side;
       playerSwap('sideplank');
       o.sideSets = plCur().sets;
-      o.restSet = plCur().rest; o.rxRest = prescribe('sideplank', PLAYER.sess.pos).rest;
+      // standing on set 5: the floor alone gives 5, so only the even rule makes it 6
+      o.rxSide = itemSets('sideplank', prescribe('sideplank', PLAYER.sess.pos).sets, PLAYER.sess.pos);
+      PLAYER.s = 4; plClear(); plEnterReady(false);
+      playerSwap('sideplank');
+      o.sideSets5 = plCur().sets;
+      // the rest prescribe() gives, in a state where it differs from the movement's own
+      STATE.profile.parq = ['heart']; STATE.profile.parqDone = true; STATE.profile.medCleared = false;
+      o.safe = safeMode();
+      o.rxRest = prescribe('glutebridge', PLAYER.sess.pos).rest; o.exRest = EX.glutebridge.rest;
+      PLAYER.s = 0; plClear(); plEnterReady(false);
+      playerSwap('glutebridge');
+      o.restSet = plCur().rest;
+      o.gbSets = plCur().sets; o.gbRx = itemSets('glutebridge', prescribe('glutebridge', PLAYER.sess.pos).sets, PLAYER.sess.pos);
+      STATE.profile.parq = []; STATE.profile.medCleared = false; save();
       return o;
     });
     s.ok('guard: the finisher is in the player', b.fi >= 0, b);
@@ -3291,7 +3304,12 @@ const { browser, page, errors } = await launch(port);
     s.eq('a swapped finisher stays ONE round', b.finSets, 1, b);
     s.ok('guard: the swap target is a per-side movement', b.side === 'perSet', b);
     s.ok('a per-side swap on set 3 lands on an even count that keeps the set', b.sideSets % 2 === 0 && b.sideSets >= 3, b);
+    s.ok('guard: on set 5 the floor alone would give an odd count', b.rxSide < 5, b);
+    s.eq('a per-side swap past its count rounds up to the next even set', b.sideSets5, 6, b);
+    s.ok('guard: in safe mode prescribe() gives a rest the movement itself does not', b.safe === true && b.rxRest !== b.exRest, b);
     s.eq('the swapped move takes the rest prescribe() gives it', b.restSet, b.rxRest, b);
+    s.ok('guard: an ordinary move is prescribed more than one set', b.gbRx > 1, b);
+    s.eq('FLOOR: an ordinary swap takes the sets prescribe() gives it', b.gbSets, b.gbRx, b);
 
     // 3. the sharpen-phase rehearsal does not override the athlete's finisher swap
     await reset();
@@ -3321,8 +3339,12 @@ const { browser, page, errors } = await launch(port);
       const o = {};
       const sess = buildSession(3);
       const ids = sess.main.map(m => m.exId);
-      o.target = ids[1];
-      setSwap(3, sess.main[0].slot, o.target);
+      // the last ladder slot, swapped to the move the FIRST slot already holds:
+      // the first slot is built first, so only the guard can refuse it
+      const lad = sess.main.map((m, i) => (LADDERS[m.slot] ? i : -1)).filter(i => i > 0);
+      o.lastIdx = lad[lad.length - 1];
+      o.target = ids[0];
+      setSwap(3, sess.main[o.lastIdx].slot, o.target);
       setSwap(3, 'focus', ids[2]);
       setSwap(3, '__fin', ids[3]);
       const after = buildSession(3);
@@ -3338,7 +3360,7 @@ const { browser, page, errors } = await launch(port);
       o.offered = offered;
       return o;
     });
-    s.ok('guard: the swap targets were moves already in the session', !!d.target, d);
+    s.ok('guard: the swap targets were moves already in the session', !!d.target && d.lastIdx > 0, d);
     s.eq('a swap never puts a move into the session twice', d.dups, [], d);
     s.eq('the swap sheet never offers a move the session already holds', d.offered, [], d);
 
