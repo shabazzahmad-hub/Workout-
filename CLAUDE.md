@@ -24322,3 +24322,34 @@ beside it cannot supply the answer.* All 18 caught after.
 **A source count pinned at an exact number counts every new reader too.** CI
 went red on a v414 check that counts `_jsonSafe(raw)` to prove the two
 restores parse safely; the new snapshot reader used the same variable name.
+
+## One fact, every tab that shows it (v544)
+
+Asked to make every tab work in sync. A tap-everything sweep and a cross-tab
+probe changed a fact on one tab and read the others with no reload. The sync
+held for every fact driven: a finished session (Progress count, Program ✓,
+Today done card, the brief), a weight saved on Progress ▸ Body (water and
+protein on Fuel), a goal tapped on Fuel (profile, food targets, the pressed
+button), a training day tapped in Settings (Program's weeks, Progress's week
+tile), a flagged joint (Today and Reference), and a run on Movement (budget,
+step habit, Progress row, Fuel's "earned"). Suite 10 now drives all of it
+through the controls and reads the glass.
+
+What did not hold was the copy, on the athlete's own unit:
+
+- **The abs card on Settings and Fuel spoke kilograms to everybody** —
+  "11–13 kg of fat at 0.5 kg a week", "1.6–2.2 g per kg", and the goal tips'
+  "2.2 g/kg". `protRate()` gives the rate in the athlete's unit; the science
+  is per kg, so metric is the source and imperial is derived.
+- **The calorie check hardcoded "0.25 kg a week"** beside its own unit-aware
+  `kg()` helper, twice.
+- **Five pointers named a paned tab without the pane**: the waist is on
+  Progress ▸ Body, a BMQ run is logged on Today ▸ Workout, and the month of
+  worked days is on Reference ▸ Food.
+  v411's scan missed them because it drops every string carrying markup
+  (`class=`), and most of this app's copy lives in templates with markup —
+  and "(Progress tab)" had no sending word before it.
+
+A class check sweeps the six tabs and their panes for an imperial athlete
+across five goals and refuses any body-weight rate in kilograms. Food weights
+stay in grams on purpose, and published standards keep their own unit.

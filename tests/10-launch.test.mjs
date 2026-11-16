@@ -3677,6 +3677,182 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+  /* ---- v544: one fact, every tab that shows it -------------------------------
+     A change made on one tab has to reach every other tab that shows the same
+     fact, with no reload. Each case changes the fact through the control the
+     athlete taps, then reads the OTHER tabs off the glass. A check that called
+     the helper would prove the helper, not the screen. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {};
+      window.confirm = () => true;
+      const view = (t, pane) => { go(t);
+        if (t === 'today' && pane) { TODAY_TAB = pane; renderToday(); }
+        if (t === 'progress' && pane) setProgressTab(pane);
+        if (t === 'ref' && pane) setRefTab(pane);
+        return document.querySelector('.view.active'); };
+      const stat = (v, label) => { const st = [...v.querySelectorAll('.stat')].find(x => (x.querySelector('.l') || {}).textContent === label);
+        return st ? (st.querySelector('.n') || {}).textContent : null; };
+
+      // 1. A session finished in the player: Progress, Program, Today and the brief agree.
+      STATE.logs = {}; STATE.progressPtr = 5; STATE.restDays = {}; save();
+      o.sessions0 = stat(view('progress', 'summary'), 'Sessions');
+      const sess = buildSession(STATE.progressPtr);
+      const l = ensureLog();
+      [...sess.main, sess.finisher].filter(Boolean).forEach(m => { l.ex[m.exId] = { sets: Array.from({ length: m.sets }, () => true), done: true }; });
+      save(); commitSession('good');
+      o.sessions1 = stat(view('progress', 'summary'), 'Sessions');
+      o.count = sessionsDoneCount();
+      view('program');
+      const cell = [...document.querySelectorAll('#v-program .calday')].find(b => /previewSession\(5\)/.test(b.getAttribute('onclick')));
+      o.cellDone = !!cell && cell.classList.contains('done') && (cell.querySelector('.ico') || {}).textContent === '✓';
+      o.todayDone = /Session done/i.test(view('today', 'workout').textContent);
+      o.todayNoStart = !document.querySelector('#v-today #finishSession');
+      o.briefDone = /finished|done/i.test(view('today', 'brief').textContent);
+
+      // 2. A weight saved on Progress ▸ Body moves the water and protein targets Fuel shows.
+      delete STATE.nutrition.proteinTarget; STATE.nutrition._protSeed = true; save();
+      const w0 = waterTargetCups();
+      view('progress', 'body'); logMeasure();
+      await new Promise(r => setTimeout(r, 120));
+      document.querySelector('#m-weight').value = String(weightShow(130).toFixed(1));
+      document.querySelector('#sheet [onclick="saveMeasure()"]').click();
+      await new Promise(r => setTimeout(r, 120));
+      o.w0 = w0; o.w1 = waterTargetCups(); o.prot = proteinTargetG();
+      const fuel = view('fuel').textContent;
+      o.fuelWater = fuel.includes(o.w1 + ' cups') || new RegExp('\\b' + o.w1 + '\\b').test(fuel);
+      o.fuelProt = new RegExp('\\b' + o.prot + '\\s*g').test(fuel);
+      o.workingKg = STATE.nutrition.weightKg;
+
+      // 3. A goal tapped on Fuel: both stores move, and Settings and Fuel name the same goal.
+      view('fuel');
+      const gb = [...document.querySelectorAll('#v-fuel button')].find(b => /setNutGoal\('gain'\)/.test(b.getAttribute('onclick') || ''));
+      o.goalBtn = !!gb; if (gb) gb.click();
+      o.goalProf = STATE.profile.goal; o.goalNut = STATE.nutrition.goal;
+      o.fuelPressed = [...document.querySelectorAll('#v-fuel [aria-pressed="true"]')].some(b => /setNutGoal\('gain'\)/.test(b.getAttribute('onclick') || ''));
+
+      // 4. A training day tapped in Settings: Program's weeks and Progress's week tile follow.
+      STATE.profile.days = [1, 2, 3, 4, 5, 6]; save();
+      view('guide');
+      const sat = [...document.querySelectorAll('#v-guide button')].find(b => b.getAttribute('onclick') === 'toggleTrainingDay(6)');
+      o.dayBtn = !!sat; if (sat) sat.click();
+      o.days = STATE.profile.days.length;
+      o.pw = programWeeks();
+      o.programWeeks = view('program').textContent.includes('about ' + o.pw + ' weeks');
+      o.weekTile = stat(view('progress', 'summary'), 'This week');
+
+      // 5. A joint flagged: Today offers no move that loads it, and Reference marks the ones that do.
+      STATE.profile.limitations = ['wrist']; save();
+      view('today', 'workout');
+      STATE.logs = {}; STATE.progressPtr = 12; save(); view('today', 'workout');
+      o.todayRisky = [...document.querySelectorAll('#v-today .ex[data-ex]')].map(e => e.dataset.ex).filter(id => jointRisky(id, ['wrist']));
+      o.todayMoves = document.querySelectorAll('#v-today .ex[data-ex]').length;
+      o.refMarks = (view('ref', 'moves').textContent.match(/⚠️/g) || []).length;
+      STATE.profile.limitations = []; save();
+
+      // 6. A run logged on Today ▸ Movement: Fuel's budget, the step habit and Progress's activity row.
+      const b0 = todayKcalBudget();
+      setRunUnit('min'); setRunVal(60);
+      o.budget0 = b0; o.budget1 = todayKcalBudget();
+      o.stepHabit = !!(nutToday().habits || {}).steps;
+      view('progress', 'summary');
+      o.runRow = !!document.querySelector('#v-progress [data-act="run"]');
+      o.fuelEarned = /earned/i.test(view('fuel').textContent);
+      return o;
+    });
+    s.ok('guard: Progress really shows a session count', r.sessions0 != null, r);
+    s.eq('a finished session raises the count Progress shows', Number(r.sessions1), Number(r.sessions0) + 1, r);
+    s.eq('and Progress shows the count the app holds', Number(r.sessions1), r.count, r);
+    s.ok('the Program calendar marks that session done', r.cellDone, r);
+    s.ok('Today shows the session as done', r.todayDone, r);
+    s.ok('and offers no button to finish it again', r.todayNoStart, r);
+    s.ok('and the brief says the session is done', r.briefDone, r);
+    s.ok('guard: the weight moved the water target', r.w1 !== r.w0, r);
+    s.ok('a weight saved on Progress ▸ Body becomes the working weight', Math.abs(r.workingKg - 130) < 1, r);
+    s.ok('and Fuel shows the new water target', r.fuelWater, r);
+    s.ok('and Fuel shows the new protein target', r.fuelProt, r);
+    s.ok('guard: Fuel offers the goal button', r.goalBtn, r);
+    s.eq('a goal tapped on Fuel reaches the profile', r.goalProf, 'gain', r);
+    s.eq('and the food targets', r.goalNut, 'gain', r);
+    s.ok('and Fuel marks that goal chosen', r.fuelPressed, r);
+    s.ok('guard: Settings offers the training-day buttons', r.dayBtn, r);
+    s.eq('a day tapped in Settings changes the schedule', r.days, 5, r);
+    s.ok('and Program states the weeks for that schedule', r.programWeeks, r);
+    s.ok('and Progress counts the week against it', /\/\s*5$/.test(String(r.weekTile).trim()), r);
+    s.ok('guard: Today lists the session moves', r.todayMoves > 0, r);
+    s.eq('a flagged joint leaves no move on Today that loads it', r.todayRisky.length, 0, r);
+    s.ok('and Reference marks the moves that load it', r.refMarks > 0, r);
+    s.ok('a run logged on Movement raises the food budget', r.budget1 > r.budget0, r);
+    s.ok('and ticks the step habit', r.stepHabit, r);
+    s.ok('and shows on Progress', r.runRow, r);
+    s.ok('and Fuel says the calories were earned', r.fuelEarned, r);
+    errors.forEach(x => s.fail('page error', x));
+    await browser.close();
+  }
+
+  /* ---- v544: the abs card and the protein figures in the athlete's unit ------
+     The Settings card told every athlete "11–13 kg of fat ... 0.5 kg a week"
+     and "1.6–2.2 g per kg", and Fuel's protein lines said "g/kg". An athlete who
+     weighs in pounds cannot use a per-kg rate without a calculator — v337's
+     rule. And two pointers sent the athlete to "Progress", which opens on
+     Summary; the waist is on Body. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const txt = t => { go(t); return document.querySelector('.view.active').textContent; };
+      const grab = (x, re) => (x.match(re) || [''])[0];
+      STATE.nutrition.weightKg = 86; STATE.nutrition.kcalTarget = null;
+      for (const unit of ['cm', 'in']) {
+        STATE.profile.unit = unit; save();
+        const g = txt('guide'), f = txt('fuel');
+        o[unit] = { protein: grab(g, /roughly [^)]*\)/), fat: grab(g, /from 25% is .{0,60}? a week/),
+          fuelProtein: grab(f, /~[\d.–]+ g per (kg|lb) keeps/), perKg: /g per kg|g\/kg/.test(g + f),
+          waistBody: (g.match(/Progress ▸ Body/g) || []).length, waistFuel: /weekly on Progress ▸ Body/.test(f) };
+        STATE.nutrition.goal = 'shred'; STATE.profile.goal = 'shred'; save();
+        o[unit].shredTip = grab(txt('fuel'), /pushed to ~[\d.]+ g per (kg|lb)/);
+      }
+      /* The class, not the instances: a pound athlete reads no body-weight rate in
+         kilograms anywhere on the six tabs and their panes. Food weights stay in
+         grams on purpose, and published standards keep their own unit (v337). */
+      STATE.profile.unit = 'in'; save();
+      const leaks = [];
+      for (const [t, p] of [['today','brief'],['today','workout'],['program'],['fuel'],['progress','summary'],['progress','body'],['progress','strength'],['ref','food'],['guide']]) {
+        go(t); if (t === 'today') { TODAY_TAB = p; renderToday(); } if (t === 'progress') setProgressTab(p); if (t === 'ref') setRefTab(p);
+        for (const g of ['lose', 'shred', 'recomp', 'leanrecomp', 'gain']) { STATE.nutrition.goal = g; STATE.profile.goal = g; render();
+          const m = document.querySelector('.view.active').textContent.match(/.{0,30}(g per kg|g\/kg|kg a week|kg\/wk|kg of fat).{0,20}/);
+          if (m) leaks.push(t + '/' + (p || '') + '/' + g + ': ' + m[0]); }
+      }
+      o.leaks = [...new Set(leaks)];
+      o.rate = { lb: (() => { STATE.profile.unit = 'in'; return protRate(1.6, 2.2); })(), kg: (() => { STATE.profile.unit = 'cm'; return protRate(1.6, 2.2); })(), one: protRate(2.4) };
+      STATE.profile.unit = 'cm'; save();
+      return o;
+    });
+    s.eq('a pound athlete reads the protein range per pound', r.in.protein, 'roughly 0.7–1.0 g per lb of bodyweight)', r);
+    s.eq('FLOOR: a kilogram athlete keeps the per-kg range', r.cm.protein, 'roughly 1.6–2.2 g per kg of bodyweight)', r);
+    s.ok('a pound athlete reads the fat figure in pounds', /24–29 lb of fat.*1 lb a week/.test(r.in.fat), r);
+    s.ok('FLOOR: a kilogram athlete keeps it in kilograms', /11–13 kg of fat.*0\.5 kg a week/.test(r.cm.fat), r);
+    s.ok('Fuel\'s protein line follows the unit', /g per lb/.test(r.in.fuelProtein) && /g per kg/.test(r.cm.fuelProtein), r);
+    s.ok('and so does the Shred tip', /g per lb/.test(r.in.shredTip) && /g per kg/.test(r.cm.shredTip), r);
+    s.ok('a pound athlete sees no per-kg rate on Settings or Fuel', !r.in.perKg, r);
+    s.ok('both waist pointers on Settings name the Body pane', r.cm.waistBody >= 2, r);
+    s.ok('and so does the one on Fuel', r.cm.waistFuel, r);
+    s.eq('a pound athlete reads no body-weight rate in kilograms on any tab', r.leaks.length, 0, r.leaks);
+    {
+      const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+      s.ok('the calorie check states its rate in the athlete\'s unit', !/0\.25 kg a week/.test(src) && (src.match(/\$\{kg\(0\.25\)\} a week/g) || []).length === 2);
+    }
+    s.eq('the rate helper converts', r.rate.lb, '0.7–1.0 g per lb', r);
+    s.eq('and leaves kilograms alone', r.rate.kg, '1.6–2.2 g per kg', r);
+    s.eq('and takes one figure', r.rate.one, '2.4 g per kg', r);
+    errors.forEach(x => s.fail('page error', x));
+    await browser.close();
+  }
+
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();

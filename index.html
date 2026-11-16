@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='543';
+const APP_VERSION='544';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -623,6 +623,11 @@ function isImperial(){return (STATE.profile&&STATE.profile.unit)==='in';}
 function waistToCm(v){return isImperial()?v*2.54:v;}            // typed → stored
 function waistShow(cm){return cm==null?null:(isImperial()?cm/2.54:cm);}  // stored → shown
 function weightToKg(v){return isImperial()?v*0.453592:v;}
+/* A protein rate in the athlete's own unit. The science is written per kg, so
+   the metric figure is the source and the imperial one is derived from it:
+   an athlete who weighs in pounds cannot use "1.6 g per kg" without a
+   calculator, which is v337's rule about a figure the athlete has to convert. */
+function protRate(lo,hi){const imp=isImperial(),f=x=>imp?(x/2.20462).toFixed(1):String(x),u=imp?'g per lb':'g per kg';return (hi==null?f(lo):f(lo)+'–'+f(hi))+' '+u;}
 function weightShow(kg){return kg==null?null:(isImperial()?kg/0.453592:kg);}
 /* THE GOAL IS STORED IN POUNDS BY NAME, and three sites turned it back into a
    shown figure by hand. The fourth — the morning brief, which the coach reads
@@ -7263,7 +7268,7 @@ function bmqTodayHTML(){
     ?`<button class="btn primary" style="width:100%;margin-top:8px" onclick="startBmqSession('${k}')">▶ Start ${_ve(BMQ_SESSIONS[k].name)}</button>
       <div class="tiny muted" style="margin-top:6px">It ticks itself off when you finish. ${k==='strA'?'Do the easy run from this week\u2019s plan after it.':''}</div>`
     :`<button class="btn primary" style="width:100%;margin-top:8px" onclick="openEndurance()">📈 See this week\u2019s distance${k==='ruck'||k==='long'?' and plate':''}</button>
-      <div class="tiny muted" style="margin-top:6px">Log it on Today, under Movement, then tap Done here.</div>`;
+      <div class="tiny muted" style="margin-top:6px">Log it on Today ▸ Workout, under Movement, then tap Done here.</div>`;
   return `<div class="card pad" data-bmqtoday="next">
     <div class="tiny muted">Today</div>
     <div style="font-weight:800;margin:2px 0 4px">Session ${st.nextIdx+1} of ${BMQ_KEYS.length} — ${_ve(d.what)}</div>
@@ -24601,7 +24606,7 @@ function mealPlanHTML(){
       });
       h+=`<button class="btn sm ghost" style="width:100%;margin-top:6px" onclick="logRefMeal(${picked.idx},${mi})">Log this meal · ${m.p}g · ${m.kcal} kcal</button></div>`;
     });
-    h+=`<div class="tiny muted" style="margin-top:8px">Weighed to your targets, and filtered for your diet — no multiplying required. The full month is on <b>Reference</b>.</div>`;
+    h+=`<div class="tiny muted" style="margin-top:8px">Weighed to your targets, and filtered for your diet — no multiplying required. The full month is on <b>Reference ▸ Food</b>.</div>`;
     h+=`</div>`;
     return h;
   }
@@ -25015,21 +25020,21 @@ function renderFuel(){
    }
    const _kg=latestWeightKg();
    if(_pSet&&_kg&&_pSet/_kg>3){
-     h+=`<div class="note warn" style="margin-top:8px">${_pSet} g is over 3 g per kg of bodyweight. There is no evidence of benefit past about 2.4 g/kg, and it crowds out the carbs that fuel your sessions.</div>`;
+     h+=`<div class="note warn" style="margin-top:8px">${_pSet} g is over ${protRate(3)} of bodyweight. There is no evidence of benefit past about ${protRate(2.4)}, and it crowds out the carbs that fuel your sessions.</div>`;
    }}
   if(!n.kcalTarget){
     const tip=n.goal==='maintain'?'Eat around maintenance and let the training sculpt your core.'
       :n.goal==='gain'?'To build muscle, eat in a <b>slight surplus</b> (~150–300 kcal/day) with plenty of protein. Tap the calculator below for your exact number.'
-      :n.goal==='shred'?'Shredding runs a <b>~450–700 kcal/day deficit</b> with protein pushed to ~2.2 g/kg to protect muscle. Hard but short — run it in blocks, not year-round. Tap the calculator below.'
+      :n.goal==='shred'?'Shredding runs a <b>~450–700 kcal/day deficit</b> with protein pushed to ~'+protRate(2.2)+' to protect muscle. Hard but short — run it in blocks, not year-round. Tap the calculator below.'
       :n.goal==='core'?'Core focus eats <b>just under maintenance</b> (~5%) so your abs work is fuelled while bodyfat still drifts down. Tap the calculator below.'
       /* Without its own line this fell through to the fat-loss copy, which
          promised a 300-500 kcal deficit on a goal whose whole point is that
          the scale holds. A promise in UI text is a specification. */
-      :n.goal==='recomp'?'Recomposition eats <b>at maintenance</b>, with protein pushed <b>as high as it usefully goes</b> — toward 2.2 g/kg, bounded by your lean mass. You are asking your body to add muscle without a surplus to build from, so protein is the lever that does it. The scale holds steady while the training moves what is under it, so judge this one by the mirror, the tape and your strength numbers, not the weight. Tap the calculator below.'
+      :n.goal==='recomp'?'Recomposition eats <b>at maintenance</b>, with protein pushed <b>as high as it usefully goes</b> — toward '+protRate(2.2)+', bounded by your lean mass. You are asking your body to add muscle without a surplus to build from, so protein is the lever that does it. The scale holds steady while the training moves what is under it, so judge this one by the mirror, the tape and your strength numbers, not the weight. Tap the calculator below.'
       /* EVERY NUMBER IN THIS SENTENCE IS THE ONE THE CODE USES. ~12% is
          GOAL_KCAL.leanrecomp.mult, 2.2 g/kg is PROT_PER_KG.leanrecomp, and the
          rep multiplier really is Tone up's 1.05 rather than Shred's 1.25. */
-      :n.goal==='leanrecomp'?'Lean recomp is Tone up with a real deficit under it — <b>~12% below maintenance</b>, protein still at <b>~2.2 g/kg</b> bounded by your lean mass, and <b>the same session, rep for rep</b>. The fat comes off the deficit, the <b>shorter rest</b> between sets and a <b>10,000-step</b> target, not from trading your reps for cardio. The scale should drift down slowly — if it holds flat for a month you are on Tone up in all but name, and if it drops fast you have cut too hard. Tap the calculator below.'
+      :n.goal==='leanrecomp'?'Lean recomp is Tone up with a real deficit under it — <b>~12% below maintenance</b>, protein still at <b>~'+protRate(2.2)+'</b> bounded by your lean mass, and <b>the same session, rep for rep</b>. The fat comes off the deficit, the <b>shorter rest</b> between sets and a <b>10,000-step</b> target, not from trading your reps for cardio. The scale should drift down slowly — if it holds flat for a month you are on Tone up in all but name, and if it drops fast you have cut too hard. Tap the calculator below.'
       :'For fat loss, eat in a <b>~300–500 kcal/day deficit</b> — enough to lean out, slow enough to keep your strength. Tap the calculator below for your exact number.';
     h+=`<div class="note info" style="margin-top:12px">${tip}</div>`;}
   // intake logging (quick-add + photo AI)
@@ -25080,13 +25085,13 @@ function renderFuel(){
   // abs-in-the-kitchen guidance
   h+=`<div class="section-label">Reveal your abs</div><div class="card pad">
     <ul class="cuelist" style="margin-top:2px">
-      <li><b>Protein first</b> — ~1.6–2.2 g per kg keeps muscle while you lose fat and blunts hunger.</li>
+      <li><b>Protein first</b> — ~${protRate(1.6,2.2)} keeps muscle while you lose fat and blunts hunger.</li>
       <li><b>Modest deficit</b> — aim to lose ~0.5–1% of bodyweight per week; faster costs muscle.</li>
       <li><b>Whole foods &amp; fibre</b> — veg, fruit, lean protein; they fill you up for fewer calories.</li>
       <li><b>Cut liquid calories</b> — sodas, juice, alcohol hide a deficit fast.</li>
       <li><b>Walk daily &amp; sleep 7–9h</b> — the quiet drivers of a shrinking waist.</li>
     </ul>
-    <div class="note warn" style="margin-bottom:0">Spot-reduction isn't real: your core work builds the muscle, the deficit uncovers it. Track your <b>waist</b> weekly in Progress.</div>
+    <div class="note warn" style="margin-bottom:0">Spot-reduction isn't real: your core work builds the muscle, the deficit uncovers it. Track your <b>waist</b> weekly on Progress ▸ Body.</div>
   </div>`;
   v.innerHTML=h;
 }
@@ -25507,7 +25512,7 @@ function calorieCheckHTML(){
       return `<div class="note warn"><b>You are not gaining.</b> ${trendLine}
         ${estimateNote}
         ${offer}
-        <div class="tiny muted" style="margin-top:8px">Worth ruling out first: appetite dropping off on training days, and meals going unlogged. Building muscle is slow — about 0.25 kg a week is a good rate, and faster than that is mostly fat.</div></div>`;
+        <div class="tiny muted" style="margin-top:8px">Worth ruling out first: appetite dropping off on training days, and meals going unlogged. Building muscle is slow — about ${kg(0.25)} a week is a good rate, and faster than that is mostly fat.</div></div>`;
     }
     return `<div class="note warn"><b>${c.observed>0?'The scale is going up.':'The scale is barely moving.'}</b> ${trendLine}
       ${estimateNote}
@@ -25515,7 +25520,7 @@ function calorieCheckHTML(){
       <div class="tiny muted" style="margin-top:8px">Worth ruling out first: weekends that undo the week, cooking oil and drinks going unlogged, and a new training block holding water. If you have not been logging honestly, fix that before cutting further.</div></div>`;
   }
   if(c.gaining){
-    return `<div class="note warn"><b>That is going on faster than it should.</b> ${c.trend.days} days at about <b>${kg(c.observed)} a week</b>, against a planned ${kg(c.expected)}. Past roughly 0.25 kg a week the extra is mostly fat, and you have to cut it off again later.
+    return `<div class="note warn"><b>That is going on faster than it should.</b> ${c.trend.days} days at about <b>${kg(c.observed)} a week</b>, against a planned ${kg(c.expected)}. Past roughly ${kg(0.25)} a week the extra is mostly fat, and you have to cut it off again later.
       ${offer}</div>`;
   }
   return `<div class="note warn"><b>That is coming off faster than it should.</b> ${c.trend.days} days at about <b>${kg(c.observed)} a week</b>, against a planned ${kg(c.expected)}. Fast loss costs muscle and is the pace people quit at.
@@ -26210,12 +26215,12 @@ h+=`<div class="section-label">What changes, and when</div>
     <p class="sm"><b>The look:</b> visible abs = strong core muscle <i>plus</i> lower body fat. To reveal what you're building:</p>
     <ul class="cuelist">
       <li>Train the program consistently — <b>never skip the progression</b>; rising load is what forces change.</li>
-      <li>Eat in a slight calorie deficit and get enough <b>protein</b> (roughly 1.6–2.2 g per kg bodyweight).</li>
+      <li>Eat in a slight calorie deficit and get enough <b>protein</b> (roughly ${protRate(1.6,2.2)} of bodyweight).</li>
       <li>Walk daily &amp; stay active — the finishers help, but a modest deficit reveals abs.</li>
-      <li>Track your <b>waist</b> weekly (Progress tab). A shrinking waist is the truest proof.</li>
+      <li>Track your <b>waist</b> weekly (Progress ▸ Body). A shrinking waist is the truest proof.</li>
       <li>Sleep 7–9 hrs — recovery is when the core rebuilds stronger.</li>
     </ul>
-    <div class="note warn" style="margin-bottom:0"><b>Honest note: spot-reduction isn't real, and neither is a six-week six-pack.</b> Core work builds the muscle; the deficit uncovers it, and that part is arithmetic. Expect the <b>tape to move in 3–4 weeks</b> — that is the number to watch. Visible abs is roughly 12–14% body fat for a man, and getting there from 25% is 11–13 kg of fat, which at a sane 0.5 kg a week is <b>6–9 months</b>. Anyone promising it faster is selling something. Track your waist weekly in Progress; that is where you will see this working long before the mirror shows it.</div>
+    <div class="note warn" style="margin-bottom:0"><b>Honest note: spot-reduction isn't real, and neither is a six-week six-pack.</b> Core work builds the muscle; the deficit uncovers it, and that part is arithmetic. Expect the <b>tape to move in 3–4 weeks</b> — that is the number to watch. Visible abs is roughly 12–14% body fat for a man, and getting there from 25% is ${Math.round(weightShow(11))}–${Math.round(weightShow(13))} ${isImperial()?'lb':'kg'} of fat, which at a sane ${isImperial()?'1 lb':'0.5 kg'} a week is <b>6–9 months</b>. Anyone promising it faster is selling something. Track your waist weekly on Progress ▸ Body; that is where you will see this working long before the mirror shows it.</div>
   </div>`;
 
   // settings / data

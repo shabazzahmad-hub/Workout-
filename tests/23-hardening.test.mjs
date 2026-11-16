@@ -2974,7 +2974,7 @@ export default async function () {
        Every number in it is pinned against the code that produces it. */
     t.ok('the tip renders', !!lr.tipText, lr.tipText);
     t.ok('naming the ~12% deficit it actually runs', /~12% below maintenance/.test(lr.tipText), lr.tipText);
-    t.ok('the 2.2 g/kg protein it actually prescribes', /2\.2 g\/kg/.test(lr.tipText), lr.tipText);
+    t.ok('the 2.2 g/kg protein it actually prescribes', /2\.2 g per kg/.test(lr.tipText), lr.tipText); // v544: protRate() writes the unit out
     t.ok('and that the session is unchanged rep for rep', /rep for rep/.test(lr.tipText), lr.tipText);
     /* It must NOT claim the thing that was removed: the first version promised
        "an extra conditioning slot", which the measurement showed was the very
@@ -7994,6 +7994,39 @@ export default async function () {
       pointing.length >= 4, String(pointing.length));
     const offenders = [...new Set(pointing.map(x => (flag(x) ? x.slice(0, 110) : null)).filter(Boolean))];
     t.eq('every pointer at a paned tab names the pane', offenders.length, 0, offenders);
+
+    /* v544: the scan above drops every string that carries markup (class=,
+       style=), and most of this app's copy lives in templates WITH markup — so
+       "Track your waist weekly in Progress." on a styled note was never read,
+       and "(Progress tab)" had no sending word in front of it. This pass strips
+       the tags rather than dropping the string, line by line, and treats an
+       opening bracket as a sending word too. */
+    {
+      const points2 = /\b(Progress|Reference|Today)\b(?=\s*(?:tab\b|▸|,|\.|\)|;))/g;
+      const sends2 = /(?:\b(?:on|from|in|under|Open|open|to)\s+(?:the\s+)?|\()(Progress|Reference|Today)\b/;
+      const flag2 = str => {
+        let m; points2.lastIndex = 0;
+        while ((m = points2.exec(str))) {
+          const tab = m[1];
+          const before = str.slice(Math.max(0, m.index - 12), m.index + tab.length);
+          if (!sends2.test(before)) continue;
+          const win = str.slice(m.index, m.index + 90);
+          if (!PANES[tab].some(pane => win.indexOf(pane) >= 0)) return tab;
+        }
+        return null;
+      };
+      t.eq('guard: a pointer in brackets is flagged', flag2('Track it weekly (Progress tab).'), 'Progress');
+      t.eq('guard: and a pointer on a styled note is read once the tags are gone',
+        flag2('<div class="note">Track it weekly in Progress.</div>'.replace(/<[^>]*>/g, ' ')), 'Progress');
+      t.eq('guard: the same pointer with its pane is not', flag2('Track it weekly (Progress ▸ Body).'), null);
+      /* The ONE exception: with no baseline, Today shows the assessment screen
+         on every pane, so naming the tab alone is the whole address. */
+      const EXEMPT = [/baseline assessment\s+on the Today tab/];
+      const lines = noComments.replace(/<[^>]*>/g, ' ').replace(/\$\{[^}]*\}/g, ' ').split('\n');
+      const off2 = lines.filter(l => flag2(l) && !EXEMPT.some(re => re.test(l))).map(l => l.trim().slice(0, 140));
+      t.ok('guard: the exemption still names a real line', lines.some(l => EXEMPT[0].test(l)));
+      t.eq('every pointer at a paned tab names the pane, markup included', off2.length, 0, off2);
+    }
 
     /* Settings has no panes but it does have sections, and "Settings ▸ Setup"
        named one that does not exist — the real route is Profile & goals. Read
