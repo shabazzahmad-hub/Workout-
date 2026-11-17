@@ -4381,6 +4381,11 @@ const { browser, page, errors } = await launch(port);
       const L = STATE.logs[p];
       o.partial = L.partial; o.short = !!L.short; o.items = (L.items || []).length; o.cutItems = cut.main.length + 1;
       o.ptr = STATE.progressPtr; o.pinCleared = _sessDay === null;
+      /* A commit that is REFUSED returns early, before the line that clears
+         the pin on the way to the pointer move — so only the finally can. */
+      STATE.logs[6] = { date: Y, ex: {}, feel: null, done: false };
+      commitSession('right', Y);
+      o.refusedPtr = STATE.progressPtr; o.refusedPinCleared = _sessDay === null;
       return o;
     });
     s.ok('guard: yesterday\'s time cap really cuts the session', r.cutGuard, r);
@@ -4390,6 +4395,8 @@ const { browser, page, errors } = await launch(port);
     s.eq('and keeps the moves that were done', r.items, r.cutItems, r);
     s.eq('and still moves the programme on', r.ptr, 6, r);
     s.ok('and the day pin is gone afterwards', r.pinCleared, r);
+    s.eq('guard: a commit with no work really is refused', r.refusedPtr, 6, r);
+    s.ok('and a refused commit leaves no day pin behind', r.refusedPinCleared, r);
     s.eq('no page errors in the v546 midnight block', errors.length, 0, errors);
     await browser.close();
   }
