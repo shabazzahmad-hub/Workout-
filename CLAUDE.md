@@ -24409,3 +24409,67 @@ still rounds, and the weight staying put is now the requirement.
 **Recorded rather than fixed:** the assessment-history label after "Start a
 fresh block" (needs a stored kind), "▼ -6" (both score surfaces agree on it),
 the FORCE rush "80 m" wording (v397 matched it to the CAF card).
+
+## An undo reverses what the action did; an open sheet is a copy (v546)
+
+Three reviews, each fault reproduced in the running app first: what an UNDO
+leaves behind, the Fuel flow, and state that changes while a sheet is open.
+
+### An inverse operation has to reverse every side effect
+
+- **Clearing a FORCE result left its checkpoint copy.** `setForceResultQuiet()`
+  writes a result twice — the latest, and a dated copy in its checkpoint — and
+  the clear removed one. The card printed the deleted time as "Recorded" and
+  `prepMidDue()` stayed false. `forceCheckClear()` removes the copy from the
+  latest slot holding it.
+- **A new block inherited the old block's checkpoints**, so the first result of
+  the new block went into the OLD final slot (the never-backwards rule). A new
+  block drops `prep.checks`; a reschedule keeps them.
+- **"Restore the original move" did not restore it after a logged set.**
+  `doSwap()` carries the work to the new move and `undoSwap()` never carried it
+  back, so `keepLoggedWork()` put the swap straight back. The work is lifted off
+  while the slot is rebuilt, or the rebuild finds the swapped move again.
+- **Deleting a measurement left what it seeded**: the first waist as
+  `startWaist`, and the only weight as `nutrition.weightKg`. Each is taken back
+  only when it IS the deleted row's figure.
+
+### The Fuel flow
+
+- **A one-tap food ignored the sheet's Meal and Quantity.** `logOneTap()` reads
+  both and writes the same `×N` label `saveFood()` writes.
+- **An edit doubled a quantity**: "Chicken ×2" opened as its total with the
+  quantity at 1, so ×3 saved "Chicken ×2 ×3" at 990 kcal. The edit reads the ×N
+  back and opens per serving.
+- **A ✕ or ✏️ on a row not in today's log did nothing**; `goneRow()` says so and
+  repaints. **And nothing repainted when the date changed** — `render._day` is
+  compared on every return to the page.
+- The spoken brief told a bulk "the deficit strips the fat"; `fuelWhy()` is one
+  reader per goal for the brief and Reference.
+- The targets tile names the movement credit the food card already adds, and a
+  protein target the calories cannot hold says so.
+
+### An open sheet is a copy of the state being replaced
+
+A foreign write (v404) replaced STATE under an open sheet, and Save wrote the
+old figures back: a reverted age, a goal weight read in the wrong unit, a ✕
+that deleted a different session, and the profile editor restoring a joint flag
+the other tab had just removed. **A foreign write now closes the open sheet and
+ends the editor without saving it.** A sheet whose timer is running is left
+alone — a live effort — and its writers append safely into the adopted state.
+
+**The edit sheet is pinned by what the row IS** (`{day, at, name}`), not by its
+index, so neither another tab nor midnight can redirect it.
+
+### A session finished after midnight
+
+The time cap and readiness are keyed to a date, so a capped session finished at
+00:10 was rebuilt in full: marked partial, a done move "not logged", and a
+readiness-eased session lowering the load. The player hands `commitSession()` the
+day it opened on, and `_sessDay` pins only the measuring half; it is cleared
+before the pointer moves and in a `finally`.
+
+**A fix that closes a sheet releases what was queued behind it.** Closing the
+open sheet on a foreign write showed a badge that v433's floor expected to stay
+queued. The floor's rule was "an ordinary foreign write does not drop the
+badge", and shown is not dropped, so the check was re-aimed rather than the
+fix narrowed.
