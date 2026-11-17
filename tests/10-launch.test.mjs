@@ -4140,6 +4140,12 @@ const { browser, page, errors } = await launch(port);
       openForceLog(); await w(60); document.querySelector('#fq-rush').value = ''; saveForceTimes(); await w(400);
       o.cpAllGone = !STATE.prep.checks;
       o.cpDueAgain = prepMidDue();
+      /* The helper's own contract. Through the sheet, a filled box beside the
+         cleared one saves its result straight back into the checkpoint, so a
+         clear that wiped the whole slot was invisible there. */
+      STATE.prep.checks = { mid: { results: { lift: 150, rush: 60 }, at: iso(-1) }, initial: { results: { lift: 170 }, at: iso(-30) } };
+      forceCheckClear('lift');
+      o.cpOnlyOne = JSON.stringify(STATE.prep.checks); o.cpAt = iso(-1); o.cpAt0 = iso(-30);
 
       /* A2 — a new block starts with no checkpoints */
       STATE.prep = { date: iso(-2), planFrom: iso(-120), results: { lift: 170 }, checks: { final: { results: { lift: 170 }, at: iso(-2) } } };
@@ -4302,6 +4308,8 @@ const { browser, page, errors } = await launch(port);
     s.ok('clearing a FORCE result clears its checkpoint copy too', r.cpLiftGone, r);
     s.ok('FLOOR: the other result in that checkpoint stays', r.cpRushKept, r);
     s.ok('and an emptied checkpoint goes, so the midpoint is due again', r.cpAllGone && r.cpDueAgain, r);
+    s.eq('a clear takes one result from the latest slot holding it, and nothing else', r.cpOnlyOne,
+      '{"mid":{"results":{"rush":60},"at":"' + r.cpAt + '"},"initial":{"results":{"lift":170},"at":"' + r.cpAt0 + '"}}', r);
     s.ok('a new block starts with no checkpoints', r.nbChecks, r);
     s.ok('and keeps the latest results', r.nbResultsKept, r);
     s.eq('so the new block\'s first result is its baseline', r.nbSlot, 'initial', r);
