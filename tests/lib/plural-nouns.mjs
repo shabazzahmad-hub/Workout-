@@ -25,6 +25,6 @@ export const PLURAL_NOUNS = [
   'sets', 'exercises', 'moves', 'movements', 'reps', 'rounds', 'sessions',
   'workouts', 'tests', 'blocks', 'weeks', 'months', 'days', 'hours', 'minutes',
   'seconds', 'meals', 'calories', 'grams', 'cups', 'glasses', 'photos',
-  'badges', 'entries', 'stretches', 'points', 'holds',
+  'badges', 'entries', 'stretches', 'points', 'holds', 'items',
 ];
 export const PLURAL_NOUNS_RE = PLURAL_NOUNS.join('|');

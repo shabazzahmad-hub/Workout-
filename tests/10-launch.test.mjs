@@ -2843,7 +2843,11 @@ const { browser, page, errors } = await launch(port);
     const f2a = await page.evaluate(() => ({ h: STATE.profile.heightCm, w: STATE.nutrition.weightKg }));
     await openEdit(); await saveAll(); await page.waitForTimeout(80);
     const f2R = await rep(), f2b = await page.evaluate(() => ({ h: STATE.profile.heightCm, w: STATE.nutrition.weightKg }));
-    s.ok('GUARD: the imperial form really does move both figures by rounding', f2a.h !== f2b.h && f2a.w !== f2b.w, { f2a, f2b });
+    /* v545: the weight box no longer writes back when it is untouched, so only
+       the height still rounds on an untouched save. That is the rounding the
+       floor below needs, and the weight staying put is now the requirement. */
+    s.ok('GUARD: the imperial form really does move the height by rounding', f2a.h !== f2b.h, { f2a, f2b });
+    s.eq('and an untouched weight box no longer moves the stored weight', f2b.w, f2a.w, { f2a, f2b });
     s.ok('FLOOR: a rounding step is not reported as an answer changed', !f2R.open, f2R);
     await seedBase('Intermediate', { unit: 'in' });
     await openEdit(); await page.evaluate(() => { document.querySelector('#ob-weight').value = '205'; }); await saveAll(); await page.waitForTimeout(80);
@@ -3852,6 +3856,267 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+
+  /* ---- v545: a pre-filled box is not a measurement; food and prep fixes ------
+     Each case drives the control the athlete taps and reads STATE or the glass. */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const toastTxt = () => (document.getElementById('toast') || {}).textContent || '';
+      const today = todayISO();
+      const past = n => { const d = new Date(); d.setDate(d.getDate() - n); return localISO(d); };
+
+      /* A. The profile editor, opened and closed untouched, writes no weigh-in. */
+      for (const unit of ['cm', 'in']) {
+        STATE.profile.unit = unit;
+        STATE.measurements = [{ date: past(28), weight: 87.2, waist: 98 }, { date: past(14), weight: 86.45, waist: 97.3 }];
+        STATE.nutrition.weightKg = 86.45; save();
+        go('guide'); openProfileEdit(); await wait(80);
+        const back = document.getElementById('ob-back'); if (back) back.click();
+        await wait(150);
+        o['editor_' + unit] = { rows: STATE.measurements.length, todayRow: STATE.measurements.some(m => m.date === today),
+          kg: STATE.nutrition.weightKg, hadBack: !!back };
+      }
+      /* FLOOR: a weight the athlete changes IS a weigh-in. */
+      STATE.profile.unit = 'cm'; save();
+      go('guide'); openProfileEdit(); await wait(80);
+      const wb = document.getElementById('ob-weight'); if (wb) wb.value = '84';
+      const back2 = document.getElementById('ob-back'); if (back2) back2.click(); await wait(150);
+      o.editorEdited = { todayRow: (STATE.measurements.find(m => m.date === today) || {}).weight, kg: STATE.nutrition.weightKg };
+
+      /* B. The calorie sheet saved with only the activity changed writes no weigh-in. */
+      STATE.measurements = [{ date: past(14), weight: 86.45 }]; STATE.nutrition.weightKg = 86.45; save();
+      go('fuel'); openTDEE(); await wait(50);
+      const act = document.getElementById('td-act'); if (act) act.value = act.options[act.options.length - 1].value;
+      saveTDEE(); await wait(50);
+      o.tdee = { rows: STATE.measurements.length, todayRow: STATE.measurements.some(m => m.date === today), kg: STATE.nutrition.weightKg };
+      openTDEE(); await wait(50);
+      const tw = document.getElementById('td-wt'); if (tw) tw.value = '83';
+      saveTDEE(); await wait(50);
+      o.tdeeEdited = (STATE.measurements.find(m => m.date === today) || {}).weight;
+
+      /* C. FORCE: a time in the wrong unit is refused, a bad box saves nothing, a blank clears. */
+      STATE.prep = { results: {} }; save();
+      const fset = (id, v) => { const el = document.getElementById('fq-' + id); if (el) el.value = v; return !!el; };
+      openForceLog(); await wait(30);
+      o.forceBox = fset('lift', '3.30'); saveForceTimes(); await wait(30);
+      o.forceSmall = { lift: forceResult('lift'), sheetOpen: !!document.getElementById('fq-lift'), toast: toastTxt(), verdict: forceVerdict('lift') };
+      fset('lift', '200'); fset('shuttle', '-5'); saveForceTimes(); await wait(30);
+      o.forceBad = { lift: forceResult('lift'), shuttle: forceResult('shuttle'), sheetOpen: !!document.getElementById('fq-lift') };
+      fset('shuttle', ''); saveForceTimes(); await wait(30);
+      o.forceGood = { lift: forceResult('lift'), toast: toastTxt() };
+      openForceLog(); await wait(30); fset('lift', ''); saveForceTimes(); await wait(30);
+      o.forceClear = { lift: forceResult('lift'), toast: toastTxt() };
+
+      /* D. Starring a remembered food keeps the entry the sheet is holding. */
+      STATE.nutrition.foods = []; rememberFood('Oats', 300, 10, 50, 5); save();
+      openQuickAdd({ name: 'Grilled chicken salad', kcal: 520 }); await wait(30);
+      const star = document.querySelector('#fa-foods button.chip');
+      if (star) star.click(); await wait(30);
+      o.star = { had: !!star, name: (document.getElementById('fa-name') || {}).value, fav: (nut().foods || []).some(f => f.fav) };
+      closeSheet(); await wait(400);
+
+      /* E. A derived habit is read from the data, not ticked by hand. */
+      STATE.nutrition.days = {}; logWater(0); nutToday().food = []; save();
+      toggleHabit('protein');
+      o.habitProtein = !!(nutToday().habits || {}).protein;
+      o.habitToast = toastTxt();
+      toggleHabit('sleep');
+      o.habitSleep = !!(nutToday().habits || {}).sleep;
+
+      /* F. Quick picks honour the diet and allergens. */
+      const chips = () => [...document.querySelectorAll('#sheet .chip')].map(b => b.textContent);
+      STATE.nutrition.diet = 'vegan'; STATE.nutrition.allergens = ['soy']; save();
+      openQuickAdd(); await wait(30); o.picksVegan = chips(); closeSheet(); await wait(400);
+      STATE.nutrition.diet = 'omnivore'; STATE.nutrition.allergens = []; save();
+      openQuickAdd(); await wait(30); o.picksOmni = chips(); closeSheet(); await wait(400);
+      o.picksAllTagged = QUICK_PICKS.every(n => Object.prototype.hasOwnProperty.call(QUICK_PICK_TAG, n) && FOOD_BY_NAME[QUICK_PICK_TAG[n]] !== undefined);
+
+      /* G. Reference's live "Calories left" reads the same budget Fuel does. */
+      STATE.nutrition.kcalTarget = 2280; STATE.nutrition.days = {}; save();
+      setSteps(16000); logFood('Probe', 800, 20, 50, 30, 'l');
+      go('ref'); setRefTab('food');
+      const refV = document.querySelector('.view.active');
+      const rst = [...refV.querySelectorAll('.stat')].find(x => (x.querySelector('.l') || {}).textContent === 'Calories left');
+      o.refLeft = rst ? +(rst.querySelector('.n') || {}).textContent : null;
+      o.budget = todayKcalBudget(); o.eaten = foodTotals().kcal;
+
+      /* H. A lookup with no answer does not blame the database. */
+      const realOff = offBarcode;
+      offBarcode = async () => { throw new Error('Failed to fetch'); };
+      await lookupBarcode('5000159484695'); await wait(30);
+      o.bcOffline = (document.querySelector('#sheet') || {}).textContent || '';
+      closeSheet(); await wait(400);
+      offBarcode = async () => { throw new Error('not in the database'); };
+      await lookupBarcode('5000159484695'); await wait(30);
+      o.bcMissing = (document.querySelector('#sheet') || {}).textContent || '';
+      closeSheet(); await wait(400);
+      offBarcode = realOff;
+
+      /* I. With a protein target and no calorie target, only carbs and fat are missing. */
+      delete STATE.nutrition.kcalTarget; STATE.nutrition.proteinTarget = 165; save();
+      go('fuel'); renderFuel();
+      o.protNote = (document.querySelector('.view.active') || {}).textContent || '';
+
+      /* J. Counts of one. */
+      let one = null;
+      (REF_DAYS || []).some((d, di) => (d.meals || []).some((m, mi) => { if ((m.items || []).length === 1) { one = [di, mi]; return true; } return false; }));
+      o.oneMeal = !!one;
+      if (one) { logRefMeal(one[0], one[1]); o.oneToast = toastTxt(); }
+      STATE.logs = { 0: { date: today, done: true, completedAt: today, ex: {} } }; save();
+      weeklyRecap(); await wait(30);
+      o.recap = (document.querySelector('#sheet') || {}).textContent || '';
+      closeSheet(); await wait(400);
+      return o;
+    });
+    for (const u of ['cm', 'in']) {
+      const e = r['editor_' + u];
+      s.ok(`guard: the editor really closed through its own button (${u})`, e.hadBack, e);
+      s.ok(`an untouched profile edit writes no weigh-in (${u})`, !e.todayRow && e.rows === 2, e);
+      s.eq(`and leaves the stored weight exactly as it was (${u})`, e.kg, 86.45, e);
+    }
+    s.eq('FLOOR: a weight the athlete changes in the editor is today\'s weigh-in', r.editorEdited.todayRow, 84, r.editorEdited);
+    s.ok('saving the calorie sheet with only the activity changed writes no weigh-in', !r.tdee.todayRow && r.tdee.rows === 1, r.tdee);
+    s.eq('and leaves the stored weight as it was', r.tdee.kg, 86.45, r.tdee);
+    s.eq('FLOOR: a weight changed on the calorie sheet is a weigh-in', r.tdeeEdited, 83, r);
+    s.ok('guard: the FORCE sheet really has a lift box', r.forceBox, r);
+    s.eq('a FORCE time under half the standard is not saved', r.forceSmall.lift, null, r.forceSmall);
+    s.ok('and the sheet stays open to retype it', r.forceSmall.sheetOpen, r.forceSmall);
+    s.ok('and says to enter seconds', /seconds/.test(r.forceSmall.toast), r.forceSmall);
+    s.eq('a bad box in the same save saves nothing at all', r.forceBad.lift, null, r.forceBad);
+    s.ok('and keeps the sheet open', r.forceBad.sheetOpen, r.forceBad);
+    s.eq('FLOOR: a real time saves', r.forceGood.lift, 200, r.forceGood);
+    s.ok('and says Logged', /Logged/.test(r.forceGood.toast), r.forceGood);
+    s.eq('a blanked box clears the result', r.forceClear.lift, null, r.forceClear);
+    s.ok('and says so', /cleared/.test(r.forceClear.toast), r.forceClear);
+    s.ok('guard: the remembered food has a star', r.star.had, r.star);
+    s.eq('starring a food keeps the entry the sheet was holding', r.star.name, 'Grilled chicken salad', r.star);
+    s.ok('and the star still takes', r.star.fav, r.star);
+    s.ok('a tap cannot tick the protein habit over an empty log', !r.habitProtein, r);
+    s.ok('and it says where the tick comes from', /ticks itself/.test(r.habitToast), r);
+    s.ok('FLOOR: a habit with nothing behind it still ticks by hand', r.habitSleep, r);
+    s.ok('every quick pick names a tagged library food', r.picksAllTagged, r);
+    s.ok('a vegan allergic to soy is not offered chicken or tofu', !r.picksVegan.some(x => /Chicken|Tofu|Salmon|Whey/.test(x)), r.picksVegan);
+    s.ok('but is still offered plant food', r.picksVegan.some(x => /Banana/.test(x)), r.picksVegan);
+    s.ok('FLOOR: an omnivore still gets chicken and tofu', r.picksOmni.some(x => /Chicken/.test(x)) && r.picksOmni.some(x => /Tofu/.test(x)), r.picksOmni);
+    s.ok('guard: movement really earned room today', r.budget > 2280, r);
+    s.eq('Reference\'s live calories left reads the same budget as Fuel', r.refLeft, r.budget - r.eaten, r);
+    s.ok('a lookup with no answer says the database did not answer', /did not answer/.test(r.bcOffline) && !/not in the free food database/.test(r.bcOffline), r.bcOffline.slice(0, 300));
+    s.ok('FLOOR: a real miss still says not in the database', /not in the free food database/.test(r.bcMissing), r.bcMissing.slice(0, 300));
+    s.ok('with only a protein target, the note asks for carb and fat goals only', /see carb & fat goals/.test(r.protNote) && !/see protein, carb/.test(r.protNote), '');
+    s.ok('guard: a reference meal with one item exists', r.oneMeal, r);
+    s.ok('one item logged says item, not items', /^1 item logged/.test(r.oneToast), r.oneToast);
+    s.ok('the weekly recap says 1 total session', /1 total session(?!s)/.test(r.recap), r.recap.slice(0, 200));
+    s.eq('no page errors in the v545 data block', errors.length, 0, errors);
+    await browser.close();
+  }
+
+  /* ---- v545: workouts — a closed day, an empty finish, a skipped circuit ----- */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {};
+      const wait = ms => new Promise(res => setTimeout(res, ms));
+      const toastTxt = () => (document.getElementById('toast') || {}).textContent || '';
+      window.confirm = () => true;
+
+      /* K. Quick: nothing checked is not a training day; a double tap counts once. */
+      STATE.quickLog = {}; save();
+      openQuick(QUICKIES[0].id); await wait(20);
+      quickFinish(); o.qEmpty = { log: JSON.stringify(STATE.quickLog), toast: toastTxt() };
+      openQuick(QUICKIES[0].id); await wait(20);
+      quickMark(0); quickFinish(); quickFinish();
+      o.qOne = STATE.quickLog[todayISO()] || 0;
+      await wait(300);
+
+      /* L. A closed day offers no session from the top of the Workout tab. */
+      const top = () => { go('today'); TODAY_TAB = 'workout'; renderToday();
+        return !!document.querySelector('#v-today [onclick="openPlayer()"]'); };
+      STATE.logs = {}; STATE.progressPtr = 2; delete STATE._trainAgain; save();
+      o.openDay = top();
+      const sess = buildSession(2); const l = ensureLog();
+      [...sess.main, sess.finisher].filter(Boolean).forEach(m => { l.ex[m.exId] = { sets: Array.from({ length: m.sets }, () => true), done: true }; });
+      save(); commitSession('right'); await wait(50);
+      o.closed = todayClosed();
+      o.closedDay = top();
+
+      /* M. "Set done" during GET READY records the prescription, not the last rest. */
+      STATE.logs = {}; STATE.progressPtr = 0; delete STATE._trainAgain; save();
+      openPlayer(); await wait(50);
+      const i = PLAYER.items.findIndex(m => m.unit === 'time' && m.sets >= 2);
+      o.mGuard = i >= 0;
+      if (i >= 0) {
+        PLAYER.i = i; PLAYER.s = 0; plEnterReady(false);
+        const m = PLAYER.items[i];
+        for (let s = 0; s < m.sets; s++) {
+          playerSetDone();
+          if (PLAYER.phase === 'rest') { PLAYER.remain = Math.max(1, PLAYER.remain - 10); playerSkipRest(); }
+        }
+        o.mActual = ((STATE.logs[0] || {}).ex || {})[m.exId] ? STATE.logs[0].ex[m.exId].actual : null;
+        o.mTarget = m.target;
+      }
+      playerQuit(); await wait(500);
+
+      /* N. A special format with every round skipped logs and rates nothing. */
+      const runSpecial = async (f, skip) => {
+        startSpecialFormat(f); await wait(30);
+        let g = 0; while (INTV && INTV.phase === 'lead' && g < 20) { ivTickLead(); g++; }
+        g = 0;
+        while (INTV && INTV.phase !== 'done' && g < 400) {
+          g++;
+          if (skip) hiitSkip(); else { INTV.deadline = monoNow() - 5; ivTick(); }
+          await wait(0);
+        }
+        await wait(100);
+        return [...document.querySelectorAll('#ivBody button')].map(b => b.textContent.trim());
+      };
+      STATE.boxLog = []; STATE.formatFeel = {}; save();
+      o.skipBtns = await runSpecial('box3x3', true);
+      o.skipText = (document.getElementById('ivBody') || {}).textContent || '';
+      hiitQuit(); await wait(500);
+      o.skipLog = (STATE.boxLog || []).length;
+      o.fullBtns = await runSpecial('box3x3', false);
+      hiitQuit(); await wait(500);
+
+      /* O. Finishing a metcon's intervals logs today's session. */
+      let p = -1; for (let k = 0; k < 378; k++) { if (buildSession(k).session.key === 'metcon') { p = k; break; } }
+      o.metcon = p;
+      STATE.logs = {}; STATE.progressPtr = p; delete STATE._trainAgain; save();
+      startHiit(Object.keys(HIIT_FORMATS)[0]); await wait(30);
+      let g = 0;
+      while (INTV && INTV.phase !== 'done' && g < 500) { g++;
+        if (INTV.phase === 'lead') { ivTickLead(); continue; }
+        INTV.deadline = monoNow() - 5; ivTick(); await wait(0); }
+      await wait(100);
+      const lb = [...document.querySelectorAll('#ivBody button')].find(b => /Log today/.test(b.textContent));
+      if (lb) lb.click(); await wait(300);
+      const feel = [...document.querySelectorAll('#sheet button')].find(b => /just right/.test(b.textContent));
+      if (feel) feel.click(); await wait(300);
+      o.metconPtr = STATE.progressPtr; o.metconDone = !!(STATE.logs[p] && STATE.logs[p].done);
+      return o;
+    });
+    s.eq('Finish with nothing checked writes no quick session', r.qEmpty.log, '{}', r.qEmpty);
+    s.ok('and says nothing was logged', /nothing was logged/.test(r.qEmpty.toast), r.qEmpty);
+    s.eq('FLOOR: a real quick session counts, and a second tap does not count it twice', r.qOne, 1, r);
+    s.ok('FLOOR: an open day still offers the guided workout', r.openDay, r);
+    s.ok('guard: the day really is closed', r.closed, r);
+    s.ok('a closed day does not offer the next session from the top', !r.closedDay, r);
+    s.ok('guard: a timed movement with two or more sets exists', r.mGuard, r);
+    s.eq('Set done during get ready records the prescription, not the rest just run', r.mActual, r.mTarget, r);
+    s.ok('a circuit with every round skipped offers only Close', r.skipBtns.length === 1 && r.skipBtns[0] === 'Close', r.skipBtns);
+    s.ok('and says nothing is logged', /nothing is logged/.test(r.skipText), r.skipText.slice(0, 200));
+    s.eq('and writes no boxing row', r.skipLog, 0, r);
+    s.ok('FLOOR: a full run is still rated', r.fullBtns.some(b => /Easy/.test(b)), r.fullBtns);
+    s.ok('guard: the programme has a metcon day', r.metcon >= 0, r);
+    s.ok('finishing a metcon\'s intervals logs the session', r.metconDone, r);
+    s.eq('and moves the programme on', r.metconPtr, r.metcon + 1, r);
+    s.eq('no page errors in the v545 workout block', errors.length, 0, errors);
+    await browser.close();
+  }
 
 srv.close();
 const failed = s.finish(errors);
