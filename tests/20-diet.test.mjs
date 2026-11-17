@@ -364,7 +364,10 @@ export default async function run() {
       o.boundary = /went wrong drawing/i.test(document.body.innerText);
       o.screen = /NaN|undefined/.test((document.querySelector('.view.active') || {}).innerText || '');
       // the three inputs, exercised for real
-      try { toggleHabit('protein'); o.habitTook = STATE.nutrition.days[new Date().toISOString().slice(0, 10)].habits.protein === true; }
+      /* 'sleep', not 'protein': since v545 a derived habit is read from the data
+         and cannot be ticked by hand, so the hand-tickable one is what tests
+         that the repaired habits map takes a tap. */
+      try { toggleHabit('sleep'); o.habitTook = STATE.nutrition.days[new Date().toISOString().slice(0, 10)].habits.sleep === true; }
       catch (e) { o.habitTook = 'THREW ' + e.message; }
       try { const w0 = nutToday().water; logWater(1); o.waterStep = nutToday().water - w0; }
       catch (e) { o.waterStep = 'THREW ' + e.message; }

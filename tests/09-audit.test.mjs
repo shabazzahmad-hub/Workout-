@@ -5297,6 +5297,9 @@ export default async function run() {
       checkAchievements();
       o.beforeStreak = computeStreak();
       o.beforeHas14 = !!STATE.achievements.streak14;
+      /* v545: Finish with nothing checked is not a session, so the record
+         marks a move first — the shape a real quick workout has. */
+      QUICK_ID = QUICKIES[0].id; quickState = { done: { 0: true } };
       quickFinish(); await wait(300);
       o.afterStreak = computeStreak();
       o.afterHas14 = !!STATE.achievements.streak14;
@@ -5322,6 +5325,7 @@ export default async function run() {
       /* FLOOR: a quick session that completes NO streak awards nothing. */
       reset(); STATE.logs = {}; STATE.quickLog = {}; STATE.achievements = {};
       checkAchievements();
+      QUICK_ID = QUICKIES[0].id; quickState = { done: { 0: true } };
       quickFinish(); await wait(300);
       o.loneQuick = { streak: computeStreak(), has3: !!STATE.achievements.streak3 };
 

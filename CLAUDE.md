@@ -24353,3 +24353,59 @@ What did not hold was the copy, on the athlete's own unit:
 A class check sweeps the six tabs and their panes for an imperial athlete
 across five goals and refuses any body-weight rate in kilograms. Food weights
 stay in grams on purpose, and published standards keep their own unit.
+
+## A pre-filled box is not a measurement (v545)
+
+Three independent reviews, each required to reproduce a fault in the running
+app before reporting it. Twenty-one faults, and the sharpest class is the one
+v455 and v538 brushed past: **a box that opens holding a stored value was
+written back as a new value on every save.**
+
+- **The profile editor logged a weigh-in and a tape that never happened.**
+  Every commit (Next, Back, Done, the page going hidden) upserted today's
+  measurement from the pre-filled boxes. Opening Settings ▸ Edit profile and
+  tapping Done made the Saturday check-in read as done and added a flat "now"
+  point to both charts; in pounds the round trip moved 86.45 kg to 86.6.
+- **The calorie sheet did the same** when only the activity level changed.
+
+The rule is `el.value !== el.defaultValue`: only a box the athlete changed is
+a measurement. A v538 check pinned the old behaviour (*"the imperial form
+really does move both figures by rounding"*) and was re-aimed: the height
+still rounds, and the weight staying put is now the requirement.
+
+### The workout surfaces
+
+- **"Log today's session complete" after HIIT intervals could never log.** No
+  work round marked a set, so the completion gate counted 0 of 6 and refused.
+  Each work round that ran now marks one set of its movement.
+- **The Guided workout button and the HIIT tile opened the NEXT session on a
+  closed day**, with no confirm — v344's `startMyDay()` defect on the two
+  buttons above the done card.
+- **Quick "Finish workout" with nothing checked was a training day** (streak
+  up, evening reminder silenced), and a double tap counted it twice.
+- **A special format with every round skipped logged a full session and a
+  rating toward "try the next level".** No work logs nothing; a part-done run
+  logs the rounds that ran and is not rated. `INTV.ranSteps` records which
+  work steps really ran.
+- **"Set done" tapped during GET READY stored the last rest's elapsed seconds
+  as the hold**, which eased the next session. Only a work phase measured
+  anything.
+
+### Food and prep
+
+- **FORCE results:** a time under half the standard (`forceFloor()`, derived
+  like `combatFloor()`) is refused with the sheet left open; nothing is
+  written until every box is read (v446's return-inside-forEach shape again);
+  a blanked box clears.
+- Starring a remembered food no longer wipes the open sheet.
+- Protein, water and steps habits are read from the data, not ticked by hand.
+- Quick picks are filtered by diet and allergens through `QUICK_PICK_TAG`,
+  failing closed for an untagged pick.
+- Reference's live "Calories left" reads `todayKcalBudget()`, as Fuel does.
+- A barcode lookup with no answer no longer says "not in the database".
+- Copy that assumed a cut is goal-aware on a bulk; raw allergen and goal keys
+  print as labels; "1 item logged" and "1 total session".
+
+**Recorded rather than fixed:** the assessment-history label after "Start a
+fresh block" (needs a stored kind), "▼ -6" (both score surfaces agree on it),
+the FORCE rush "80 m" wording (v397 matched it to the CAF card).

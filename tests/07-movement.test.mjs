@@ -928,7 +928,10 @@ export default async function run() {
       const run = (kind, k) => {
         try { closeSheet(); } catch (e) {}
         startSpecialCardio(kind, k);
-        while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+        /* v545: ivTick() records which work steps ran (INTV.ranSteps) as it adds the
+           work time, and the finish screen rates only a full run. A fast-forward that
+           adds the time must mark the steps too, or it builds a shape no tick can. */
+        while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; if (INTV.seq[INTV.i].type === 'work') (INTV.ranSteps || (INTV.ranSteps = {}))[INTV.i] = 1; INTV.i++; }
         ivDone();
         const html = document.getElementById('ivBody').innerHTML;
         try { hiitQuit(); } catch (e) {}
@@ -1048,7 +1051,7 @@ export default async function run() {
       const run = (start) => {
         try { closeSheet(); } catch (e) {}
         start();
-        while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+        while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; if (INTV.seq[INTV.i].type === 'work') (INTV.ranSteps || (INTV.ranSteps = {}))[INTV.i] = 1; INTV.i++; }
         ivDone();
         const html = document.getElementById('ivBody').innerHTML;
         try { hiitQuit(); } catch (e) {}
@@ -1080,19 +1083,19 @@ export default async function run() {
       STATE.formatFeel = {}; STATE.hiitLog = []; STATE.boxLog = []; STATE.skipLog = [];
 
       startSpecialFormat('box3x3');
-      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; if (INTV.seq[INTV.i].type === 'work') (INTV.ranSteps || (INTV.ranSteps = {}))[INTV.i] = 1; INTV.i++; }
       ivDone();
       rateActAndClose('box', 'easy', 5, 3, 180);
       const afterBoxTap = { feel: STATE.formatFeel.box, logRows: STATE.boxLog.length, intvCleared: INTV === null };
 
       startSkipping('skip93x2');
-      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; if (INTV.seq[INTV.i].type === 'work') (INTV.ranSteps || (INTV.ranSteps = {}))[INTV.i] = 1; INTV.i++; }
       ivDone();
       rateSkipAndClose('easy', 18, 2);
       const afterSkipTap = { feel: STATE.formatFeel.skip, logRows: STATE.skipLog.length };
 
       startHiitSpecial('tabata');
-      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; if (INTV.seq[INTV.i].type === 'work') (INTV.ranSteps || (INTV.ranSteps = {}))[INTV.i] = 1; INTV.i++; }
       ivDone();
       logHiitAndClose('hiit', 'tabata', 4);
       const afterHiitTap = hiitFormatStats('tabata');
@@ -1268,7 +1271,7 @@ export default async function run() {
       startJackMakeup();
       const seq = INTV ? INTV.seq.slice() : [];
       const work = seq.filter(s => s.type === 'work'), rest = seq.filter(s => s.type === 'rest');
-      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; if (INTV.seq[INTV.i].type === 'work') (INTV.ranSteps || (INTV.ranSteps = {}))[INTV.i] = 1; INTV.i++; }
       ivDone();
       const html = document.getElementById('ivBody').innerHTML;
       const mMatch = /creditMakeupAndClose\('jacks',([\d.]+)\)/.exec(html);
@@ -1303,7 +1306,7 @@ export default async function run() {
 
       startBikeMakeup(20);
       const seq = INTV ? INTV.seq.slice() : [];
-      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; if (INTV.seq[INTV.i].type === 'work') (INTV.ranSteps || (INTV.ranSteps = {}))[INTV.i] = 1; INTV.i++; }
       ivDone();
       const html = document.getElementById('ivBody').innerHTML;
       const hasRating = /How did that ride feel/.test(html);
@@ -1346,7 +1349,7 @@ export default async function run() {
       setBikeUnit('min'); setBikeVal(0);
       try { closeSheet(); } catch (e) {}
       startSpecialCardio('bike', 'vo2max4x4');   // the PRE-EXISTING Special-training path
-      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; INTV.i++; }
+      while (INTV && INTV.i < INTV.seq.length) { INTV.workElapsed += INTV.seq[INTV.i].secs; if (INTV.seq[INTV.i].type === 'work') (INTV.ranSteps || (INTV.ranSteps = {}))[INTV.i] = 1; INTV.i++; }
       ivDone();
       const oldHtml = document.getElementById('ivBody').innerHTML;
       const oldStillUncredited = movement().val === 0;

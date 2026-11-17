@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='544';
+const APP_VERSION='545';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -5435,10 +5435,19 @@ function obReadForm(){
   const wCm=im?w*2.54:w, wtKg=im?Math.round(wt*0.453592*10)/10:wt;
   const wOk=okCm(wCm), wtOk=okKg(wtKg);
   if(wOk&&!(P.startWaist>0))P.startWaist=r1(wCm);   // one decimal — whole cm loses ~0.2in on the round-trip
-  let kg=null; if(wtOk){kg=wtKg; N.weightKg=kg;}
+  /* A PRE-FILLED BOX IS NOT A WEIGH-IN (v545). Both boxes open holding the
+     athlete's last figures, and every commit (Next, Back, Done, the page going
+     hidden) wrote them back as a measurement dated TODAY. Opening the editor and
+     tapping Done therefore logged a weigh-in and a tape that never happened:
+     the Saturday check-in read as done, the charts gained a flat "now" point,
+     and in pounds the round trip moved the stored weight 86.45 to 86.6 kg. Only
+     a box the athlete changed is a measurement. */
+  const _edited=el=>!!el&&el.value!==el.defaultValue;
+  const wEd=_edited($('#ob-waist')), wtEd=_edited($('#ob-weight'));
+  let kg=null; if(wtOk&&wtEd){kg=wtKg; N.weightKg=kg;}
   // upsert by date — a profile edit must not append a second row for today,
   // or ms[0]/ms[last] stop meaning "start" and "now"
-  if(wOk||wtOk)upsertMeasure(wOk?r1(wCm):null,kg);
+  if((wOk&&wEd)||(wtOk&&wtEd))upsertMeasure(wOk&&wEd?r1(wCm):null,kg);
   try{recalcKcalFromStored();}catch(e){}   // (re)compute calorie/macro targets from the answers
   syncDerivedHabits();   // the wizard can move bodyweight, which moves the water goal
 }
@@ -5966,8 +5975,14 @@ function workoutTabHTML(sess,log,doneCount,totalCount,wkNum){
      about today in a way none of the others are. The Meal plan tile was not
      carried over — v245 removed the card it scrolled to, so it had already
      become a dead link. */
-  let h=`<button class="btn t-teal" style="margin:0 0 10px" onclick="openPlayer()">▶ Guided workout — hands-free player</button>
-  ${sess.session.key==='metcon'?`<div class="tilegrid"><button class="tile accent" onclick="openHiitChooser()"><span class="ti">⚡</span>HIIT<br>intervals</button></div>`:''}`;
+  /* A CLOSED DAY OFFERS NO SESSION FROM THE TOP (v545). Both buttons open the
+     QUEUE session (openPlayer() and startHiit() build from progressPtr), so once
+     today's slot is closed they walked straight into the NEXT session with no
+     confirm — v344's startMyDay() defect, on the two buttons above the done
+     card. The card's own "Train again anyway" confirm is the one route. */
+  const _offer=!(todayClosed()&&!trainAgainAsked());
+  let h=`${_offer?`<button class="btn t-teal" style="margin:0 0 10px" onclick="openPlayer()">▶ Guided workout — hands-free player</button>`:''}
+  ${_offer&&sess.session.key==='metcon'?`<div class="tilegrid"><button class="tile accent" onclick="openHiitChooser()"><span class="ti">⚡</span>HIIT<br>intervals</button></div>`:''}`;
   h+=deloadBanner();
   h+=catchUpBanner();
   h+=weeklyBannerHTML();
@@ -7957,23 +7972,44 @@ function setForceResult(id,v){
   if(!setForceResultQuiet(id,n))return;
   save();haptic(8);openForceLog();
 }
+/* A TIME BELOW HALF THE STANDARD IS A MIS-ENTRY, NOT A PERFORMANCE (v545).
+   The label asks for seconds, so "3.30" typed as minutes for the 3:30 lift
+   saved as a 3-second lift and scored a PASS. FORCE Combat has refused this
+   since v334 (combatFloor()); the four single events had no floor at all. The
+   floor is derived from the event's own standard, so it moves if that does. */
+function forceFloor(id){const ev=forceEvent(id);return ev&&typeof ev.max==='number'?Math.round(ev.max/2):null;}
 function saveForceTimes(){
-  let wrote=0;
-  FORCE_EVENTS.forEach(ev=>{
-    if(ev.max===null)return;
-    const el=$('#fq-'+ev.id); if(!el||el.value==='')return;
+  /* NOTHING IS WRITTEN UNTIL EVERY BOX HAS BEEN READ (v545). A `return` inside
+     the forEach skipped one box and let the rest save, so the refusal toast was
+     overwritten by "Logged" and the sheet closed on a value that never saved —
+     v446's lift-log shape. Read all, refuse on the first bad box, keep the
+     sheet open so the athlete can retype it. */
+  const plan=[];
+  for(const ev of FORCE_EVENTS){
+    if(ev.max===null)continue;
+    const el=$('#fq-'+ev.id); if(!el)continue;
+    if(el.value===''){if(forceResult(ev.id)!==null)plan.push({id:ev.id,clear:true});continue;}
     const n=parseFloat(el.value);
     if(!isFinite(n)||n<0){toast('Enter a real time for '+ev.name);return;}
+    const fl=forceFloor(ev.id);
+    if(fl!==null&&n<fl){toast(ev.name+': '+n+' s is under half the '+fmtTime(ev.max)+' standard — enter the time in seconds');return;}
+    plan.push({id:ev.id,n});
+  }
+  let wrote=0,cleared=0;
+  plan.forEach(x=>{
+    /* A BLANK BOX CLEARS (v545). It opens holding the stored result, so an
+       emptied box is the athlete taking a value away — the only way to remove
+       a result they mistyped, which saveRunTT() and saveCombat() already allow. */
+    if(x.clear){if(STATE.prep&&STATE.prep.results){delete STATE.prep.results[x.id];cleared++;}return;}
     /* Count what the writer ACCEPTED. The toast below says "Logged ✅" off
        this counter, and incrementing it unconditionally let it claim a save
        the writer had declined. Unreachable today — every value is validated
-       two lines up and every id comes from FORCE_EVENTS — so NO CHECK CAN
-       CATCH ITS REMOVAL; it is kept as intent, the same call as v287's
-       wantAnchor and v301's _macrosMissing. */
-    if(setForceResultQuiet(ev.id,n))wrote++;
+       above and every id comes from FORCE_EVENTS — so NO CHECK CAN CATCH ITS
+       REMOVAL; it is kept as intent, the same call as v287's wantAnchor. */
+    if(setForceResultQuiet(x.id,x.n))wrote++;
   });
   save();closeSheet();
-  toast(wrote?'Logged ✅':'Nothing to save');
+  toast(wrote?'Logged ✅':(cleared?(cleared===1?'Result cleared':cleared+' results cleared'):'Nothing to save'));
   openForcePrep();
 }
 function setForceResultQuiet(id,n){
@@ -9631,6 +9667,11 @@ function plTickRep(){
   }
 }
 function plAfterSet(){
+  /* A SET MARKED FROM GET READY HAS NO COUNT (v545). total/remain and repN still
+     hold the PREVIOUS phase's values there, so "Set done" tapped during the
+     countdown stored the last rest's elapsed seconds as the hold. Only a work
+     phase measured anything; otherwise the prescription stands. */
+  const _fromWork=PLAYER.phase==='work';
   plClear();
   const m=plCur();
   // bonus sessions never touch the program log. A real write failure here is
@@ -9651,7 +9692,7 @@ function plAfterSet(){
            primary logging path, so it inflated totalVolume() and actualRatio()
            with no athlete action at all. A counted number is data at any size;
            only a genuinely absent one may fall back to the prescription. */
-        const counted=(m.unit==='time')?Math.round(PLAYER.total-PLAYER.remain):PLAYER.repN;
+        const counted=!_fromWork?undefined:(m.unit==='time')?Math.round(PLAYER.total-PLAYER.remain):PLAYER.repN;
         const done=(typeof counted==='number'&&isFinite(counted)&&counted>=0)?counted:m.target;
         if(done>=0){st.actual=Math.min(done,m.target);save();try{recordPRFromActual(m.exId);}catch(e){}}
       }
@@ -11778,6 +11819,7 @@ function ivTick(){
   if(INTV.phase==='work'){
     const prevLeft=byTick+1;
     INTV.workElapsed+=Math.max(1,Math.min(prevLeft,prevLeft-INTV.remain));
+    (INTV.ranSteps||(INTV.ranSteps={}))[INTV.i]=1;   // v545: which work steps really ran
   }
   if(INTV.phase==='work')countdownCue(INTV.remain,INTV.total);
   /* Work only. A rest interval has no hard part to name, and saying so
@@ -11804,11 +11846,19 @@ function ivDone(){
   const isGrind=isGrinder(INTV.format);
   if(isGrind&&!INTV.logged){INTV.logged=true;
     logGrind(INTV.format,true,INTV.seq.length,Math.round(INTV.workElapsed||0));}
-  const mins=Math.max(1,Math.round(INTV.workElapsed/60*10)/10);
+  /* WHAT WAS DONE, NOT WHAT WAS PLANNED (v545). Skipping every round then
+     tapping a feel chip logged the format's full rounds, a minute of work and a
+     rating toward "try the next level". A session with no work logs nothing; a
+     part-done one logs the rounds that ran and is not rated. */
+  const ranN=Object.keys(INTV.ranSteps||{}).length;
+  const workN=INTV.seq.filter(x=>x&&x.type==='work').length;
+  const worked=(INTV.workElapsed||0)>0;
+  const fullRun=worked&&ranN>=workN;
+  const mins=worked?Math.max(1,Math.round(INTV.workElapsed/60*10)/10):0;
   const sess=INTV.sess;const isMetcon=sess.session.key==='metcon'&&sess.ptr===STATE.progressPtr;
   const isSkip=sess.session.key==='skip';
   const actKey=ACTS[sess.session.key]?sess.session.key:null;
-  const skRounds=(SKIP_FORMATS[INTV.format]||{}).n||0;
+  const skRounds=Math.min((SKIP_FORMATS[INTV.format]||{}).n||0,ranN);
   /* Bike-based VO2max/anaerobic protocols were the one interval session
      with a real intensity DIAL (BIKE_LEVELS) and zero memory of how any
      ride at any level actually went — chosen fresh every day, no route
@@ -11828,9 +11878,12 @@ function ivDone(){
      which both logs the session AND can suggest the next rung up. Ruck
      has no format ladder, so actKey==='ruck' correctly falls through to
      the plain log button below, unchanged. */
-  const progGroup=isSkip?'skip':(actKey&&PROGRESSION_GROUPS[actKey]?actKey:null);
+  const progGroupAny=isSkip?'skip':(actKey&&PROGRESSION_GROUPS[actKey]?actKey:null);
+  const progGroup=fullRun?progGroupAny:null;
+  const actRounds=Math.min((SPECIAL_FORMATS[INTV.format]||{}).n||0,ranN);
+  const actSecs=Math.round(((SPECIAL_FORMATS[INTV.format]||{}).w||0)*60);
   const progCall=feel=>isSkip?`rateSkipAndClose('${feel}',${mins},${skRounds})`
-    :`rateActAndClose('${actKey}','${feel}',${mins},${(SPECIAL_FORMATS[INTV.format]||{}).n||0},${Math.round(((SPECIAL_FORMATS[INTV.format]||{}).w||0)*60)})`;
+    :`rateActAndClose('${actKey}','${feel}',${mins},${actRounds},${actSecs})`;
   /* Bonus HIIT (specialhiit) and sprint/VO2max off the bike menu
      (specialcardio, not bike — bike itself is already isBike above) had
      no completion record of any kind. HIIT_FORMATS/ENDURANCE_FORMATS are
@@ -11851,13 +11904,15 @@ function ivDone(){
                :`<div class="stat"><div class="n" style="color:var(--teal)">${mins}</div><div class="l">Minutes</div></div>`}
     </div>
     ${isGrind?`<div class="tiny muted" style="margin-top:12px">Every station, no rest taken. That is the whole point of it.</div>`:''}
-    ${isBike?`<div class="tiny muted" style="margin-top:14px">How did that ride feel?</div>
+    ${!worked?`<div class="tiny muted" style="margin-top:14px" data-ivnowork="1">No work was timed, so nothing is logged.</div>`:''}
+    ${worked&&progGroupAny&&!fullRun?`<div class="tiny muted" style="margin-top:14px" data-ivpartial="1">${plural(ranN,'round')} of ${workN} done — logged as done, not rated.</div>`:''}
+    ${worked&&isBike?`<div class="tiny muted" style="margin-top:14px">How did that ride feel?</div>
     <div class="row" style="gap:8px;margin-top:6px;width:100%;max-width:440px">
       <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('easy')">😎 Easy</button>
       <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('right')">💪 Right</button>
       <button class="btn ghost" style="flex:1" onclick="rateBikeAndClose('hard')">🥵 Hard</button>
     </div>`:''}
-    ${makeupIsBike?`<div class="tiny muted" style="margin-top:14px">How did that ride feel?</div>
+    ${worked&&makeupIsBike?`<div class="tiny muted" style="margin-top:14px">How did that ride feel?</div>
     <div class="row" style="gap:8px;margin-top:6px;width:100%;max-width:440px">
       <button class="btn ghost" style="flex:1" onclick="creditMakeupAndClose('bike',${mins},'easy')">😎 Easy</button>
       <button class="btn ghost" style="flex:1" onclick="creditMakeupAndClose('bike',${mins},'right')">💪 Right</button>
@@ -11870,10 +11925,11 @@ function ivDone(){
       <button class="btn ghost" style="flex:1" onclick="${progCall('hard')}">🥵 Hard</button>
     </div>`:''}
     <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px;margin-top:18px">
-      ${isMetcon?`<button class="btn primary" onclick="hiitLogDone()">Log today's session complete</button>`:''}
-      ${isMakeup&&!makeupIsBike?`<button class="btn primary" onclick="creditMakeupAndClose('jacks',${mins})">🤸 Log ${mins} min to today's steps</button>`:''}
-      ${isTrackedNoOrder?`<button class="btn primary" onclick="logHiitAndClose('${trackedGroup}','${INTV.format}',${mins})">✅ Log ${Math.max(1,Math.round(mins))} min to my record</button>`:''}
-      ${(isBike||progGroup)?'':'<button class="btn ghost" onclick="hiitQuit()">Close</button>'}
+      ${worked&&isMetcon?`<button class="btn primary" onclick="hiitLogDone()">Log today's session complete</button>`:''}
+      ${worked&&progGroupAny&&!fullRun?(isSkip?`<button class="btn primary" onclick="hiitLogSkip(${mins},${skRounds})">✅ Log ${mins} min</button>`:`<button class="btn primary" onclick="hiitLogAct('${actKey}',${mins},${actRounds},${actSecs})">✅ Log ${mins} min</button>`):''}
+      ${worked&&isMakeup&&!makeupIsBike?`<button class="btn primary" onclick="creditMakeupAndClose('jacks',${mins})">🤸 Log ${mins} min to today's steps</button>`:''}
+      ${worked&&isTrackedNoOrder?`<button class="btn primary" onclick="logHiitAndClose('${trackedGroup}','${INTV.format}',${mins})">✅ Log ${Math.max(1,Math.round(mins))} min to my record</button>`:''}
+      ${worked&&(isBike||progGroup)?'':'<button class="btn ghost" onclick="hiitQuit()">Close</button>'}
     </div>`;
   if(!motivate('done'))coachSpeak(isMakeup?(makeupIsBike?'Ride complete. Nice work.':'Jacks complete. Nice work.'):(isSkip?'Rope work complete. Outstanding.':'Circuit complete. Outstanding work.'));
 }
@@ -11990,6 +12046,14 @@ function hiitClose(){
 }
 function hiitLogDone(){
   if(!INTV)return;   // double-tap guard
+  /* THE INTERVALS ARE TODAY'S SETS (v545). This handed to finishSession() with
+     no set marked, so the gate counted 0 of 6 and refused: "Log today's session
+     complete" could never log it. Each work round that ran marks one set of its
+     movement, which markSetFromTimer() caps at the prescription. */
+  if(INTV.sess&&INTV.sess.ptr===STATE.progressPtr){
+    Object.keys(INTV.ranSteps||{}).forEach(i=>{const st=INTV.seq[i];
+      if(st&&st.type==='work'&&st.exId){try{markSetFromTimer(st.exId);}catch(e){}}});
+  }
   const _hadHist=!!INTV.hist;
   hiitClose();
   if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
@@ -17992,7 +18056,7 @@ function weeklyRecap(){
   const drop=(typeof waistDropShow==='function')?waistDropShow():0;const wu=STATE.profile.unit;
   const gain=(typeof scoreGain==='function')?scoreGain():0;
   const total=(typeof sessionsDoneCount==='function')?sessionsDoneCount():0;
-  const lines=[`${wk} workout${wk===1?'':'s'} this week`,`${streak}-day streak`,total?`${total} total sessions`:'',drop>0?`Waist down ${drop}${wu}`:'',gain>0?`Core Score up ${gain}`:''].filter(Boolean);
+  const lines=[`${wk} workout${wk===1?'':'s'} this week`,`${streak}-day streak`,total?plural(total,'total session'):'',drop>0?`Waist down ${drop}${wu}`:'',gain>0?`Core Score up ${gain}`:''].filter(Boolean);
   _recapSpeak=`Weekly recap. You trained ${wk} time${wk===1?'':'s'} this week${streak>=3?', on a '+streak+' day streak':''}. ${drop>0?'Your waist is down '+drop+' '+(wu==='in'?'inches':'centimetres')+'. ':''}${gain>0?'Core score up '+gain+'. ':''}${wk>=5?'Outstanding consistency — keep the fire burning.':(wk>=3?'Solid work — push for one more next week.':'Let us stack more sessions next week. You have got this.')}`;
   _share={t:'Weekly Recap',s:'',l:lines};
   openSheet(`<h3>🎙️ Weekly recap</h3>
@@ -18503,6 +18567,19 @@ const FOOD_DB=[
 const QUICK_PICKS=['Chicken breast, cooked','Egg, large','Greek yogurt, plain 0%','Salmon, cooked','Tuna, canned in water',
   'Whey protein powder','Cottage cheese, low-fat','Tofu, firm','Lentils, cooked','Black beans, cooked','White rice, cooked',
   'Oats, dry','Banana','Apple','Berries, mixed','Avocado','Broccoli, cooked','Sweet potato, baked','Spinach, raw','Almonds','Peanut butter'];
+/* THE DIET AND ALLERGEN TAGS LIVE ON THE FOOD LIBRARY, NOT ON FOOD_DB (v545).
+   Quick picks were never filtered, so a vegan athlete allergic to soy was
+   offered chicken, salmon, whey and tofu one tap from logging. Each pick names
+   its tagged library food here, and a pick with no tagged food is hidden — the
+   same fail-closed rule foodOk() applies to an untagged food. */
+const QUICK_PICK_TAG={'Chicken breast, cooked':'Chicken breast','Egg, large':'Egg','Greek yogurt, plain 0%':'Greek yogurt 0%',
+  'Salmon, cooked':'Salmon fillet','Tuna, canned in water':'Tuna, tinned in water','Whey protein powder':'Whey powder',
+  'Cottage cheese, low-fat':'Cottage cheese','Tofu, firm':'Firm tofu','Lentils, cooked':'Green / brown lentils',
+  'Black beans, cooked':'Black beans','White rice, cooked':'White rice, cooked','Oats, dry':'GF oats','Banana':'Banana',
+  'Apple':'Apple','Berries, mixed':'Blueberries','Avocado':'Avocado','Broccoli, cooked':'Broccoli','Sweet potato, baked':'Sweet potato',
+  'Spinach, raw':'Spinach, cooked','Almonds':'Almonds','Peanut butter':'Peanut butter'};
+function quickPickOk(i){try{const n=QUICK_PICKS[i],t=Object.prototype.hasOwnProperty.call(QUICK_PICK_TAG,n)?QUICK_PICK_TAG[n]:null;
+  const j=t==null?undefined:FOOD_BY_NAME[t];return j!==undefined&&foodOk(FOODS[j]);}catch(e){return false;}}
 const COMMON_FOODS=QUICK_PICKS.map(n=>{const f=FOOD_DB.find(x=>x.n===n)||{n:n,k:0,p:0,c:0,f:0,s:''};
   return {name:f.n+(f.s?' ('+f.s+')':''),kcal:f.k,p:f.p,c:f.c,f:f.f};});
 /* Meal slots — logging is grouped like a food diary. Defaults to the slot that
@@ -18762,7 +18839,7 @@ function editFood(idx){const d=nutToday();const it=rowAt(d.food,idx);if(!it)retu
     /* the "calculated, not read" marker survives an edit that leaves the number
        alone; it was dropped by every edit, even one that only moved the meal (v542) */
     macroDerived:macroKeyOk(it.calc)?{which:it.calc,grams:it[_MACRO_KEY[it.calc]]}:null});}
-function quickPick(i){const f=rowAt(COMMON_FOODS,i);if(!f)return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
+function quickPick(i){const f=rowAt(COMMON_FOODS,i);if(!f||!quickPickOk(i))return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
 /* ---- Macro targets: protein from bodyweight, fat ~27% of calories, carbs fill
    the rest. Only shown once a calorie target exists. ---- */
 function macroTargets(){const k=nut().kcalTarget;if(!k)return null;
@@ -18794,7 +18871,11 @@ function foodsList(){const arr=(Array.isArray(nut().foods)?nut().foods:[]).filte
   const by=(a,b)=>(b.at||0)-(a.at||0);
   return arr.filter(f=>f.fav).sort(by).concat(arr.filter(f=>!f.fav).sort(by));}
 function logRemembered(i){const f=foodsList()[i];if(!f)return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
-function toggleFavFood(i){const f=foodsList()[i];if(!f)return;const it=(nut().foods||[]).find(x=>String(x.name).toLowerCase()===String(f.name).toLowerCase());if(it){it.fav=!it.fav;save();}openQuickAdd();}
+function toggleFavFood(i){const f=foodsList()[i];if(!f)return;const it=(nut().foods||[]).find(x=>String(x.name).toLowerCase()===String(f.name).toLowerCase());if(it){it.fav=!it.fav;save();}
+  /* REPAINT THE LIST, NOT THE SHEET (v545). openQuickAdd() with no argument
+     rebuilt the whole sheet blank, so starring a food wiped a pre-filled entry —
+     including one a paid photo or screenshot read had just filled in. */
+  const w=$('#fa-foods');if(w)w.innerHTML=foodsSectionHTML();else openQuickAdd();}
 function foodsSectionHTML(){const fl=foodsList();if(!fl.length)return '';
   return `<div class="section-label" style="margin-top:14px">Your foods</div><div class="card" style="padding:0 10px">`+
     fl.map((f,i)=>`<div class="kv" style="border-top:1px solid var(--line);align-items:center;gap:8px">
@@ -19126,7 +19207,12 @@ async function lookupBarcode(code){
     }
     /* Not in the database at all, or the network failed. Still not a dead end:
        open a blank sheet so the label in their hand can be typed straight in. */
-    openQuickAdd({name:'',barcodeBlank:true,barcodeCode:String(code||'')});
+    /* WHICH OF THE TWO IT WAS (v545). Only a real "no such product" answer is
+       "not in the database"; a request that never got an answer is a
+       connection problem, and blaming the database sends the athlete to type
+       in numbers for a product the database may well have. */
+    const _missing=/not in the database/.test(String(e&&e.message||''));
+    openQuickAdd({name:'',barcodeBlank:true,barcodeCode:String(code||''),barcodeOffline:!_missing});
     toast('Barcode lookup failed — '+String(e.message||e).slice(0,70),5000);
   }
 }
@@ -19214,10 +19300,12 @@ function openQuickAdd(pre){
     <div id="fa-gap"></div>
     <div class="tiny" id="fa-total" style="font-weight:800;margin:8px 2px 4px">= ${pre.kcal||0} kcal · ${pre.p||0}g P · ${pre.c||0}g C · ${pre.f||0}g F</div>
     ${(pre.barcodeBlank&&!editing)?`<div class="note warn" style="margin:8px 0">
-      <div style="font-weight:800">${pre.name?_ve(pre.name):'Barcode not recognised'}</div>
+      <div style="font-weight:800">${pre.name?_ve(pre.name):(pre.barcodeOffline?'The lookup did not go through':'Barcode not recognised')}</div>
       <div class="tiny" style="margin-top:4px">${pre.name
         ? `That barcode found the product, but <b>nobody has filled in its nutrition</b> in the free food database. Every box above is <b>blank, not zero</b> — copy the numbers off the label.`
-        : `That barcode is not in the free food database${pre.barcodeCode?' ('+_ve(String(pre.barcodeCode))+')':''}. Type the name and the numbers off the label.`}</div>
+        : pre.barcodeOffline
+          ? `The free food database did not answer${pre.barcodeCode?' for '+_ve(String(pre.barcodeCode)):''}. Check the connection and scan again, or type the name and the numbers off the label.`
+          : `That barcode is not in the free food database${pre.barcodeCode?' ('+_ve(String(pre.barcodeCode))+')':''}. Type the name and the numbers off the label.`}</div>
     </div>`:''}
     ${(filled&&!editing&&pre.macroDerived)?`<div class="note info" style="margin:8px 0">
       <div style="font-weight:800">${_ve(pre.name||'Food')} · ${pre.kcal} kcal</div>
@@ -19241,9 +19329,9 @@ function openQuickAdd(pre){
     </div>`):'<div style="height:6px"></div>'}
     ${(pre.fromShot&&!editing)?shotReplaceHTML():''}
     <button class="btn primary" onclick="saveFood()">${editing?'Update item':(filled?'Save to log':'Save')}</button>
-    ${editing?'':`${foodsSectionHTML()}
+    ${editing?'':`<div id="fa-foods">${foodsSectionHTML()}</div>
     <div class="section-label" style="margin-top:14px">Quick picks <span class="tiny muted">· whole foods</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">${COMMON_FOODS.map((f,i)=>`<button class="chip" onclick="quickPick(${i})">${f.name.split(' (')[0]} · ${f.kcal}</button>`).join('')}</div>`}
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${COMMON_FOODS.map((f,i)=>quickPickOk(i)?`<button class="chip" onclick="quickPick(${i})">${f.name.split(' (')[0]} · ${f.kcal}</button>`:'').join('')}</div>`}
     <div style="height:8px"></div><button class="btn ghost" onclick="closeSheet()">Close</button>`);
   /* Paint it on OPEN, not only on the next keystroke — an import that dropped
      a macro has to say so before the athlete taps Save, not after. */
@@ -20262,13 +20350,13 @@ function intakeHTML(){
     h+=`<div class="kv" data-foodread="1" style="margin-top:10px"><span><b>📷 ${_ve(String(_fr.name||'Food').slice(0,60))}</b><br><span class="tiny muted">${_frk?'~'+_frk+' kcal ':''}read from your image — nothing logged yet</span></span><span class="btnrow" style="gap:6px"><button class="chip" onclick="openFoodRead()">Log it</button><button class="chip" onclick="discardFoodRead()" aria-label="Discard what was read">✕</button></span></div>`;}
   if(kcalT){const pct=Math.min(100,Math.round(t.kcal/kcalT*100));
     h+=`<div class="pbar${t.kcal>kcalT?'':' green'}" style="margin-top:8px"><i style="width:${pct}%"></i></div>
-      <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+' kcal over — that\'s one day, not the week.'}${adj>0?` <span style="color:var(--green);font-weight:700">· +${adj} earned from today's movement</span>`:''}</div>`;}
+      <div class="tiny muted" style="margin-top:4px">${t.kcal<=kcalT?(kcalT-t.kcal)+' kcal left today':(t.kcal-kcalT)+(nut().goal==='gain'?' kcal over target — fine on a bulk if most days stay near it.':' kcal over — that\'s one day, not the week.')}${adj>0?` <span style="color:var(--green);font-weight:700">· +${adj} earned from today's movement</span>`:''}</div>`;}
   /* Named, not just drawn. Three unlabelled bars under a calorie figure read as
      decoration — the athlete asked for macros to be shown and these were already
      on screen. A heading is what turns them into a section you can look for. */
   h+=`<div class="tiny" style="font-weight:800;letter-spacing:.4px;margin-top:14px;opacity:.75">MACROS EATEN TODAY</div>`;
   h+=`<div class="row" style="gap:10px;margin-top:6px">
-      ${_macroBar('Protein',t.p,mt?mt.p:0,'var(--fire-l)')}
+      ${_macroBar('Protein',t.p,mt?mt.p:(proteinTargetG()||0),'var(--fire-l)')}
       ${_macroBar('Carbs',t.c,mt?mt.c:0,'#3fd7e8')}
       ${_macroBar('Fat',t.f,mt?mt.f:0,'var(--gold)')}
     </div>`;
@@ -20279,7 +20367,10 @@ function intakeHTML(){
       single macro is just as wrong as one reading zero for all three. */
    const pm=partialMacroCount();
    if(pm)h+=`<div class="note warn" style="margin:8px 0 0"><b>${pm} logged item${pm===1?' is':'s are'} missing one macro.</b> Its calories do not add up from the macros recorded, so one of them was not read. Tap the item below — the app works the missing number out from the calories and offers it.</div>`;}
-  if(!mt)h+=`<div class="tiny muted" style="margin-top:8px">Set a calorie target below to see protein, carb &amp; fat goals.</div>`;
+  /* The protein target exists without a calorie target (v545): the tile above
+     prints it, so the bar reads against it and the line names only what is
+     really missing. */
+  if(!mt)h+=`<div class="tiny muted" style="margin-top:8px">Set a calorie target below to see ${proteinTargetG()?'carb &amp; fat':'protein, carb &amp; fat'} goals.</div>`;
   // diary grouped by meal
   if(items.length){
     MEALS.forEach(([k,label])=>{
@@ -23195,7 +23286,9 @@ const HABITS=[
   {k:'protein',label:'Hit protein target',emoji:'🥩'},
   /* Was a streak condition, which makes restriction the thing the app rewards
      daily. Still loggable, but no longer required to hold the streak. */
-  {k:'cals',label:'Stayed in calorie deficit',emoji:'🔥',optional:true},
+  /* "deficit" was printed to every goal, a bulk included (v545). The habit is
+     staying on the target the goal sets, whatever direction that is. */
+  {k:'cals',label:'Stayed on calorie target',emoji:'🔥',optional:true},
   {k:'water',label:'Hit water goal',emoji:'💧'},
   {k:'sleep',label:'7+ hours sleep',emoji:'😴'},
   {k:'steps',label:()=>'Walk / '+stepTarget().toLocaleString()+'+ steps',emoji:'🚶'},
@@ -24035,7 +24128,12 @@ function refAmtCalc(){
      in Fuel first" contradicted the number at the top of the same screen. */
   const _T=refTargets();const protT=_T.p,kcalT=_T.kcal;
   const eaten=foodTotals();
-  const pLeft=Math.max(0,protT-eaten.p),kLeft=Math.max(0,kcalT-eaten.kcal);
+  /* A LIVE "CALORIES LEFT" READS THE LIVE BUDGET (v545). Fuel's own figure
+     adds what movement earned (todayKcalBudget(), v220); this one read the base
+     target, so 16,000 steps and 800 kcal read 1,744 left on Fuel and 1,480
+     here. The month of worked days still scales to the base target on purpose. */
+  const kcalLive=(_T.live&&todayKcalBudget())||kcalT;
+  const pLeft=Math.max(0,protT-eaten.p),kLeft=Math.max(0,kcalLive-eaten.kcal);
   let h=`<div class="grid2">
     <div class="stat"><div class="n" style="color:var(--fire-l)">${n.p}g</div><div class="l">Protein</div></div>
     <div class="stat"><div class="n" style="color:var(--gold)">${n.kcal}</div><div class="l">Calories</div></div></div>
@@ -24049,7 +24147,7 @@ function refAmtCalc(){
     const kAfter=kLeft-n.kcal;
     h+=`<div class="kv" style="padding:8px 2px;border-top:1px solid var(--line)"><span class="tiny muted">Calories left after this</span>
       <b class="tiny" style="color:${kAfter<0?'var(--red,#ff6b6b)':'var(--gold)'}">${kLeft} → ${kAfter}</b></div>`;
-    if(kAfter<0)h+=`<div class="note warn" style="margin-top:8px">That puts you <b>${-kAfter} kcal</b> over for the day. Fine once; not every day — the deficit is what moves the waist.</div>`;
+    if(kAfter<0)h+=`<div class="note warn" style="margin-top:8px">That puts you <b>${-kAfter} kcal</b> over for the day. ${nut().goal==='gain'?'Fine on a bulk, as long as most days stay near the target.':'Fine once; not every day — the deficit is what moves the waist.'}</div>`;
   }
   if(!protT||!kcalT)h+=`<div class="note info" style="margin-top:8px">Set your weight and tap <b>Calculate my targets</b> in Fuel to see this against your own numbers.</div>`;
   out.innerHTML=h;
@@ -24441,7 +24539,7 @@ function logRefMeal(di,mi){
   const slot=refSlotKey(m.slot);const t=nutToday();
   if(!Array.isArray(t.food))t.food=[];
   m.items.forEach(x=>pushFoodRow(x.name+' '+x.label,x.kcal,x.p,x.c,x.f,slot));
-  save();haptic(12);toast(m.items.length+' items logged · '+m.p+'g ✓');
+  save();haptic(12);toast(plural(m.items.length,'item')+' logged · '+m.p+'g ✓');
   renderRef();try{renderFuel();}catch(e){}try{checkAchievements();}catch(e){}
 }
 
@@ -24750,7 +24848,8 @@ function renderRef(){
   }
   const T=refTargets();
   const eaten=foodTotals();
-  const pLeft=Math.max(0,T.p-eaten.p),kLeft=T.kcal-eaten.kcal;
+  const kLive=(T.live&&todayKcalBudget())||T.kcal;   // v545: the live budget, as Fuel reads it
+  const pLeft=Math.max(0,T.p-eaten.p),kLeft=kLive-eaten.kcal;
   let h=`<h2 class="vtitle">Reference</h2><div class="vsub">Look it up — what to eat, and how to move.</div>`;
   h+=refTabsHTML();
   h+=`<div class="tiny muted" style="margin:0 3px 10px">Every amount below is costed in grams of protein and calories, against your own targets.</div>`;
@@ -24761,7 +24860,7 @@ function renderRef(){
     <div class="stat"><div class="n" style="color:${kLeft<0?'var(--red,#ff6b6b)':'var(--gold)'}">${kLeft}</div><div class="l">Calories left</div></div>
   </div>`;
   h+=`<div class="kv" style="padding:8px 2px"><span class="tiny muted">Your target</span>
-    <b class="tiny">${T.p} g protein · ${T.kcal} kcal</b></div>`;
+    <b class="tiny">${T.p} g protein · ${T.kcal} kcal${kLive>T.kcal?` <span class="muted">+ ${kLive-T.kcal} earned from movement</span>`:''}</b></div>`;
   if(!T.live){
     h+=`<div class="note info">These are the defaults the sheets were written against. Set your weight and tap <b>Calculate my targets</b> in Fuel and everything on this tab — the amounts, the month of days, the shopping list — recalculates onto your numbers.</div>`;
   }
@@ -24852,7 +24951,7 @@ function renderRef(){
         name. Blaming the wrong cause leaves the athlete nothing to act on. */
      const _hidden=(()=>{try{return FOODS.filter(f=>!foodOk(f)).length;}catch(e){return 0;}})();
      const _why=_hidden>=FOODS.length*0.2
-       ? `That is your diet and allergen settings meeting this target, not a fault in any one day — ${_ve(dietLabel())}${algList().length?' plus '+_ve(algList().join(', ')):''} hides ${_hidden} of the ${FOODS.length} foods, and the cheaper protein is most of what goes. Raise the target or relax a setting.`
+       ? `That is your diet and allergen settings meeting this target, not a fault in any one day — ${_ve(dietLabel())}${algList().length?' plus '+_ve(algList().map(k=>(ALLERGENS.find(a=>a[0]===k)||[,k])[1].toLowerCase()).join(', ')):''} hides ${_hidden} of the ${FOODS.length} foods, and the cheaper protein is most of what goes. Raise the target or relax a setting.`
        : `These days are written at fixed portions and this target is below what they come to even at the smallest starch. Raise the target, or take the overshoot as read.`;
      h+=`<div class="note warn"><b>${_bad.length} of these ${REF_DAYS.length} days run over your calorie target</b>, by ${_lo}–${_hi} kcal, even with the starch at its smallest. ${_why} Each day below still says how far it misses.</div>`;
    }}
@@ -25077,9 +25176,9 @@ function renderFuel(){
   </div>`;
   // calorie calculator
   h+=`<div class="section-label">Calorie &amp; protein calculator</div><div class="card pad">
-    <p class="sm muted" style="margin-top:0">Get your personal daily calorie target (Mifflin-St Jeor, moderate deficit) plus a protein goal.</p>
+    <p class="sm muted" style="margin-top:0">Get your personal daily calorie target (Mifflin-St Jeor, set for your goal) plus a protein goal.</p>
     <button class="btn primary" onclick="openTDEE()">${n.kcalTarget?'Update my targets':'Calculate my targets'}</button>
-    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${_ve(n.goal)}${n.kcalFloored?' · raised to a safe minimum':''}${n.kcalAdj?` · adjusted ${n.kcalAdj>0?'+':''}${n.kcalAdj} from your own results`:''}</div>`:''}
+    ${n.kcalTarget?`<div class="tiny muted" style="margin-top:8px;text-align:center">Current target: <b>${n.kcalTarget} kcal</b> · ${prot||'—'}g protein · goal: ${_ve(((GOALS.find(g=>g[0]===n.goal)||[])[1]||'').replace(/^\S+\s/,'')||n.goal)}${n.kcalFloored?' · raised to a safe minimum':''}${n.kcalAdj?` · adjusted ${n.kcalAdj>0?'+':''}${n.kcalAdj} from your own results`:''}</div>`:''}
     ${calorieCheckHTML()}
   </div>`;
   // abs-in-the-kitchen guidance
@@ -25114,7 +25213,19 @@ function setNutGoal(g){
    contradiction syncStepHabit()'s own comment says it exists to prevent, never
    carried across to water. */
 function logWater(d){const t=nutToday();t.water=clamp((t.water||0)+d,0,20);syncWaterHabit();save();renderFuel();checkAchievements();}
-function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();checkAchievements();}
+/* A DERIVED HABIT IS A VERDICT, NOT A CHOICE (v545). Protein, water and steps
+   tick themselves from what is logged (v346), and a tap still flipped them by
+   hand: "Hit protein target" ticked over a bar reading 0 of 165 g, counted
+   toward the day and the streak, and logging water never undid it. A tap on one
+   of those re-reads the data and says where the tick comes from. */
+const DERIVED_HABITS={protein:'Log food and it ticks itself when you reach your protein target.',
+  water:'Log water and it ticks itself when you reach your goal.',
+  steps:'Log your steps or a cardio session under Movement and it ticks itself at your target.'};
+function toggleHabit(k){const t=nutToday();if(!t.habits)t.habits={};
+  if(Object.prototype.hasOwnProperty.call(DERIVED_HABITS,k)){
+    try{({protein:syncProteinHabit,water:syncWaterHabit,steps:syncStepHabit})[k]();}catch(e){}
+    save();renderFuel();toast(DERIVED_HABITS[k]);return;}
+  t.habits[k]=!t.habits[k];save();haptic(10);renderFuel();checkAchievements();}
 function mifflinBMR(sex,kg,cm,age){return 10*kg+6.25*cm-5*age+(sex==='female'?-161:5);}
 /* GOAL_NOTE.shred says "best in short blocks" and nothing enforced it. Track how
    long the athlete has been cutting so the app can prompt a maintenance phase. */
@@ -25570,7 +25681,12 @@ function saveTDEE(){
   if(bmiImplausible(wt,ht)){toast(imp
     ? `${wtRaw} lb at ${Math.round(ht/2.54)} in does not add up — if that is kilograms, enter about ${Math.round(wtRaw/0.453592)}.`
     : `${wtRaw} kg at ${Math.round(ht)} cm does not add up — if that is pounds, enter about ${Math.round(wtRaw*0.453592)}.`);return;}
-  n.sex=sex;n.age=age;n.heightCm=Math.round(ht);n.weightKg=Math.round(wt*10)/10;
+  /* The weight box opens holding the stored weight, so an untouched box is not
+     a new reading (v545): saving to change only the activity level wrote a
+     weigh-in dated today and, in pounds, nudged the stored weight by the
+     rounding of the box. Only a changed box writes. */
+  const _wtBox=$('#td-wt'),_wtEdited=!_wtBox||_wtBox.value!==_wtBox.defaultValue;
+  n.sex=sex;n.age=age;n.heightCm=Math.round(ht);if(_wtEdited||!(n.weightKg>0))n.weightKg=Math.round(wt*10)/10;
   /* EQUIVALENT TODAY, kept as intent. The <select> above renders only
      ACTIVITY_OPTS, so parseFloat() of its value is always already legal and a
      mutant replacing this with `||1.45` changes nothing a check can see — the
@@ -25585,7 +25701,7 @@ function saveTDEE(){
   // also record the weight into measurements so waist/weight tracking stays in sync
   const disp=r1(wt);    // wt is already kg here — store canonical
   if(!Array.isArray(STATE.measurements))STATE.measurements=[];
-  upsertMeasure(null,disp);
+  if(_wtEdited)upsertMeasure(null,disp);
   save();closeSheet();toast('Targets saved');renderFuel();
 }
 
@@ -25737,6 +25853,14 @@ function quickSetDone(idx){if(!quickState.done)quickState.done={};quickState.don
    untick the movement it just completed. */
 function quickMark(idx){if(!quickState.done)quickState.done={};quickState.done[idx]=!quickState.done[idx];haptic(10);if(TAB==='quick')renderQuick();}
 function quickFinish(){
+  /* NOTHING DONE IS NOT A SESSION (v545). With zero moves checked this wrote a
+     training day: the streak went up, the evening reminder went quiet and the
+     next hold read as fatigued. A skipped session is not a completed one. The
+     state is cleared after a real finish, so a second tap meets this gate
+     rather than counting the day twice. */
+  const _doneN=Object.values((quickState&&quickState.done)||{}).filter(Boolean).length;
+  if(!_doneN){toast('Check off at least one move first — nothing was logged');return;}
+  quickState={done:{}};
   /* Quick sessions used to write a counter nothing read: no log, no streak, no
      heatmap square. The app's own answer to "I only have 15 minutes" scored as
      though it never happened. It now counts as a training day (without advancing
