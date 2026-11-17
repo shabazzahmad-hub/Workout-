@@ -4118,6 +4118,289 @@ const { browser, page, errors } = await launch(port);
     await browser.close();
   }
 
+  /* ============ v546: an undo reverses what the action did, an open sheet
+     does not save over another tab, and the food log follows the sheet ====== */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(async () => {
+      const o = {}; const w = ms => new Promise(z => setTimeout(z, ms));
+      const iso = d => localISO(new Date(Date.now() + d * 864e5));
+      const toastText = () => (document.getElementById('toast') || {}).textContent || '';
+      const realConfirm = window.confirm; window.confirm = () => true;
+
+      /* A1 — clearing a FORCE result clears its checkpoint copy too */
+      STATE.prep = { date: iso(42), planFrom: iso(-70), results: {} };
+      setForceResultQuiet('lift', 150);
+      o.cpGuard = !!(STATE.prep.checks && STATE.prep.checks.mid) && prepMidDue() === false;
+      setForceResultQuiet('rush', 60);
+      openForceLog(); await w(60); document.querySelector('#fq-lift').value = ''; saveForceTimes(); await w(400);
+      o.cpLiftGone = !(STATE.prep.checks && STATE.prep.checks.mid && 'lift' in STATE.prep.checks.mid.results);
+      o.cpRushKept = !!(STATE.prep.checks && STATE.prep.checks.mid && STATE.prep.checks.mid.results.rush === 60);
+      openForceLog(); await w(60); document.querySelector('#fq-rush').value = ''; saveForceTimes(); await w(400);
+      o.cpAllGone = !STATE.prep.checks;
+      o.cpDueAgain = prepMidDue();
+      /* The helper's own contract. Through the sheet, a filled box beside the
+         cleared one saves its result straight back into the checkpoint, so a
+         clear that wiped the whole slot was invisible there. */
+      STATE.prep.checks = { mid: { results: { lift: 150, rush: 60 }, at: iso(-1) }, initial: { results: { lift: 170 }, at: iso(-30) } };
+      forceCheckClear('lift');
+      o.cpOnlyOne = JSON.stringify(STATE.prep.checks); o.cpAt = iso(-1); o.cpAt0 = iso(-30);
+
+      /* A2 — a new block starts with no checkpoints */
+      STATE.prep = { date: iso(-2), planFrom: iso(-120), results: { lift: 170 }, checks: { final: { results: { lift: 170 }, at: iso(-2) } } };
+      openForceDate('force'); await w(60); document.querySelector('#fq-date').value = iso(112); saveForceDate('force'); await w(400);
+      o.nbChecks = STATE.prep.checks === undefined;
+      o.nbResultsKept = STATE.prep.results.lift === 170;
+      setForceResultQuiet('lift', 185);
+      o.nbSlot = Object.keys(STATE.prep.checks || {}).join(',');
+      /* FLOOR: moving a date still ahead is a reschedule, not a new block */
+      STATE.prep = { date: iso(40), planFrom: iso(-70), results: { lift: 160 }, checks: { mid: { results: { lift: 160 }, at: iso(-1) } } };
+      openForceDate('force'); await w(60); document.querySelector('#fq-date').value = iso(60); saveForceDate('force'); await w(400);
+      o.reschedKeeps = !!(STATE.prep.checks && STATE.prep.checks.mid);
+      STATE.prep = {};
+
+      /* A3 — "Restore the original move" carries a logged set back */
+      let sw = null;
+      for (let p = 0; p < 40 && !sw; p++) {
+        STATE.progressPtr = p; STATE.logs = {}; STATE.swaps = {};
+        const s = buildSession(p);
+        for (const m of s.main) {
+          if (!m.slot) continue;
+          const opts = swapOptions(m).filter(x => x.exId !== m.exId && !s.main.some(y => y.exId === x.exId));
+          if (opts.length) { sw = { p, from: m.exId, key: m.slot, to: opts[0].exId }; break; }
+        }
+      }
+      o.swGuard = !!sw;
+      if (sw) {
+        STATE.progressPtr = sw.p; STATE.logs = {}; STATE.swaps = {};
+        toggleSet(sw.from, 0);
+        doSwap(sw.from, sw.key, sw.to); await w(300);
+        o.swMoved = !!(STATE.logs[sw.p].ex[sw.to]) && !STATE.logs[sw.p].ex[sw.from];
+        undoSwap(sw.key); await w(300);
+        const s2 = buildSession(sw.p);
+        o.swBack = s2.main.some(m => m.exId === sw.from);
+        o.swGone = !s2.main.some(m => m.exId === sw.to);
+        o.swWorkBack = !!(STATE.logs[sw.p].ex[sw.from]) && !STATE.logs[sw.p].ex[sw.to];
+        /* FLOOR: a restore with nothing logged still restores */
+        STATE.logs = {}; STATE.swaps = {};
+        doSwap(sw.from, sw.key, sw.to); await w(300); undoSwap(sw.key); await w(300);
+        o.swPlain = buildSession(sw.p).main.some(m => m.exId === sw.from);
+      }
+      STATE.logs = {}; STATE.swaps = {}; STATE.progressPtr = 3;
+
+      /* A4 — deleting a measurement takes back what it seeded */
+      STATE.profile.goalWaist = 85;
+      STATE.measurements = [{ date: iso(-10), waist: 69 }, { date: iso(-5), waist: 100 }]; STATE.profile.startWaist = 69;
+      removeMeasure(iso(-10)); o.swStart = STATE.profile.startWaist;
+      STATE.measurements = [{ date: iso(-6), waist: 98 }]; STATE.profile.startWaist = 102;
+      removeMeasure(iso(-6)); o.swStartKept = STATE.profile.startWaist;
+      STATE.measurements = [{ date: iso(-4), weight: 68 }]; STATE.nutrition.weightKg = 68;
+      removeMeasure(iso(-4)); o.wGone = STATE.nutrition.weightKg; o.wToast = toastText();
+      STATE.measurements = [{ date: iso(-9), weight: 90 }, { date: iso(-4), weight: 68 }]; STATE.nutrition.weightKg = 68;
+      removeMeasure(iso(-4)); o.wFallback = STATE.nutrition.weightKg;
+      STATE.measurements = []; STATE.nutrition.weightKg = 86;
+      removeMeasure(iso(-3)); o.wTyped = STATE.nutrition.weightKg;   // not found: nothing moves
+
+      /* F1 — a one-tap food follows the sheet's meal and quantity */
+      nutToday().food = []; rememberFood('Greek yogurt', 150, 15, 8, 4);
+      openQuickAdd(); await w(60);
+      document.querySelector('#fa-meal').value = 'd'; document.querySelector('#fa-qty').value = '3';
+      const yi = foodsList().findIndex(f => f.name === 'Greek yogurt');
+      logRemembered(yi); await w(200);
+      const yRow = nutToday().food[0] || {};
+      o.otKcal = yRow.kcal; o.otMeal = yRow.meal; o.otName = yRow.name;
+      nutToday().food = [];
+      openQuickAdd(); await w(60);
+      const qi = QUICK_PICKS.findIndex((n, i) => quickPickOk(i));
+      document.querySelector('#fa-qty').value = '2';
+      quickPick(qi); await w(200);
+      o.qpDouble = (nutToday().food[0] || {}).kcal === COMMON_FOODS[qi].kcal * 2;
+      nutToday().food = [];
+      /* The quick pick above remembered a second food, and the list is newest
+         first, so the row number is looked up again. */
+      openQuickAdd(); await w(60); logRemembered(foodsList().findIndex(f => f.name === 'Greek yogurt')); await w(200);
+      o.otPlain = (nutToday().food[0] || {}).name === 'Greek yogurt' && (nutToday().food[0] || {}).kcal === 150;
+
+      /* F2 — an edit opens per serving and saves one quantity */
+      nutToday().food = []; logFood('Chicken ×2', 330, 62, 0, 7, 'l'); await w(200);
+      editFood(0); await w(60);
+      o.edKcalBox = document.querySelector('#fa-kcal').value; o.edQtyBox = document.querySelector('#fa-qty').value;
+      o.edNameBox = document.querySelector('#fa-name').value;
+      saveFood(); await w(200);
+      o.edUnchanged = JSON.stringify([nutToday().food[0].name, nutToday().food[0].kcal]);
+      editFood(0); await w(60); document.querySelector('#fa-qty').value = '3'; saveFood(); await w(200);
+      o.edThree = JSON.stringify([nutToday().food[0].name, nutToday().food[0].kcal]);
+
+      /* C1 — the edit sheet saves the row it opened on */
+      nutToday().food = [];
+      logFood('Oats', 300, 10, 50, 6, 'b'); await w(5); logFood('Rice bowl', 400, 20, 60, 8, 'l'); await w(5); logFood('Salmon', 500, 40, 0, 30, 'd'); await w(200);
+      editFood(1); await w(60);
+      nutToday().food.splice(0, 1);                       // the other tab deleted Oats
+      document.querySelector('#fa-kcal').value = '450'; saveFood(); await w(200);
+      o.pinRows = JSON.stringify(nutToday().food.map(f => [f.name, f.kcal]));
+      editFood(0); await w(60);
+      nutToday().food.splice(0, 1);                       // the row itself is gone
+      document.querySelector('#fa-kcal').value = '999'; saveFood(); await w(200);
+      o.pinGone = JSON.stringify(nutToday().food.map(f => [f.name, f.kcal])); o.pinGoneToast = toastText();
+      editFood(0); await w(60); saveFood._pin = Object.assign({}, saveFood._pin, { day: iso(-1) });
+      document.querySelector('#fa-kcal').value = '111'; saveFood(); await w(200);
+      o.pinDay = JSON.stringify(nutToday().food.map(f => [f.name, f.kcal]));
+      /* F3 — a ✕ on a row that is not in today's log says so */
+      removeFood(9); await w(100); o.goneToast = toastText();
+
+      /* F3 — the day rolling over repaints */
+      go('fuel'); render(); render._day = '2000-01-01';
+      document.dispatchEvent(new Event('visibilitychange')); await w(50);
+      o.dayRepaint = render._day === todayISO();
+
+      /* F4/F5 — the food line names the goal's own reason */
+      const fuelSay = () => (briefSegments().find(x => x.icon === '🍽️') || {}).say || '';
+      const g0 = STATE.nutrition.goal;
+      setNutGoal('gain'); o.brGain = fuelSay(); o.whyGain = fuelWhy('gain').over;
+      setNutGoal('recomp'); o.brStable = fuelSay(); o.whyStable = fuelWhy('recomp').over;
+      setNutGoal('lose'); o.brLose = fuelSay();
+      setNutGoal(g0);
+
+      /* F6 — the targets tile names the movement credit */
+      const tile = () => { go('fuel'); render(); const e = document.querySelector('#v-fuel [data-kcaltile] .l'); return e ? e.textContent : ''; };
+      nutToday().steps = 0; o.tilePlain = tile();
+      setSteps(25000); o.tileEarned = tile(); o.earnedAmt = +todayKcalBudget() - +STATE.nutrition.kcalTarget;
+      setSteps(0);
+
+      /* F7 — a protein target the calories cannot hold says so */
+      const over = () => { go('fuel'); render(); return !!document.querySelector('#v-fuel [data-macroover]'); };
+      o.overPlain = over();
+      const kt = STATE.nutrition.kcalTarget, pt = STATE.nutrition.proteinTarget;
+      STATE.nutrition.kcalTarget = 1200; STATE.nutrition.proteinTarget = 300; o.overShown = over();
+      STATE.nutrition.kcalTarget = kt; if (pt === undefined) delete STATE.nutrition.proteinTarget; else STATE.nutrition.proteinTarget = pt;
+
+      /* C2-C4 — another tab's save closes a sheet still holding the old state */
+      const foreign = async (mutate) => {
+        const f = JSON.parse(localStorage.getItem('coreforge.v1'));
+        mutate(f); f._base = +STATE._rev || 0; f._rev = (+STATE._rev || 0) + 1; f._savedAt = Date.now();
+        const j = JSON.stringify(f);
+        localStorage.setItem('coreforge.v1', j); await idbPut('coreforge.v1', j);
+        window.dispatchEvent(new StorageEvent('storage', { key: 'coreforge.v1', newValue: j }));
+        await w(500);
+      };
+      save(); await w(200);
+      go('guide'); openTDEE(); await w(150);
+      o.xGuard = document.getElementById('scrim').classList.contains('open');
+      await foreign(f => { f.profile.age = 52; f.nutrition.age = 52; });
+      o.xClosed = !document.getElementById('scrim').classList.contains('open');
+      o.xToast = toastText(); o.xAge = STATE.profile.age;
+      /* the open profile editor ends without writing its old answers back */
+      go('guide'); render(); openProfileEdit(); await w(150);
+      o.obGuard = OB_EDIT === true;
+      await foreign(f => { f.profile.limitations = ['knee']; });
+      o.obEnded = OB_EDIT === false; o.obKnee = (STATE.profile.limitations || []).includes('knee');
+      document.dispatchEvent(new Event('visibilitychange')); await w(50);
+      o.obKneeStays = (STATE.profile.limitations || []).includes('knee');
+      /* FLOOR: a sheet with nothing stale in it is not the reason; an ordinary adopt with no sheet says what it said before */
+      await foreign(f => { f.nutrition.days['2026-03-03'] = { food: [], water: 1, habits: {} }; });
+      o.plainToast = toastText();
+
+      window.confirm = realConfirm;
+      return o;
+    });
+    s.ok('guard: a FORCE result really writes a checkpoint copy', r.cpGuard, r);
+    s.ok('clearing a FORCE result clears its checkpoint copy too', r.cpLiftGone, r);
+    s.ok('FLOOR: the other result in that checkpoint stays', r.cpRushKept, r);
+    s.ok('and an emptied checkpoint goes, so the midpoint is due again', r.cpAllGone && r.cpDueAgain, r);
+    s.eq('a clear takes one result from the latest slot holding it, and nothing else', r.cpOnlyOne,
+      '{"mid":{"results":{"rush":60},"at":"' + r.cpAt + '"},"initial":{"results":{"lift":170},"at":"' + r.cpAt0 + '"}}', r);
+    s.ok('a new block starts with no checkpoints', r.nbChecks, r);
+    s.ok('and keeps the latest results', r.nbResultsKept, r);
+    s.eq('so the new block\'s first result is its baseline', r.nbSlot, 'initial', r);
+    s.ok('FLOOR: a reschedule keeps the block\'s checkpoints', r.reschedKeeps, r);
+    s.ok('guard: a slot with a swap option exists', r.swGuard, r);
+    s.ok('guard: a swap carries the logged set across', r.swMoved, r);
+    s.ok('restoring the original move puts it back in the session', r.swBack && r.swGone, r);
+    s.ok('and carries the logged set back with it', r.swWorkBack, r);
+    s.ok('FLOOR: a restore with nothing logged still restores', r.swPlain, r);
+    s.eq('deleting the first waist re-derives the start from what is left', r.swStart, 100, r);
+    s.eq('FLOOR: a start waist typed somewhere else is kept', r.swStartKept, 102, r);
+    s.ok('deleting the only weight takes the weight back', r.wGone === undefined, r);
+    s.ok('and says to log it again', /log your weight again/.test(r.wToast), r);
+    s.eq('FLOOR: with an older weight left, that one is used', r.wFallback, 90, r);
+    s.eq('FLOOR: a delete that finds nothing moves nothing', r.wTyped, 86, r);
+    s.eq('a saved food logged with Quantity 3 logs three servings', r.otKcal, 450, r);
+    s.eq('in the meal the sheet was set to', r.otMeal, 'd', r);
+    s.eq('labelled with the quantity, as a typed entry is', r.otName, 'Greek yogurt ×3', r);
+    s.ok('a quick pick follows the quantity too', r.qpDouble, r);
+    s.ok('FLOOR: Quantity 1 logs one serving with a plain name', r.otPlain, r);
+    s.eq('an edit opens per serving', r.edKcalBox, '165', r);
+    s.eq('with the quantity the row was logged at', r.edQtyBox, '2', r);
+    s.eq('and the name without the ×N', r.edNameBox, 'Chicken', r);
+    s.eq('FLOOR: an unchanged edit saves the same row', r.edUnchanged, '["Chicken ×2",330]', r);
+    s.eq('a new quantity replaces the old one, never multiplies it', r.edThree, '["Chicken ×3",495]', r);
+    s.eq('an edit saves the row it opened on, wherever it now sits', r.pinRows, '[["Rice bowl",450],["Salmon",500]]', r);
+    s.eq('a row that is gone is not replaced by its neighbour', r.pinGone, '[["Salmon",500]]', r);
+    s.ok('and the sheet says so', /no longer there/.test(r.pinGoneToast), r);
+    s.eq('an edit opened yesterday does not save into today', r.pinDay, '[["Salmon",500]]', r);
+    s.ok('a ✕ on a row not in today\'s log says so', /not in today/.test(r.goneToast), r);
+    s.ok('coming back on a new day repaints', r.dayRepaint, r);
+    s.ok('a bulk is not told the deficit strips the fat', !/deficit/i.test(r.brGain) && /surplus/.test(r.brGain), r.brGain);
+    s.ok('a weight-stable goal is told about maintenance', !/deficit/i.test(r.brStable) && /maintenance/.test(r.brStable), r.brStable);
+    s.ok('FLOOR: a cut still hears the deficit', /deficit strips the fat/.test(r.brLose), r.brLose);
+    s.ok('Reference names the goal\'s reason too', !/deficit/.test(r.whyGain) && !/deficit/.test(r.whyStable), r);
+    s.ok('FLOOR: the targets tile says nothing extra with no movement', !/earned/.test(r.tilePlain), r.tilePlain);
+    s.ok('guard: movement really earns room', r.earnedAmt > 0, r);
+    s.ok('the targets tile names the movement credit', r.tileEarned.includes('+' + r.earnedAmt + ' earned today'), r);
+    s.ok('FLOOR: an ordinary target has no macro warning', !r.overPlain, r);
+    s.ok('a protein target the calories cannot hold says so', r.overShown, r);
+    s.ok('guard: the calorie sheet really was open', r.xGuard, r);
+    s.ok('another tab\'s save closes a sheet holding the old figures', r.xClosed, r);
+    s.ok('and says why', /open screen was closed/.test(r.xToast), r.xToast);
+    s.eq('so the other tab\'s age stands', r.xAge, 52, r);
+    s.ok('guard: the profile editor really was open', r.obGuard, r);
+    s.ok('another tab\'s save ends the profile editor', r.obEnded, r);
+    s.ok('and its flagged joint stands', r.obKnee && r.obKneeStays, r);
+    s.eq('FLOOR: an ordinary adopt with nothing open says what it said before', r.plainToast, 'Updated from another tab', r);
+    s.eq('no page errors in the v546 block', errors.length, 0, errors);
+    await browser.close();
+  }
+
+  /* ============ v546: a session finished after midnight is scored against
+     the day it was done on ================================================ */
+  {
+    const { browser, page, errors } = await launch(port);
+    await seedAthlete(page);
+    const r = await page.evaluate(() => {
+      const o = {};
+      const Y = localISO(new Date(Date.now() - 864e5));
+      const p = 5; STATE.progressPtr = p; STATE.logs = {}; STATE.swaps = {};
+      STATE._timeCap = { date: Y, ptr: p, min: 20 };
+      _sessDay = Y; const cut = buildSession(p); _sessDay = null;
+      o.cutGuard = !!cut.cut;
+      STATE.logs[p] = { date: Y, ex: {}, feel: null, done: false };
+      [...cut.main, cut.finisher].filter(Boolean).forEach(m => { STATE.logs[p].ex[m.exId] = { sets: Array.from({ length: m.sets }, () => true), done: true }; });
+      const wTrap = sessionWork(p); o.trap = wTrap.setsDone < wTrap.setsAsked;
+      commitSession('right', Y);
+      const L = STATE.logs[p];
+      o.partial = L.partial; o.short = !!L.short; o.items = (L.items || []).length; o.cutItems = cut.main.length + 1;
+      o.ptr = STATE.progressPtr; o.pinCleared = _sessDay === null;
+      /* A commit that is REFUSED returns early, before the line that clears
+         the pin on the way to the pointer move — so only the finally can. */
+      STATE.logs[6] = { date: Y, ex: {}, feel: null, done: false };
+      commitSession('right', Y);
+      o.refusedPtr = STATE.progressPtr; o.refusedPinCleared = _sessDay === null;
+      return o;
+    });
+    s.ok('guard: yesterday\'s time cap really cuts the session', r.cutGuard, r);
+    s.ok('guard: rebuilt today, the cut session reads as short of work', r.trap, r);
+    s.eq('a session finished after midnight is not marked partial', r.partial, false, r);
+    s.ok('and records that it was cut to fit', r.short, r);
+    s.eq('and keeps the moves that were done', r.items, r.cutItems, r);
+    s.eq('and still moves the programme on', r.ptr, 6, r);
+    s.ok('and the day pin is gone afterwards', r.pinCleared, r);
+    s.eq('guard: a commit with no work really is refused', r.refusedPtr, 6, r);
+    s.ok('and a refused commit leaves no day pin behind', r.refusedPinCleared, r);
+    s.eq('no page errors in the v546 midnight block', errors.length, 0, errors);
+    await browser.close();
+  }
+
 srv.close();
 const failed = s.finish(errors);
 await browser.close();

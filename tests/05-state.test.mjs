@@ -3096,11 +3096,17 @@ export default async function run() {
     await S1.waitForTimeout(800);
     const scratchPlain = await S1.evaluate(() => ({
       ptr: STATE.progressPtr, custom: _custom.length, celeb: _celebQ.length,
+      /* v546: a foreign write now closes the open sheet (it held the old
+         state), and closing a sheet shows the badge queued behind it. Shown is
+         not dropped, so the badge must be queued OR on the glass. */
+      celebShown: document.getElementById('scrim').classList.contains('open')
+        && /First Rep/.test((document.getElementById('sheet') || {}).textContent || ''),
       clock: !!_lastSessionClock,
       quickId: QUICK_ID, quickDone: Object.keys(quickState.done || {}).length }));
     t.eq('FLOOR: an ordinary foreign write really was adopted', scratchPlain.ptr, 3, scratchPlain);
     t.eq('FLOOR: and it leaves the half-built custom session alone', scratchPlain.custom, 3, scratchPlain);
-    t.eq('FLOOR: and the queued badge', scratchPlain.celeb, 1, scratchPlain);
+    t.ok('FLOOR: and the queued badge is not dropped — still queued, or shown',
+      scratchPlain.celeb === 1 || (scratchPlain.celeb === 0 && scratchPlain.celebShown), scratchPlain);
     t.ok('FLOOR: and the Quick workout in progress',
       scratchPlain.quickId && scratchPlain.quickDone === 2, JSON.stringify(scratchPlain));
     t.eq('FLOOR: and a clock waiting for the feel chip is not a reset',
