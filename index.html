@@ -595,7 +595,7 @@
    returned silently, for many versions. Updates still arrived through the
    service worker, which is why nothing looked wrong. Suite 25 pins the line
    inside the first 64 KB of the PUBLISHED file. */
-const APP_VERSION='545';
+const APP_VERSION='546';
 /* =========================================================================
    CoreForge — 378-session full-body training PWA (54 weeks at seven a week,
      76 at the wizard's five-day floor — programWeeks() is the only answer)
@@ -2410,14 +2410,32 @@ window.addEventListener('storage',async e=>{
       try{localStorage.removeItem(CROSSTAB_KEY);}catch(_){}
       try{localStorage.setItem(CROSSTAB_KEY,JSON.stringify(STATE));_snapOk=true;}catch(_){}
     }
+    /* AN OPEN SHEET IS A COPY OF THE STATE BEING REPLACED (v546). Its boxes
+       hold the old figures and its buttons hold old row positions, so after the
+       adopt a Save wrote them back over the other tab's change — a reverted
+       age, a goal weight read in the wrong unit, a deleted ✕ that removed a
+       different session — and the open profile editor put back a joint flag
+       the other tab had just set. So a foreign write closes the open sheet and
+       ends the editor WITHOUT saving it. A sheet whose timer is running is
+       left alone: that is a live effort, and its writers append, which lands
+       safely in the adopted state. */
+    let _closed=false;
+    if(!wasReset){
+      try{
+        if(typeof OB_EDIT!=='undefined'&&OB_EDIT){_obBefore=null;OB_EDIT=false;OB_HOST=null;obClear();_closed=true;}
+        const _timed=(typeof timedSurfaces==='function')?timedSurfaces().length:0;
+        if(!_timed&&$('#scrim').classList.contains('open')){closeSheet();_closed=true;}
+      }catch(_){}
+    }
     await load();
     normalizeState();
     render();
     try{toast(wasReset?'All data was reset in another tab'
              :(_lost&&_snapOk)?'Another tab saved over changes made here — Settings ▸ Restore puts them back'
              :_lost?'Another tab saved over changes made here. This device is out of storage, so they could not be kept — free some space and export a backup.'
+             :_closed?'Updated from another tab — the open screen was closed so it cannot save over that change'
              :'Updated from another tab',
-              wasReset?3200:_lost?6000:2200);}catch(_){}
+              wasReset?3200:_lost?6000:_closed?4500:2200);}catch(_){}
   }catch(err){}
 });
 
@@ -3403,6 +3421,19 @@ const STABLE_DRIFT_KG_WK=0.1;
    asks about profile.goal, the target about nutrition.goal — while the
    membership test itself exists once. normalizeState() keeps the two in step
    with profile as the source of truth. */
+/* WHAT THE FOOD IS FOR, BY GOAL (v546). The brief told a bulking athlete
+   "the deficit strips the fat" over a surplus target, and Reference told an
+   athlete eating at maintenance that "the deficit is what moves the waist".
+   One reader, so the spoken line and the written one cannot disagree. */
+function fuelWhy(g){
+  g=g!==undefined?g:(STATE.nutrition&&STATE.nutrition.goal);
+  if(g==='gain')return {why:'The small surplus builds the muscle; the protein makes sure that is what it builds.',
+    how:'Eat a little above maintenance and keep protein high.',over:'Fine on a bulk, as long as most days stay near the target.'};
+  if(weightStableGoal(g))return {why:'Eating at maintenance holds the scale; the protein and the training change the shape.',
+    how:'Eat at about maintenance and keep protein high.',over:'Fine once; most days near the target is what keeps the scale steady.'};
+  return {why:'The deficit strips the fat; the protein protects your muscle so the abs show through.',
+    how:'Eat in a moderate deficit and keep protein high.',over:'Fine once; not every day — the deficit is what moves the waist.'};
+}
 function weightStableGoal(g){
   try{return STABLE_GOALS.includes(g!==undefined?g:(STATE.profile&&STATE.profile.goal));}
   catch(e){return false;}
@@ -3749,7 +3780,31 @@ function doSwap(fromId,key,toId){
   if(log&&log.ex&&log.ex[fromId]&&!log.ex[toId]){log.ex[toId]=log.ex[fromId];delete log.ex[fromId];save();}
   closeSheet();toast('Swapped to '+EX[toId].name);render();
 }
-function undoSwap(key){clearSwap(STATE.progressPtr,key);closeSheet();toast('Original move restored');render();}
+/* RESTORE CARRIES THE WORK BACK (v546), the mirror of doSwap(). Without it a
+   set logged on the swapped-in move stayed on that move, keepLoggedWork() put
+   it back in the slot, and "Original move restored" was toasted over a screen
+   still showing the swap — with no Restore left to tap. The original id is the
+   one the slot builds with no swap stored, so it is read after the clear. */
+function undoSwap(key){
+  const ptr=STATE.progressPtr,sw=sessionSwaps(ptr),toId=sw&&sw[key];
+  clearSwap(ptr,key);
+  const log=STATE.logs[ptr];
+  if(toId&&log&&log.ex&&log.ex[toId]){
+    /* The work is lifted off while the slot is rebuilt: left on, keepLoggedWork()
+       can put the swapped-in move straight back in its own slot, and the
+       original would never be found. */
+    const work=log.ex[toId];delete log.ex[toId];
+    let fromId=null;
+    try{
+      const s=buildSession(ptr,{full:true}),all=[...s.main,s.finisher];
+      const m=all.find(x=>(key==='__fin'?x===s.finisher:x.slot===key));
+      fromId=m&&m.exId;
+    }catch(e){}
+    if(fromId&&fromId!==toId&&!log.ex[fromId])log.ex[fromId]=work; else log.ex[toId]=work;
+    save();
+  }
+  closeSheet();toast('Original move restored');render();
+}
 // Build the full session object for a given pointer
 // A stored swap is only honoured while the athlete can still do it safely:
 // the gear is present, and it is not on a flagged joint's risk list.
@@ -4108,7 +4163,7 @@ function timeCapOk(c){
 }
 function timeCapFor(ptr){
   try{const c=STATE._timeCap;
-    return (timeCapOk(c)&&c.date===todayISO()&&c.ptr===ptr)?c.min:0;
+    return (timeCapOk(c)&&c.date===(_sessDay||todayISO())&&c.ptr===ptr)?c.min:0;
   }catch(e){return 0;}
 }
 function fitSessionToTime(sess,min){
@@ -4749,6 +4804,11 @@ function copyReport(){
   catch(e){toast('Could not copy — select the text and copy it');}
 }
 function render(){
+  /* THE DAY THIS PAINT DESCRIBES (v546). Nothing repainted when the date
+     changed, so a phone left open past midnight kept "Today's food" and the
+     water count from yesterday on screen. The visibility listener below
+     compares against it. */
+  render._day=todayISO();
   /* One paint, one memo. Opened here and dropped in the `finally` below, so a
      rebuilt session is computed at most once per render and never survives it. */
   _itemsMemo=new Map();
@@ -5352,6 +5412,8 @@ function obHiddenCommit(){
   try{obReadForm();save();}catch(e){console.error('[profile save]',e);}
 }
 document.addEventListener('visibilitychange',()=>{if(document.hidden)obHiddenCommit();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)return;
+  try{if(render._day&&todayISO()!==render._day)render();}catch(e){}});
 function obFinishNav(){
   try{recalcKcalFromStored();}catch(e){}
   /* The toast is for a save with nothing to report. When the report opens it
@@ -8000,7 +8062,7 @@ function saveForceTimes(){
     /* A BLANK BOX CLEARS (v545). It opens holding the stored result, so an
        emptied box is the athlete taking a value away — the only way to remove
        a result they mistyped, which saveRunTT() and saveCombat() already allow. */
-    if(x.clear){if(STATE.prep&&STATE.prep.results){delete STATE.prep.results[x.id];cleared++;}return;}
+    if(x.clear){if(STATE.prep&&STATE.prep.results){delete STATE.prep.results[x.id];forceCheckClear(x.id);cleared++;}return;}
     /* Count what the writer ACCEPTED. The toast below says "Logged ✅" off
        this counter, and incrementing it unconditionally let it claim a save
        the writer had declined. Unreachable today — every value is validated
@@ -8011,6 +8073,26 @@ function saveForceTimes(){
   save();closeSheet();
   toast(wrote?'Logged ✅':(cleared?(cleared===1?'Result cleared':cleared+' results cleared'):'Nothing to save'));
   openForcePrep();
+}
+/* A CLEARED RESULT LEAVES ITS CHECKPOINT TOO (v546). setForceResultQuiet()
+   writes every result twice: the latest figure, and a dated copy in the
+   checkpoint it was taken in. Clearing removed only the first, so the card
+   kept printing the deleted time as "Recorded" and prepMidDue() stayed false —
+   the midpoint prompt never came back for the result the athlete took away.
+   The copy goes from the LATEST slot that holds it, which is the slot the
+   write would have picked, and an emptied slot goes with it. */
+function forceCheckClear(id){
+  const C=STATE.prep&&STATE.prep.checks;
+  if(!C||typeof C!=='object'||Array.isArray(C))return;
+  for(let i=PREP_CHECKS.length-1;i>=0;i--){
+    const k=PREP_CHECKS[i],q=C[k];
+    if(q&&q.results&&typeof q.results==='object'&&!Array.isArray(q.results)&&Object.prototype.hasOwnProperty.call(q.results,id)){
+      delete q.results[id];
+      if(!Object.keys(q.results).length)delete C[k];
+      break;
+    }
+  }
+  if(!Object.keys(C).length)delete STATE.prep.checks;
 }
 function setForceResultQuiet(id,n){
   if(!FORCE_IDS.includes(id))return false;
@@ -8086,6 +8168,13 @@ function saveForceDate(ev){
   if(newBlock||!isDateISO(STATE.prep.planFrom)){
     STATE.prep.planFrom=todayISO();
     STATE.prep.baseLb=ruckLoadLb();    // the plate the block opens on (v543)
+    /* A NEW BLOCK STARTS WITH NO CHECKPOINTS (v546). They belonged to the
+       block that just ended: left in place, the card printed the old block's
+       "Final assessment" as this one's, prepMidDue() read the stale midpoint
+       as already answered, and the never-backwards rule wrote the new block's
+       first result into the OLD final slot. `results` keeps the latest times,
+       which are still the athlete's own. */
+    delete STATE.prep.checks;
   }
   save();closeSheet();toast((key==='bmq'?'BMQ start date':'Test date')+' set 📅');openPrepHome();
 }
@@ -8435,7 +8524,20 @@ function undoBannerHTML(){
     <button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="undoSession()">↩ Undo — put it back</button>
     <div class="tiny muted" style="margin-top:8px">Available until tomorrow, or until you log the next one.</div></div>`;
 }
-function commitSession(feel){
+/* A SESSION FINISHED AFTER MIDNIGHT IS SCORED AGAINST THE DAY IT WAS DONE ON
+   (v546). The time cap and the readiness score are both keyed to a date, so a
+   session started at 23:40 under a 20-minute cap and finished at 00:10 was
+   rebuilt here as the FULL session: every cut set read as missed, the log was
+   marked partial with 5 of 6 moves, and a readiness-eased session that was
+   done in full lowered the load (adapt 1 -> 0.98) instead of nudging it up.
+   The player hands over the day it opened on, and only the measuring half of
+   the commit reads it — the pointer move and the repaint are today's. */
+let _sessDay=null;
+function commitSession(feel,day){
+  _sessDay=(typeof day==='string'&&isDateISO(day)&&day!==todayISO())?day:null;
+  try{return _commitSession(feel);}finally{_sessDay=null;}
+}
+function _commitSession(feel){
   // finishedHTML() guards the view, but nothing guarded the mutation itself
   if(STATE.progressPtr>=SESSIONS_PER_CYCLE*TOTAL_CYCLES)return;
   const p=STATE.progressPtr;const pos=posOf(p);const log=ensureLog();
@@ -8507,6 +8609,7 @@ function commitSession(feel){
   // fewer sets is not evidence the athlete is ready for more
   if(_short)d=Math.min(d,0.006);
   STATE.adapt=clamp((typeof STATE.adapt==='number'?STATE.adapt:1)+d,0.9,1.30);
+  _sessDay=null;   // measured; what follows is today's screen
   STATE.progressPtr=p+1;
   closeSheet();save();
   toast('Session logged · '+ (feel==='easy'?'load will rise':feel==='hard'?'load steady':'nice work'));
@@ -9164,7 +9267,8 @@ function openPlayer(opts){
   PLAYER={sess,items,i:0,s:0,phase:null,running:true,tid:null,remain:0,total:0,repN:0,elapsed:0,setsDone:0,pendingNext:false,free,
     bmqKey:(opts&&free&&BMQ_KEYS.includes(opts.bmqKey))?opts.bmqKey:null,
     tempo:_tempo,
-    t0:monoNow(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0};
+    t0:monoNow(),pausedMs:0,pauseAt:null,budget:plBudgetMin(items,_tempo),overNudged:false,lastPauseNudge:0,
+    day:todayISO()};   // the day the session was started on, for a commit after midnight (v546)
   $('#player').classList.add('open');document.body.style.overflow='hidden';
   /* THE PUSH IS DEFERRED FOR THE REASON openQuick() AND _runHiit() ALREADY
      DEFER THEIRS, and this opener is the third member of that class. Four
@@ -10531,13 +10635,14 @@ function playerTeardown(){if(!PLAYER)return;if(!PLAYER.free)plClearResume();play
 function playerQuit(){const had=!!(PLAYER&&PLAYER.hist);playerTeardown();if(had){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}}
 function playerFeel(feel){
   if(!PLAYER)return;   // double-tap must not commit twice
+  const _day=PLAYER.day;
   plClearResume();
   /* Finishing normally is the COMMON exit, so it must do everything the X
      does — release the wake lock, and clear the markup it leaves behind. */
   const _hadHist=!!(PLAYER&&PLAYER.hist);
   playerClose();
   if(_hadHist){_backGuard=true;try{history.back();}catch(e){_backGuard=false;}}
-  commitSession(feel);
+  commitSession(feel,_day);
   if(dayflowActive())dayflowAdvance('workout');   // guided day: hand off to the cool-down
 }
 
@@ -13326,11 +13431,11 @@ function briefSegments(){
     say:`Then cool down: ${_briefList(_cf.slice(0,3).map(c=>c.n))}${_cfRest?`, and ${_cfRest} more`:''}. A few minutes of recovery so you come back stronger tomorrow.`});
   }
   // 8 — fuel
-  const kcal=todayKcalBudget(), prot=proteinTargetG();
+  const kcal=todayKcalBudget(), prot=proteinTargetG(), _fw=fuelWhy();
   segs.push({icon:'🍽️',title:'Fuel',
     say: kcal
-      ? `Fuel: aim for about ${kcal} calories today${prot?`, and hit ${prot} grams of protein`:''}. The deficit strips the fat; the protein protects your muscle so the abs show through.`
-      : `Fuel: open the Fuel tab and tap Calculate my targets, so I can set your exact calories and protein. Eat in a moderate deficit and keep protein high.`});
+      ? `Fuel: aim for about ${kcal} calories today${prot?`, and hit ${prot} grams of protein`:''}. ${_fw.why}`
+      : `Fuel: open the Fuel tab and tap Calculate my targets, so I can set your exact calories and protein. ${_fw.how}`});
   // 9 — meals (from today's generated plan)
   try{const plan=currentMealPlan(); const names=(plan&&plan.meals?plan.meals.map(recipeById).filter(Boolean).map(r=>r.name):[]);
     /* "in the Fuel tab" was false: v245 removed the plan card from Fuel at the
@@ -18248,7 +18353,7 @@ function showUpdateToast(){
   document.body.appendChild(d);
 }
 /* ---- #2 Daily readiness check (auto-regulation) ---- */
-function readinessToday(){return (STATE.readiness&&STATE.readiness[todayISO()])||null;}
+function readinessToday(){return (STATE.readiness&&STATE.readiness[_sessDay||todayISO()])||null;}
 function readinessMult(){const r=readinessToday();if(!r)return 1;const s=r.score;
   /* The 40-59 band is the common under-recovered state and only cut load 10%
      with no set reduction. Widened so it actually does something. */
@@ -18304,12 +18409,27 @@ function readinessCardHTML(){
 function removeMeasure(date){
   if(!confirm('Delete the measurement from '+date+'?'))return;
   const before=(STATE.measurements||[]).length;
+  const gone=(STATE.measurements||[]).filter(m=>String(m.date).slice(0,10)===date);
   STATE.measurements=(STATE.measurements||[]).filter(m=>String(m.date).slice(0,10)!==date);
   if(STATE.measurements.length===before){toast('Not found');return;}
+  /* WHAT THE ROW SEEDED GOES WITH IT (v546). The first waist ever logged
+     seeds profile.startWaist and the latest weight IS nutrition.weightKg, and
+     deleting the row left both standing — so a mistyped first waist stayed the
+     baseline for good (start at or below the goal hides the goal bar), and a
+     deleted only weight kept pricing every calorie, protein and water target.
+     Each is cleared only when it is the deleted row's own figure: a start
+     waist or a weight the athlete typed somewhere else is theirs. */
+  const P=STATE.profile,N=STATE.nutrition,near=(a,b)=>a>0&&b>0&&Math.abs(a-b)<0.06;
+  let weightGone=false;
+  if(gone.some(g=>near(g.waist,P.startWaist))){
+    const w0=STATE.measurements.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).find(m=>m.waist>0);
+    P.startWaist=w0?w0.waist:null;
+  }
   const last=(STATE.measurements||[]).filter(m=>m.weight>0).slice(-1)[0];
-  if(last){STATE.nutrition.weightKg=last.weight;try{recalcKcalFromStored();}catch(e){}}
+  if(last){N.weightKg=last.weight;try{recalcKcalFromStored();}catch(e){}}
+  else if(gone.some(g=>near(g.weight,N.weightKg))){delete N.weightKg;weightGone=true;}
   syncDerivedHabits();
-  save();toast('Deleted');renderProgress();
+  save();toast(weightGone?'Deleted — log your weight again to keep your targets on your body':'Deleted');renderProgress();
 }
 function measureListHTML(){
   /* The delete button's onclick embeds the date as a JS string literal built
@@ -18830,16 +18950,45 @@ function uncapturedCount(){
 function partialMacroCount(){
   const d=nutToday();return (Array.isArray(d.food)?d.food:[]).filter(f=>!!foodMacroGap(f)).length;
 }
-function removeFood(idx){const d=nutToday();if(rowAt(d.food,idx)){d.food.splice(idx,1);syncProteinHabit();save();renderFuel();}}
+function removeFood(idx){const d=nutToday();if(rowAt(d.food,idx)){d.food.splice(idx,1);syncProteinHabit();save();renderFuel();}else goneRow();}
+/* A ROW THAT IS NOT IN TODAY'S LOG SAYS SO (v546). After midnight Fuel could
+   still show yesterday, and ✕ or ✏️ on a row looked the index up in TODAY's
+   empty list and returned in silence — a control that did nothing. The
+   screen is repainted onto today, which is also what the row was missing. */
+function goneRow(){toast('That entry is not in today\'s log any more',3500);try{closeSheet();}catch(e){}try{renderFuel();}catch(e){}}
 // Edit a logged item in place (re-uses the add sheet, then replaces the entry).
-function editFood(idx){const d=nutToday();const it=rowAt(d.food,idx);if(!it)return;
+function editFood(idx){const d=nutToday();const it=rowAt(d.food,idx);if(!it){goneRow();return;}
+  /* AN EDIT OPENS PER SERVING, WITH ITS QUANTITY (v546). A row logged as
+     "Chicken ×2" stores the TOTAL, and the sheet opened holding that total
+     with the quantity at 1 — so setting Quantity to 3 saved "Chicken ×2 ×3"
+     at 990 kcal where the athlete meant 495. The ×N in the label is what
+     records the quantity, so it is read back here and the boxes are divided
+     by it; saveFood() then writes one ×N, never two. */
+  const qm=/^(.*\S) ×(\d+(?:\.\d+)?)$/.exec(String(it.name||'')),q=qm?parseFloat(qm[2]):1;
+  const ok=q>0&&isFinite(q),per=v=>ok&&q!==1?Math.round((v||0)/q*10)/10:v;
   // carry the portion through an edit — it describes what was eaten, and dropping
   // it on every correction would erase the photo's own record of the amount
-  openQuickAdd({name:it.name,kcal:it.kcal,p:it.p,c:it.c,f:it.f,meal:it.meal,editIdx:idx,portion:it.portion,
+  /* THE ROW IS PINNED BY WHAT IT IS, NOT WHERE IT SITS (v546). The sheet held
+     only the index, so a row deleted in another tab, or the day rolling over
+     while it was open, made Save overwrite whatever sat at that index next —
+     "Updated ✓" over somebody else's food. saveFood() looks the row up by its
+     day and its stamp and declines if it is gone. */
+  openQuickAdd({pin:{day:todayISO(),at:it.at,name:it.name},name:ok&&qm?qm[1]:it.name,kcal:per(it.kcal),p:per(it.p),c:per(it.c),f:per(it.f),qty:ok?q:1,meal:it.meal,editIdx:idx,portion:it.portion,
     /* the "calculated, not read" marker survives an edit that leaves the number
        alone; it was dropped by every edit, even one that only moved the meal (v542) */
-    macroDerived:macroKeyOk(it.calc)?{which:it.calc,grams:it[_MACRO_KEY[it.calc]]}:null});}
-function quickPick(i){const f=rowAt(COMMON_FOODS,i);if(!f||!quickPickOk(i))return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
+    macroDerived:macroKeyOk(it.calc)?{which:it.calc,grams:per(it[_MACRO_KEY[it.calc]])}:null});}
+function quickPick(i){const f=rowAt(COMMON_FOODS,i);if(!f||!quickPickOk(i))return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logOneTap(f);}
+/* A ONE-TAP FOOD FOLLOWS THE SHEET IT IS TAPPED IN (v546). The quick picks and
+   "Your foods" sit directly under the Meal and Quantity controls, and both
+   logged one serving into the current meal whatever those said — Dinner × 3
+   landed as one serving at breakfast. Same label and multiplier saveFood()
+   uses, so a one-tap row and a typed one read the same. Outside the sheet
+   _faQty() is 1 and there is no meal control, so nothing changes there. */
+function logOneTap(f){
+  const q=_faQty(),mEl=$('#fa-meal'),meal=(mEl&&mEl.value)||undefined;
+  const label=q!==1?(f.name+' ×'+_fmtQty(q)):f.name;
+  logFood(label,Math.round(f.kcal*q),Math.round(f.p*q),Math.round((f.c||0)*q),Math.round((f.f||0)*q),meal);
+}
 /* ---- Macro targets: protein from bodyweight, fat ~27% of calories, carbs fill
    the rest. Only shown once a calorie target exists. ---- */
 function macroTargets(){const k=nut().kcalTarget;if(!k)return null;
@@ -18870,7 +19019,7 @@ function rememberFood(name,kcal,p,c,f){name=String(name||'').trim();if(!name||(!
 function foodsList(){const arr=(Array.isArray(nut().foods)?nut().foods:[]).filter(f=>f&&typeof f==='object');
   const by=(a,b)=>(b.at||0)-(a.at||0);
   return arr.filter(f=>f.fav).sort(by).concat(arr.filter(f=>!f.fav).sort(by));}
-function logRemembered(i){const f=foodsList()[i];if(!f)return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logFood(f.name,f.kcal,f.p,f.c,f.f);}
+function logRemembered(i){const f=foodsList()[i];if(!f)return;rememberFood(f.name,f.kcal,f.p,f.c,f.f);logOneTap(f);}
 function toggleFavFood(i){const f=foodsList()[i];if(!f)return;const it=(nut().foods||[]).find(x=>String(x.name).toLowerCase()===String(f.name).toLowerCase());if(it){it.fav=!it.fav;save();}
   /* REPAINT THE LIST, NOT THE SHEET (v545). openQuickAdd() with no argument
      rebuilt the whole sheet blank, so starring a food wiped a pre-filled entry —
@@ -18962,11 +19111,21 @@ function saveFood(){
   saveFood._derived=null;
   const ei=saveFood._editIdx;
   if(typeof ei==='number'){        // editing an existing entry: replace in place
+    const pin=saveFood._pin;saveFood._pin=null;
+    let at=ei;
+    if(pin){
+      const rows=Array.isArray(nutToday().food)?nutToday().food:[];
+      at=pin.day!==todayISO()?-1
+        :(rows[ei]&&rows[ei].at===pin.at&&rows[ei].name===pin.name)?ei
+        :rows.findIndex(r=>r&&r.at===pin.at&&r.name===pin.name);
+    }
+    if(at<0){saveFood._editIdx=null;saveFood._portion='';
+      toast('That entry is no longer there — nothing was changed',4000);closeSheet();renderFuel();return;}
     /* `src` is carried across an edit. Correcting a number on an imported row
        does not stop it being the day's running total, and losing the marker
        would let the NEXT screenshot stack on top of it instead of replacing
        it — the exact bug this exists to prevent, one tap further along. */
-    const wrote=replaceFoodRow(ei,label,kcal,pr,cb,ft,meal,portion,calc,null);
+    const wrote=replaceFoodRow(at,label,kcal,pr,cb,ft,meal,portion,calc,null);
     saveFood._editIdx=null;saveFood._portion='';
     if(wrote)save();
     /* Say what happened. A flat "Updated ✓" over a row that was no longer
@@ -19271,6 +19430,7 @@ function openQuickAdd(pre){
      passes undefined and still opens empty. */
   const pf=v=>(typeof v==='number'&&isFinite(v))?v:(v||'');
   saveFood._editIdx=editing?pre.editIdx:null;
+  saveFood._pin=(editing&&pre.pin&&typeof pre.pin==='object')?pre.pin:null;
   /* The photo's portion estimate has no input field of its own — it is a note
      about what the camera saw, not something the athlete types. Stashed here the
      same way _editIdx is, so saveFood() can carry it onto the entry. Set on EVERY
@@ -19291,7 +19451,7 @@ function openQuickAdd(pre){
       <div class="field" style="flex:1;margin:0"><label for="fa-f">Fat (g)</label><input id="fa-f" type="number" inputmode="numeric" value="${pf(pre.f)}" placeholder="g" oninput="updQtyTotal()"></div>
     </div>
     <div class="btnrow" style="gap:8px;align-items:flex-end">
-      <div class="field" style="flex:0 0 92px;margin:0"><label for="fa-qty">Quantity</label><input id="fa-qty" type="number" inputmode="decimal" value="1" min="0" step="0.5" oninput="updQtyTotal()"></div>
+      <div class="field" style="flex:0 0 92px;margin:0"><label for="fa-qty">Quantity</label><input id="fa-qty" type="number" inputmode="decimal" value="${(typeof pre.qty==='number'&&pre.qty>0)?_fmtQty(pre.qty):1}" min="0" step="0.5" oninput="updQtyTotal()"></div>
       <div class="field" style="flex:1;margin:0"><label for="fa-meal">Meal</label>
         <select id="fa-meal" style="width:100%;padding:12px;border-radius:12px;background:var(--card2);color:var(--ink);border:1.5px solid var(--line);font-size:16px">
           ${MEALS.map(([k,l])=>`<option value="${k}"${k===slot?' selected':''}>${l}</option>`).join('')}
@@ -24147,7 +24307,7 @@ function refAmtCalc(){
     const kAfter=kLeft-n.kcal;
     h+=`<div class="kv" style="padding:8px 2px;border-top:1px solid var(--line)"><span class="tiny muted">Calories left after this</span>
       <b class="tiny" style="color:${kAfter<0?'var(--red,#ff6b6b)':'var(--gold)'}">${kLeft} → ${kAfter}</b></div>`;
-    if(kAfter<0)h+=`<div class="note warn" style="margin-top:8px">That puts you <b>${-kAfter} kcal</b> over for the day. ${nut().goal==='gain'?'Fine on a bulk, as long as most days stay near the target.':'Fine once; not every day — the deficit is what moves the waist.'}</div>`;
+    if(kAfter<0)h+=`<div class="note warn" style="margin-top:8px">That puts you <b>${-kAfter} kcal</b> over for the day. ${fuelWhy().over}</div>`;
   }
   if(!protT||!kcalT)h+=`<div class="note info" style="margin-top:8px">Set your weight and tap <b>Calculate my targets</b> in Fuel to see this against your own numbers.</div>`;
   out.innerHTML=h;
@@ -25086,12 +25246,24 @@ function renderFuel(){
      only calories and protein are settable, and saying otherwise would offer a
      control that does not exist. */
   const _mt=macroTargets();
+  /* THE TILE AND THE FOOD CARD NAME THE SAME GAP (v546). Movement earns room
+     on the surplus, so the food card below reads the LIVE budget ("0 / 2780")
+     while this tile, titled "Today's", read the base target (2280) with
+     nothing saying why — two figures for today's calories on one tab. The
+     number stays the base, because the carb and fat tiles beside it are
+     calculated from it and must add up to it; the label says what is added. */
+  const _earned=(()=>{try{const b=+todayKcalBudget(),k=+n.kcalTarget;return (b>0&&k>0&&b>k)?Math.round(b-k):0;}catch(e){return 0;}})();
+  /* A MACRO SET THAT CANNOT FIT SAYS SO (v546). A hand-set protein far above
+     the calculated one, on a small floored athlete, leaves protein and the fat
+     floor alone worth more than the calorie target, and carbs read 0 with
+     nothing saying the plate is over. */
+  const _over=_mt?Math.round(_mt.p*4+_mt.f*9-_mt.kcal):0;
   h+=`<div class="section-label">Today's targets</div><div class="grid2">
-    <div class="stat"><div class="n" style="color:var(--gold)">${n.kcalTarget?n.kcalTarget:'—'}</div><div class="l">Calories${n.kcalTarget?'':' (set below)'}</div></div>
+    <div class="stat" data-kcaltile="1"><div class="n" style="color:var(--gold)">${n.kcalTarget?n.kcalTarget:'—'}</div><div class="l">Calories${n.kcalTarget?(_earned>0?` · +${_earned} earned today`:''):' (set below)'}</div></div>
     <div class="stat"><div class="n" style="color:var(--fire-l)">${prot?prot+'g':'—'}</div><div class="l">Protein${_pSet?' · yours':(_pCalc?' · calculated':'')}</div></div>
     <div class="stat"><div class="n" style="color:#3fd7e8">${_mt?_mt.c+'g':'—'}</div><div class="l">Carbs${_mt?' · calculated':''}</div></div>
     <div class="stat"><div class="n" style="color:var(--gold)">${_mt?_mt.f+'g':'—'}</div><div class="l">Fat${_mt?' · calculated':''}</div></div>
-  </div>`;
+  </div>${_over>0?`<div class="note warn" data-macroover="1" style="margin-top:8px">Your protein and the minimum fat come to <b>${_over} kcal more</b> than your calorie target, so there is no room left for carbs. Lower the protein target or raise the calories.</div>`:''}`;
   /* THE TIMEFRAME HAS TO BE READABLE IN THE OUTPUT, or it is the voicePitch
      trap again — a control the athlete sets, that now moves four numbers, with
      nothing on screen connecting the two. Named here because Fuel is where
