@@ -1,0 +1,25 @@
+{
+ "title": "Construction Lessons",
+ "short": "Construction",
+ "eyebrow": "Owner's course in building from the ground up",
+ "sub": "An eight-week course in how a building is procured, priced, financed and built from the contract to the ground slab, taught from the owner's seat.",
+ "about": "This course follows a hypothetical mid-rise apartment building from the delivery decision through contracts, cost and programme, site investigation, excavation, temporary works, foundations and the ground slab, with the financing questions a lender and an equity partner ask at each step. Every number in it is a round hypothetical chosen to teach a method; none describes a real project.\n\nEach week has four teaching days and a Friday review. Codes and standards are taught against American practice (IBC, ACI, ASCE, OSHA, NFPA, ASTM); any clause or figure not checked against the current adopted edition is marked as unverified. Nothing here is legal, engineering, tax or financing advice; each lesson names the licensed professional a real decision needs.",
+ "weekTitles": {
+  "1": "Delivery, contracts and documents",
+  "2": "Cost, programme and the site",
+  "3": "Investigating the ground",
+  "4": "The open hole",
+  "5": "Capital, credit and partners",
+  "6": "Temporary works",
+  "7": "Shallow foundations and mats",
+  "8": "Wet ground, the mat pour and the ground slab"
+ },
+ "dayNames": [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday"
+ ],
+ "source": "https://claude.ai/artifact/EqwVML6WMKk7XCe1dDn1rZ"
+}

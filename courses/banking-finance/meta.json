@@ -1,0 +1,23 @@
+{
+ "title": "Banking and Project Finance",
+ "short": "Project Finance",
+ "eyebrow": "How a lender decides, and how to make the yes safe",
+ "sub": "A six-week course on how banks think about development loans: who decides, the numbers that size a loan, the capital stack, security and guarantees, cross-border borrowing, the term sheet, and how to run the process from first meeting to final drawdown.",
+ "about": "A bank lends when it is convinced it will be repaid from the project's own cash flow, with a second way out if that fails. Each lesson teaches one piece of that conviction: how a bank earns money and why that makes it cautious, how a credit committee reads a file, how loan size is set by several tests at once, where the bank sits in the capital stack, and what security, guarantees and covenants really commit you to.\n\nEvery worked example uses round hypothetical numbers, never a real project. Lending ratios and terms are commercial practice, not law, and vary by lender. Any statement about law, tax or regulation is a concept to discuss with a qualified professional, and anything not independently confirmed is marked for verification. Each Friday is a review with six questions; the last Friday is a full set of drills.",
+ "weekTitles": {
+  "1": "How banks think",
+  "2": "Construction risk and the loan lifecycle",
+  "3": "The numbers that size a loan",
+  "4": "The capital stack, security and guarantees",
+  "5": "Cross-border borrowing and the term sheet",
+  "6": "Getting to yes and staying there"
+ },
+ "dayNames": [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday"
+ ],
+ "source": "https://claude.ai/artifact/T2HNhoLBsYe1rqhhsuuCbf"
+}
